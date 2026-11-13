@@ -255,3 +255,16 @@ fun DeltaBadge(percent: BigDecimal?, upIsGood: Boolean, modifier: Modifier = Mod
     Text((if (up) "▲ " else if (percent.signum() < 0) "▼ " else "") + percent.abs().setScale(0, java.math.RoundingMode.HALF_UP).toPlainString() + "%",
         modifier, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1)
 }
+
+/** Selettore a pillola (stile app bancarie): una sola riga, voci sempre intere. */
+@Composable
+fun <T> PillSegmented(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        options.forEach { (v, label) ->
+            val on = v == selected
+            Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent).clickable { onSelect(v) }, contentAlignment = Alignment.Center) {
+                Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}

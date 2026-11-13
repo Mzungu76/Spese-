@@ -157,3 +157,26 @@ class DashboardExtrasTest {
         assertTrue(d.goalProgress >= 0f)
     }
 }
+
+class TrendBucketsTest {
+    private val snap = Fixtures.snapshotA
+
+    @Test fun `periodo lungo - un punto per mese, somme identiche alle statistiche`() {
+        val b = it.spese.domain.finance.TrendBuckets.compute(snap.transactions)
+        val s = StatsEngine.compute(snap.transactions)
+        assertEquals(10, b.size); assertTrue(b.none { it.weekly })
+        assertMoney("entrate", s.income, b.fold(BigDecimal.ZERO) { a, x -> a + x.income })
+        assertMoney("spese", s.expense, b.fold(BigDecimal.ZERO) { a, x -> a + x.expense })
+        assertEquals("gen", b.first().label); assertEquals("ottobre 2024", b.last().title)
+    }
+
+    @Test fun `periodo breve - settimane da lunedi senza buchi`() {
+        val oct = FilterEngine.apply(snap.transactions, TxFilter(period = Period.CurrentMonth), snap.categories.associateBy { it.id })
+        val w = it.spese.domain.finance.TrendBuckets.compute(oct)
+        assertTrue(w.all { it.weekly && it.start.dayOfWeek == java.time.DayOfWeek.MONDAY })
+        assertTrue(w.zipWithNext().all { (a, b) -> a.start.plusWeeks(1) == b.start })
+        assertMoney("spese", StatsEngine.compute(oct).expense, w.fold(BigDecimal.ZERO) { a, x -> a + x.expense })
+    }
+
+    @Test fun `senza movimenti nessun punto`() = assertTrue(it.spese.domain.finance.TrendBuckets.compute(emptyList()).isEmpty())
+}

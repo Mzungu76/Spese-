@@ -2,7 +2,11 @@ package it.spese.app.common
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FilterList
@@ -90,3 +94,45 @@ fun FilterSheet(f: TxFilter, data: AppData, onChange: ((TxFilter) -> TxFilter) -
 
 @Composable
 fun Modifier.verticalScrollCompat(): Modifier = this.then(Modifier.verticalScroll(rememberScrollState()))
+
+/** Due pillole (periodo e conto) con menu a tendina: il filtro quotidiano senza righe di chip. */
+@Composable
+fun FilterPills(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.hilt.navigation.compose.hiltViewModel()) {
+    val f by vm.filter.collectAsState()
+    val data by vm.data.collectAsState()
+    val months = remember(data.transactions.size) { data.transactions.map { YearMonth.from(it.bookingDate) }.distinct().sortedDescending().take(12) }
+    val periodLabel = when (val p = f.period) {
+        Period.All -> "Tutto il periodo"; Period.YearToDate -> "Quest'anno"; Period.Last3Months -> "Ultimi 3 mesi"; Period.Last6Months -> "Ultimi 6 mesi"
+        Period.CurrentMonth -> "Mese corrente"; is Period.Month -> Dates.monthLabelLong(p.month); is Period.Custom -> "Intervallo"
+    }
+    Row(modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        var pm by remember { mutableStateOf(false) }
+        var am by remember { mutableStateOf(false) }
+        Box {
+            Pill(periodLabel) { pm = true }
+            DropdownMenu(pm, { pm = false }) {
+                listOf(Period.All to "Tutto il periodo", Period.YearToDate to "Quest'anno", Period.Last6Months to "Ultimi 6 mesi", Period.Last3Months to "Ultimi 3 mesi", Period.CurrentMonth to "Mese corrente").forEach { (p, l) ->
+                    DropdownMenuItem({ Text(l) }, { vm.update { it.copy(period = p) }; pm = false })
+                }
+                HorizontalDivider()
+                months.forEach { m -> DropdownMenuItem({ Text(Dates.monthLabelLong(m)) }, { vm.update { it.copy(period = Period.Month(m)) }; pm = false }) }
+            }
+        }
+        if (data.accounts.size > 1) Box {
+            Pill(data.accounts.firstOrNull { it.id == f.accountId }?.name ?: "Tutti i conti") { am = true }
+            DropdownMenu(am, { am = false }) {
+                DropdownMenuItem({ Text("Tutti i conti") }, { vm.update { it.copy(accountId = null) }; am = false })
+                data.accounts.forEach { a -> DropdownMenuItem({ Text(a.name) }, { vm.update { it.copy(accountId = a.id) }; am = false }) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Pill(text: String, onClick: () -> Unit) {
+    Row(Modifier.height(40.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onClick).padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text, style = MaterialTheme.typography.labelLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, maxLines = 1)
+        Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
