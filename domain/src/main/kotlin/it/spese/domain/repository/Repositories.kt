@@ -127,7 +127,7 @@ interface TextRecognizer {
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class AppSettings(
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val themeMode: ThemeMode = ThemeMode.DARK,
     val notificationsEnabled: Boolean = false,
     val notifyBudgets: Boolean = true,
     val notifyDues: Boolean = true,

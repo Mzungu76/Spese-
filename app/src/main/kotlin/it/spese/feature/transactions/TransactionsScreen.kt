@@ -74,13 +74,16 @@ fun TransactionsScreen(
                 }
             }
             FilterHeader(Modifier.padding(bottom = 4.dp))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("${st.items.size} movimenti", fontWeight = FontWeight.Medium)
-                MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyMedium)
-                MoneyText(st.expense, decimals = false, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.weight(1f))
-                if (st.items.isNotEmpty()) {
-                    TextButton(onClick = { bulkAll = true; pickCategory = { confirmBulk = it } }) { Text("Assegna a tutti") }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("${st.items.size} movimenti", fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    Spacer(Modifier.weight(1f))
+                    MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyMedium)
+                    MoneyText(st.expense, decimals = false, style = MaterialTheme.typography.bodyMedium)
+                }
+                if (st.items.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { bulkAll = true; pickCategory = { confirmBulk = it } }, contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Assegna categoria a tutti", maxLines = 1, softWrap = false) }
+                    Spacer(Modifier.weight(1f))
                     Box {
                         IconButton(onClick = { exportMenu = true }) { Icon(Icons.Default.Share, "Esporta") }
                         DropdownMenu(exportMenu, { exportMenu = false }) {

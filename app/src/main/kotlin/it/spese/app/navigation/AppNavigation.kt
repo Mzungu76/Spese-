@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -44,7 +45,7 @@ object Routes {
 private data class Tab(val route: String, val label: String, val icon: ImageVector, val selected: ImageVector)
 
 private val TABS = listOf(
-    Tab(Routes.DASHBOARD, "Panoramica", Icons.Outlined.Dashboard, Icons.Filled.Dashboard),
+    Tab(Routes.DASHBOARD, "Home", Icons.Outlined.Dashboard, Icons.Filled.Dashboard),
     Tab(Routes.TRANSACTIONS, "Movimenti", Icons.Outlined.ReceiptLong, Icons.Filled.ReceiptLong),
     Tab(Routes.CATEGORIES, "Categorie", Icons.Outlined.Category, Icons.Filled.Category),
     Tab(Routes.PLAN, "Piano", Icons.Outlined.Flag, Icons.Filled.Flag),
@@ -71,15 +72,16 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
         bottomBar = {
-            if (isTab) NavigationBar {
-                TABS.forEach { t -> NavigationBarItem(route == t.route, { goTab(t.route) }, { Icon(if (route == t.route) t.selected else t.icon, t.label) }, label = { Text(t.label, maxLines = 1) }, modifier = Modifier.testTag("tab_${t.route}")) }
+            if (isTab) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest) {
+                TABS.forEach { t -> NavigationBarItem(route == t.route, { goTab(t.route) }, { Icon(if (route == t.route) t.selected else t.icon, t.label) }, label = { Text(t.label, maxLines = 1, softWrap = false, fontSize = 11.sp) }, modifier = Modifier.testTag("tab_${t.route}")) }
             }
         },
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
                 DashboardScreen(menu, onOpenAlerts = { goTab(Routes.ALERTS) }, onOpenCategory = { id -> vm.showCategory(id); goTab(Routes.TRANSACTIONS) },
-                    onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) }, contentPadding = pad)
+                    onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
+                    onAdd = { nav.navigate(Routes.edit(0)) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, onOpenPlan = { goTab(Routes.PLAN) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { nav.navigate(Routes.edit(0)) }, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, bottomPadding = pad) }

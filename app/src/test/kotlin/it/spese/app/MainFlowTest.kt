@@ -60,12 +60,11 @@ class MainFlowTest {
 
     @Test fun le_cinque_sezioni_principali_sono_raggiungibili() {
         compose.waitForIdle()
-        listOf("Movimenti", "Categorie", "Piano", "Avvisi", "Panoramica").forEach { label ->
-            compose.onAllNodesWithText(label).filterToOne(hasAnyAncestor(hasText("Panoramica").not().or(isRoot())).and(hasClickAction().or(hasAnyAncestor(hasClickAction())))).performClick()
-            compose.waitForIdle()
+        listOf("transactions", "categories", "plan", "alerts", "dashboard").forEach { route ->
+            compose.onNodeWithTag("tab_$route").performClick(); compose.waitForIdle()
         }
+        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
         // la sezione Categorie mostra le categorie predefinite
-        compose.onAllNodesWithText("Categorie").onFirst().performClick()
         compose.waitUntil(5000) { compose.onAllNodesWithText("Supermercato e alimentari").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Supermercato e alimentari").assertExists()
     }
@@ -90,9 +89,9 @@ class MainFlowTest {
         val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
         runBlocking { restore(env, RestoreMode.Replace) }
         compose.waitUntil(10000) { data.value.transactions.size == 223 }
-        compose.waitUntil(10000) { compose.onAllNodesWithText("Saldo (entrate − spese)").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Saldo (entrate − spese)").assertExists()
-        compose.onNodeWithText("Spese per categoria").assertExists()
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Risultato del periodo (entrate − spese)").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Risultato del periodo (entrate − spese)").assertExists()
+        compose.onNodeWithText("Aggiungi").assertExists()
         // avvisi di budget calcolati sui dati importati (come nell'HTML)
         compose.waitUntil(5000) { compose.onAllNodesWithText("superato", substring = true).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
@@ -118,7 +117,7 @@ class MainFlowTest {
         goTab("Movimenti"); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
         compose.onNodeWithText("Regole (32)").performClick(); waitText("Vince la prima regola", substring = true)
-        compose.onNodeWithText("Da classificare").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Da fare").performClick(); compose.waitForIdle()
         goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
         goTab("Avvisi"); waitText("Budget del mese in corso"); waitText("superato", substring = true)
 

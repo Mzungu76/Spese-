@@ -71,6 +71,8 @@ private fun labelFormatter(labels: List<String>) = CartesianValueFormatter { _, 
 fun BarLineChart(
     labels: List<String>, bars: List<ChartSeries>, modifier: Modifier = Modifier, lines: List<ChartSeries> = emptyList(),
     stacked: Boolean = false, height: Dp = 220.dp,
+    /** false = grafico "statico": niente scorrimento/zoom/animazioni/marcatore. Nelle liste verticali evita conflitti di gesti e rallentamenti. */
+    interactive: Boolean = true,
 ) {
     if (labels.isEmpty() || (bars.isEmpty() && lines.isEmpty())) { Box(modifier.height(height), contentAlignment = Alignment.Center) { Text("Nessun dato", color = MaterialTheme.colorScheme.onSurfaceVariant) }; return }
     val producer = remember { CartesianChartModelProducer() }
@@ -98,7 +100,7 @@ fun BarLineChart(
         *layers.toTypedArray(),
         startAxis = VerticalAxis.rememberStart(label = label, valueFormatter = CartesianValueFormatter { _, v, _ -> fmtAxis(v) }),
         bottomAxis = HorizontalAxis.rememberBottom(label = label, valueFormatter = labelFormatter(labels), itemPlacer = HorizontalAxis.ItemPlacer.aligned(spacing = { if (labels.size > 12) 2 else 1 })),
-        marker = rememberDefaultCartesianMarker(
+        marker = if (!interactive) null else rememberDefaultCartesianMarker(
             label = rememberTextComponent(color = MaterialTheme.colorScheme.onSurface, padding = com.patrykandpatrick.vico.core.common.Insets(8f, 4f)),
             valueFormatter = { _, targets ->
                 val x = targets.firstOrNull()?.x?.toInt() ?: 0
@@ -119,7 +121,10 @@ fun BarLineChart(
     Column(modifier) {
         CartesianChartHost(
             chart = chart, modelProducer = producer, modifier = Modifier.fillMaxWidth().height(height),
-            scrollState = rememberVicoScrollState(), zoomState = rememberVicoZoomState(),
+            scrollState = rememberVicoScrollState(scrollEnabled = interactive),
+            zoomState = if (interactive) rememberVicoZoomState() else rememberVicoZoomState(zoomEnabled = false, initialZoom = com.patrykandpatrick.vico.core.cartesian.Zoom.Content),
+            animationSpec = if (interactive) androidx.compose.animation.core.tween(250) else null,
+            animateIn = interactive,
         )
         Legend((bars + lines).map { it.name to it.color })
     }
@@ -127,8 +132,8 @@ fun BarLineChart(
 
 /** Grafico lineare/area (andamento cumulato, previsioni). Le serie tratteggiate non sono supportate da Vico: si usa un colore attenuato. */
 @Composable
-fun LineChart(labels: List<String>, series: List<ChartSeries>, modifier: Modifier = Modifier, height: Dp = 220.dp) =
-    BarLineChart(labels, emptyList(), modifier, lines = series, height = height)
+fun LineChart(labels: List<String>, series: List<ChartSeries>, modifier: Modifier = Modifier, height: Dp = 220.dp, interactive: Boolean = true) =
+    BarLineChart(labels, emptyList(), modifier, lines = series, height = height, interactive = interactive)
 
 @Composable
 fun Legend(items: List<Pair<String, Color>>, modifier: Modifier = Modifier) {
@@ -211,5 +216,19 @@ fun HorizontalBars(items: List<BarItem>, modifier: Modifier = Modifier) {
                 }
             }
         }
+    }
+}
+
+/** Anello di avanzamento (obiettivo di risparmio): progresso 0..1, oltre 1 resta pieno. */
+@Composable
+fun ProgressRing(progress: Float, modifier: Modifier = Modifier, size: Dp = 72.dp, color: Color = MaterialTheme.colorScheme.primary, label: String = "") {
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val w = 9.dp.toPx()
+            drawArc(track, 0f, 360f, false, Offset(w / 2, w / 2), Size(this.size.width - w, this.size.height - w), style = Stroke(w))
+            drawArc(color, -90f, 360f * progress.coerceIn(0f, 1f), false, Offset(w / 2, w / 2), Size(this.size.width - w, this.size.height - w), style = Stroke(w, cap = StrokeCap.Round))
+        }
+        if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }
 }

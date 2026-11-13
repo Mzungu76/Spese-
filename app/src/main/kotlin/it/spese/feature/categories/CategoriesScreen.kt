@@ -50,9 +50,9 @@ fun CategoriesScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValue
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {
             TabRow(tab) {
-                Tab(tab == 0, { tab = 0 }, text = { Text("Categorie") })
-                Tab(tab == 1, { tab = 1 }, text = { Text("Regole (${d.rules.size})") })
-                Tab(tab == 2, { tab = 2 }, text = { BadgedBox(badge = { if (st.unclassified.isNotEmpty()) Badge { Text("${st.unclassified.size}") } }) { Text("Da classificare") } })
+                Tab(tab == 0, { tab = 0 }, text = { Text("Categorie", maxLines = 1, softWrap = false) })
+                Tab(tab == 1, { tab = 1 }, text = { Text("Regole (${d.rules.size})", maxLines = 1, softWrap = false) })
+                Tab(tab == 2, { tab = 2 }, text = { BadgedBox(badge = { if (st.unclassified.isNotEmpty()) Badge { Text("${st.unclassified.size}") } }) { Text("Da fare", maxLines = 1, softWrap = false) } })
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 96.dp)) {
                 when (tab) {
