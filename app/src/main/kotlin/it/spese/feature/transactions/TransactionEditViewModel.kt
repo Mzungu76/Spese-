@@ -37,7 +37,7 @@ class TransactionEditViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val d = data.first { it.loaded }
+            val d = data.first { it.loaded && it.accounts.isNotEmpty() }
             if (txId == 0L) {
                 _form.value = EditForm(accountId = d.accounts.firstOrNull { !it.archived }?.id, loaded = true)
             } else {

@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -55,7 +57,7 @@ fun TransactionsScreen(
                 },
             ) else TabTopBar("Movimenti", menu)
         },
-        floatingActionButton = { if (!selecting) ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Movimento") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding())) },
+        floatingActionButton = { if (!selecting) ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Movimento") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding()).semantics { contentDescription = "Aggiungi movimento" }) },
         contentWindowInsets = WindowInsets(0),
     ) { pad ->
         Column(Modifier.fillMaxSize().padding(pad)) {

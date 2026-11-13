@@ -90,6 +90,10 @@ dependencies {
     implementation(libs.mlkit.text.recognition)
 
     testImplementation(libs.junit)
+    testImplementation(libs.hilt.testing)
+    kspTest(libs.hilt.compiler)
+    kspTest("org.jetbrains.kotlin:kotlin-reflect:2.1.21")
+    testImplementation(libs.kotlinx.serialization.json)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.junit)
