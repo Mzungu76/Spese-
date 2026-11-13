@@ -1,2 +1,30 @@
-# Spese-
-Gestione spese
+# Gestione Spese
+
+Applicazione Android **nativa** (Kotlin, Jetpack Compose, Material 3) per tenere sotto controllo entrate e spese, migrazione dell'app web "Gestione Spese" (`legacy/gestione-spese.html`).
+Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso di rete. I dati stanno in un database locale (Room).
+
+## Cosa fa
+
+- **Panoramica** – entrate, spese, saldo, risparmio, media mensile, giroconti esclusi, grafici interattivi (ciambella, barre, impilate, cumulato, esercenti), avvisi.
+- **Movimenti** – inserimento, modifica, duplicazione, ricerca, filtri, selezione multipla, ordinamento, esportazione CSV/Excel.
+- **Categorie e regole** – regole testuali/regex con segno e soglie, priorità, assegnazione manuale che prevale, budget per categoria, conti multipli.
+- **Piano e simulazioni** – obiettivi, tagli per categoria, "e se…", scadenze future, scenari salvati e confrontabili, proiezioni a 6/12 mesi.
+- **Avvisi e ricorrenti** – budget, scadenze, ricorrenze rilevate, spese non previste, notifiche locali configurabili.
+- **Importazione** – xlsx/csv/txt con anteprima e correzione delle colonne; backup JSON della versione web (unisci o sostituisci).
+- **Scansione OCR** – scontrini e fatture (fotocamera o galleria), riconoscimento sul dispositivo, revisione obbligatoria, foto associata al movimento.
+- **Backup** – JSON compatibile con la versione web, ZIP con foto, backup automatici, sincronizzazione con un file condiviso, annulla ultima importazione.
+
+## Per iniziare
+
+1. Scarica l'APK dagli artifact di *Actions* (`gestione-spese-debug-apk`) e installalo (abilita "Origini sconosciute").
+2. Importa un estratto conto dal menu ⋮ → *Importa estratto conto*, oppure un backup della versione web da *Backup e impostazioni*.
+
+## Sviluppo
+
+```bash
+./gradlew :domain:test            # motori (JVM puro)
+./gradlew testDebugUnitTest       # database, backup, UI (Robolectric)
+./gradlew :app:assembleDebug      # APK debug
+```
+
+Documentazione: [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md) (analisi e corrispondenza con l'HTML) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/CI.md`](docs/CI.md) (pipeline e firma).

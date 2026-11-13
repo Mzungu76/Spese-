@@ -1,0 +1,66 @@
+name: Android build
+
+# Compila, esegue i test e pubblica l'APK debug installabile come artifact.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Test e APK debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Gradle (con cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Pacchetti SDK richiesti
+        run: |
+          yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+
+      - name: Test unitari e di interfaccia (JVM/Robolectric)
+        run: ./gradlew --stacktrace --no-daemon :core:common:test :domain:test :core:database:testDebugUnitTest :data:testDebugUnitTest :app:testDebugUnitTest
+
+      - name: Compila l'APK debug
+        run: ./gradlew --stacktrace --no-daemon :app:assembleDebug
+
+      - name: Lint (informativo)
+        run: ./gradlew --no-daemon :app:lintDebug
+        continue-on-error: true
+
+      - name: Pubblica report dei test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            **/build/reports/tests/**
+            **/build/test-results/**
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Pubblica l'APK debug
+        uses: actions/upload-artifact@v4
+        with:
+          name: gestione-spese-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30
+          if-no-files-found: error
