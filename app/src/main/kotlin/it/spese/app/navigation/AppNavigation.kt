@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -71,7 +72,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
         snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
         bottomBar = {
             if (isTab) NavigationBar {
-                TABS.forEach { t -> NavigationBarItem(route == t.route, { goTab(t.route) }, { Icon(if (route == t.route) t.selected else t.icon, t.label) }, label = { Text(t.label, maxLines = 1) }) }
+                TABS.forEach { t -> NavigationBarItem(route == t.route, { goTab(t.route) }, { Icon(if (route == t.route) t.selected else t.icon, t.label) }, label = { Text(t.label, maxLines = 1) }, modifier = Modifier.testTag("tab_${t.route}")) }
             }
         },
     ) { pad ->

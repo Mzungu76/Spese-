@@ -43,7 +43,7 @@ class MainFlowTest {
 
     @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
 
-    private fun waitText(text: String, substring: Boolean = false, ms: Long = 5000) {
+    private fun waitText(text: String, substring: Boolean = false, ms: Long = 8000) {
         try { compose.waitUntil(ms) { compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() } }
         catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("Testo \"$text\" non trovato. Schermata:\n" + compose.onRoot(useUnmergedTree = true).printToString(60), e) }
     }
@@ -96,5 +96,45 @@ class MainFlowTest {
         // avvisi di budget calcolati sui dati importati (come nell'HTML)
         compose.waitUntil(5000) { compose.onAllNodesWithText("superato", substring = true).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
+    }
+
+    private fun goTab(label: String) {
+        val route = mapOf("Movimenti" to "transactions", "Categorie" to "categories", "Piano" to "plan", "Avvisi" to "alerts", "Panoramica" to "dashboard").getValue(label)
+        compose.onNodeWithTag("tab_$route").performClick()
+        compose.waitForIdle()
+    }
+
+    private fun openMenu(item: String) {
+        compose.onAllNodesWithContentDescription("Menu dati").onFirst().performClick()
+        compose.onNodeWithText(item).performClick()
+        compose.waitForIdle()
+    }
+
+    @Test fun tutte_le_schermate_si_compongono_con_dati_reali() {
+        val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
+        runBlocking { restore(env, RestoreMode.Replace) }
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 223 }
+
+        goTab("Movimenti"); waitText("223 movimenti")
+        goTab("Categorie"); waitText("Supermercato e alimentari")
+        compose.onNodeWithText("Regole (32)").performClick(); waitText("Vince la prima regola", substring = true)
+        compose.onNodeWithText("Da classificare").performClick(); compose.waitForIdle()
+        goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
+        goTab("Avvisi"); waitText("Budget del mese in corso"); waitText("superato", substring = true)
+
+        // analisi: tutti i tipi di grafico
+        goTab("Panoramica")
+        openMenu("Analisi e grafici"); waitText("Analisi e grafici")
+        listOf("Ciambella", "Barre", "Impilate", "Linee", "Cumulato", "Periodi", "Categorie", "Tendenze", "Distribuzione", "Previsioni").forEach { t ->
+            compose.onAllNodesWithText(t).onFirst().performScrollTo().performClick(); compose.waitForIdle()
+        }
+        waitText("Previsione a 6 mesi", substring = true)
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+
+        openMenu("Backup e impostazioni"); waitText("Backup e ripristino"); waitText("Sincronizzazione con un file condiviso")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
+        openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
     }
 }
