@@ -28,14 +28,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Gradle (con cache)
         uses: gradle/actions/setup-gradle@v4
 
       - name: Pacchetti SDK richiesti
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
+        run: |
+          yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
+          "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
       - name: Test unitari e di interfaccia (JVM/Robolectric)
         run: ./gradlew --stacktrace --no-daemon :core:common:test :domain:test :core:database:testDebugUnitTest :data:testDebugUnitTest :app:testDebugUnitTest
