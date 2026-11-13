@@ -6,18 +6,21 @@ import java.math.BigDecimal
 import java.time.LocalDate
 
 /** Parsing tollerante delle date degli estratti conto. */
+/** Ordine dei campi nelle date numeriche con barre: GG/MM/AAAA (italiano), MM/GG/AAAA (anglosassone) o riconoscimento automatico. */
+enum class DateOrder { AUTO, DMY, MDY }
+
 object DateParser {
     private val MESI = mapOf(
         "gen" to 1, "feb" to 2, "mar" to 3, "apr" to 4, "mag" to 5, "giu" to 6, "lug" to 7, "ago" to 8, "set" to 9, "ott" to 10, "nov" to 11, "dic" to 12,
         "jan" to 1, "may" to 5, "jun" to 6, "jul" to 7, "aug" to 8, "sep" to 9, "oct" to 10, "dec" to 12,
     )
 
-    fun parse(v: Any?): LocalDate? = when (v) {
+    fun parse(v: Any?, order: DateOrder = DateOrder.AUTO): LocalDate? = when (v) {
         null -> null
         is LocalDate -> v
         is BigDecimal -> serial(v)
         is Number -> serial(BigDecimal(v.toString()))
-        else -> parseText(v.toString())
+        else -> parseText(v.toString(), order)
     }
 
     /** Numero seriale Excel (sistema 1900) → data, come la versione HTML. */
@@ -26,13 +29,17 @@ object DateParser {
         return if (d in 1..2958465) LocalDate.ofEpochDay(d - 25569) else null
     }
 
-    fun parseText(raw: String): LocalDate? {
+    fun parseText(raw: String, order: DateOrder = DateOrder.AUTO): LocalDate? {
         val s = raw.trim()
         if (s.isEmpty()) return null
         Regex("^(\\d{1,2})[/.\\-](\\d{1,2})[/.\\-](\\d{2,4})").find(s)?.let { m ->
             var a = m.groupValues[1].toInt(); var b = m.groupValues[2].toInt(); var y = m.groupValues[3].toInt()
             if (m.groupValues[3].length <= 2) y += 2000
-            if (b > 12 && a <= 12) { val t = a; a = b; b = t } // formato mm/dd/yyyy
+            when (order) {
+                DateOrder.MDY -> { val t = a; a = b; b = t }                       // il primo campo è il mese
+                DateOrder.AUTO -> if (b > 12 && a <= 12) { val t = a; a = b; b = t } // rileva mm/dd/yyyy dal valore
+                DateOrder.DMY -> {}
+            }
             return safe(y, b, a)
         }
         Regex("^(\\d{4})[/.\\-](\\d{1,2})[/.\\-](\\d{1,2})").find(s)?.let { m ->
@@ -59,9 +66,46 @@ data class ColumnMapping(
     val debit: Int = -1,
     val credit: Int = -1,
     val description: Int = -1,
+    /** Colonne di testo aggiuntive (causale, note…) accodate alla descrizione. */
+    val extra: List<Int> = emptyList(),
+    /** Colonna con l'indicatore del segno ("D"/"A", "Dare"/"Avere", "-"/"+") quando l'importo è sempre positivo. */
+    val sign: Int = -1,
 ) {
     val isUsable: Boolean get() = date >= 0 && description >= 0 && (amount >= 0 || debit >= 0 || credit >= 0)
+
+    companion object {
+        /** Costruisce la mappatura dai ruoli scelti per ogni colonna (indice = colonna). */
+        fun fromRoles(roles: List<ColumnRole>): ColumnMapping {
+            fun first(r: ColumnRole) = roles.indexOf(r)
+            return ColumnMapping(first(ColumnRole.DATE), first(ColumnRole.VALUE_DATE), first(ColumnRole.AMOUNT), first(ColumnRole.DEBIT), first(ColumnRole.CREDIT),
+                first(ColumnRole.DESCRIPTION), roles.withIndex().filter { it.value == ColumnRole.EXTRA }.map { it.index }, first(ColumnRole.SIGN))
+        }
+    }
+
+    fun toRoles(columns: Int): List<ColumnRole> = List(columns) { i ->
+        when {
+            i == date -> ColumnRole.DATE; i == valueDate -> ColumnRole.VALUE_DATE; i == amount -> ColumnRole.AMOUNT; i == debit -> ColumnRole.DEBIT
+            i == credit -> ColumnRole.CREDIT; i == description -> ColumnRole.DESCRIPTION; i == sign -> ColumnRole.SIGN; i in extra -> ColumnRole.EXTRA
+            else -> ColumnRole.IGNORE
+        }
+    }
 }
+
+/** Ruolo di una colonna nel file importato. */
+enum class ColumnRole(val label: String) {
+    DATE("Data"), VALUE_DATE("Data valuta"), DESCRIPTION("Descrizione"), EXTRA("Descrizione (extra)"), AMOUNT("Importo"),
+    DEBIT("Uscite (dare)"), CREDIT("Entrate (avere)"), SIGN("Segno D/A"), IGNORE("Ignora"),
+}
+
+/** Opzioni di interpretazione dei valori, suggerite dall'analisi e correggibili dall'utente. */
+data class ImportOptions(
+    val dateOrder: DateOrder = DateOrder.AUTO,
+    val decimal: it.spese.core.common.DecimalStyle = it.spese.core.common.DecimalStyle.AUTO,
+    /** Inverte il segno di tutti gli importi (estratti carta in cui le spese sono positive). */
+    val invertSign: Boolean = false,
+    /** Righe finali da ignorare (totali, note a piè di pagina). */
+    val skipLast: Int = 0,
+)
 
 data class DetectedTable(val headerRow: Int, val headers: List<String>, val mapping: ColumnMapping)
 
@@ -106,35 +150,45 @@ data class SkippedRow(val rowNumber: Int, val reason: String)
 data class ParseResult(val rows: List<ParsedRow>, val skipped: List<SkippedRow>)
 
 object ImportParser {
+    private val NEGATIVE_WORDS = setOf("D", "DARE", "DEBIT", "DEBITO", "ADDEBITO", "USCITA", "USCITE", "-", "DR")
+    private val POSITIVE_WORDS = setOf("A", "AVERE", "CREDIT", "CREDITO", "ACCREDITO", "ENTRATA", "ENTRATE", "+", "CR")
+
     /**
-     * Converte le righe dati (dopo l'intestazione) secondo la mappatura. Le righe senza data o importo validi vengono
-     * scartate con il motivo (la versione HTML le ignorava silenziosamente). Gli importi sono arrotondati a 2 decimali.
+     * Converte le righe dati (dopo l'intestazione) secondo la mappatura e le opzioni. Le righe senza data o importo validi
+     * vengono scartate con il motivo. Gli importi sono arrotondati a 2 decimali.
      */
-    fun parse(rows: List<RawRow>, headerRow: Int, m: ColumnMapping): ParseResult {
+    fun parse(rows: List<RawRow>, headerRow: Int, m: ColumnMapping, options: ImportOptions = ImportOptions()): ParseResult {
         val ok = ArrayList<ParsedRow>(); val skipped = ArrayList<SkippedRow>()
         fun cell(r: RawRow, i: Int): Any? = if (i in r.indices) r[i] else null
-        for (i in headerRow + 1 until rows.size) {
+        val end = (rows.size - options.skipLast).coerceAtLeast(headerRow + 1)
+        for (i in headerRow + 1 until end) {
             val r = rows[i]
             if (r.all { it == null || it.toString().isBlank() }) continue
-            val d = DateParser.parse(cell(r, m.date))
-            val a: BigDecimal? = if (m.amount >= 0) toNumber(cell(r, m.amount))
+            val d = DateParser.parse(cell(r, m.date), options.dateOrder)
+            var a: BigDecimal? = if (m.amount >= 0) toNumber(cell(r, m.amount), options)
             else {
-                val deb = toNumber(cell(r, m.debit)); val cre = toNumber(cell(r, m.credit))
+                val deb = toNumber(cell(r, m.debit), options); val cre = toNumber(cell(r, m.credit), options)
                 if (deb == null && cre == null) null else (cre ?: BigDecimal.ZERO) - (deb?.abs() ?: BigDecimal.ZERO)
             }
-            val text = (cell(r, m.description)?.toString() ?: "").replace(Regex("\\s+"), " ").trim()
+            if (a != null && m.sign >= 0) {
+                val w = cell(r, m.sign)?.toString()?.trim()?.uppercase().orEmpty()
+                a = when { w in NEGATIVE_WORDS -> a.abs().negate(); w in POSITIVE_WORDS -> a.abs(); else -> a }
+            }
+            if (a != null && options.invertSign) a = a.negate()
+            val text = (listOf(m.description) + m.extra).mapNotNull { c -> cell(r, c)?.toString()?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() } }
+                .distinct().joinToString(" – ")
             if (d == null) { skipped.add(SkippedRow(i + 1, "data non valida")); continue }
             if (a == null) { skipped.add(SkippedRow(i + 1, "importo non valido")); continue }
-            val v = if (m.valueDate >= 0) DateParser.parse(cell(r, m.valueDate)) ?: d else d
+            val v = if (m.valueDate >= 0) DateParser.parse(cell(r, m.valueDate), options.dateOrder) ?: d else d
             ok.add(ParsedRow(i + 1, d, v, Money.scale(a), text))
         }
         return ParseResult(ok, skipped)
     }
 
-    private fun toNumber(v: Any?): BigDecimal? = when (v) {
+    private fun toNumber(v: Any?, o: ImportOptions): BigDecimal? = when (v) {
         null -> null
         is BigDecimal -> v
         is Number -> BigDecimal(v.toString())
-        else -> NumberParser.parse(v.toString())
+        else -> NumberParser.parse(v.toString(), o.decimal)
     }
 }

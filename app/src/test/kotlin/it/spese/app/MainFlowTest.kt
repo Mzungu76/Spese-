@@ -126,7 +126,7 @@ class MainFlowTest {
 
         // analisi: tutti i tipi di grafico
         goTab("Panoramica")
-        openMenu("Analisi e grafici"); waitText("Analisi e grafici")
+        openMenu("Analisi e grafici"); waitText("Ciambella")
         listOf("Ciambella", "Barre", "Impilate", "Linee", "Cumulato", "Periodi", "Categorie", "Tendenze", "Distribuzione", "Previsioni").forEach { t ->
             compose.onAllNodesWithText(t).onFirst().performScrollTo().performClick(); compose.waitForIdle()
         }

@@ -16,7 +16,7 @@ Ogni affermazione sulla versione HTML è stata ricavata leggendo il codice; la c
 | # | Funzionalità HTML | Dove nell'app Android | Stato |
 |---|---|---|---|
 | 1 | Importazione estratti conto xlsx/xls/csv/txt, più file, nome conto richiesto | `domain/importing` + `feature/importer` (anteprima, mappatura colonne, scelta conto) | ✅ xlsx/csv/txt. **xls binario: non supportato** (messaggio che guida alla conversione) |
-| 2 | Riconoscimento intestazioni (`importo` + `descrizione/causale/operazioni`, date contabile/valuta) | `HeaderDetector` (stessi criteri + Dare/Avere, Entrate/Uscite) | ✅ |
+| 2 | Riconoscimento intestazioni (`importo` + `descrizione/causale/operazioni`, date contabile/valuta) | `HeaderDetector` (stessi criteri) + `TableAnalyzer`: riconoscimento **dal contenuto** (date, importi con segno / Dare-Avere / colonna D-A, testi, extra descrizione), file senza intestazione, formati data e decimali, formati banca ricordati; wizard a 3 passi | ✅ |
 | 3 | Deduplica con insieme a molteplicità; id `conto\|data\|valuta\|importo\|testo#n` | `Duplicates.plan`, `ImportPlanner`, `externalId` identico all'HTML | ✅ verificato su dati reali |
 | 4 | Classificazione: regole testuali, `re:` regex, segno, importo min/max, prima regola vince | `RuleEngine`, `Classifier` | ✅ identica (223/223 movimenti del golden master) |
 | 5 | Assegnazione manuale (`ov`) che prevale sulle regole | `Transaction.manualCategory` | ✅ |

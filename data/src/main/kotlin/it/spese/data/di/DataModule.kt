@@ -43,6 +43,7 @@ abstract class RepositoryModule {
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore
     @Binds abstract fun settings(i: SettingsRepositoryImpl): SettingsRepository
+    @Binds abstract fun importProfiles(i: it.spese.data.settings.ImportProfileRepositoryImpl): ImportProfileRepository
     @Binds abstract fun backup(i: BackupRepositoryImpl): BackupRepository
 }
 

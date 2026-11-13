@@ -170,3 +170,20 @@ interface BackupRepository {
     suspend fun autoBackup(keep: Int): String
     fun listAutoBackups(): List<java.io.File>
 }
+
+/** Formato di estratto conto ricordato: alla prossima importazione con le stesse intestazioni la mappatura è già pronta. */
+data class ImportProfile(
+    val name: String,
+    /** Impronta delle intestazioni ([it.spese.domain.importing.TableAnalysis.signature]). */
+    val signature: String,
+    val roles: List<it.spese.domain.importing.ColumnRole>,
+    val options: it.spese.domain.importing.ImportOptions,
+    val headerRow: Int,
+)
+
+interface ImportProfileRepository {
+    suspend fun all(): List<ImportProfile>
+    /** Salva o sostituisce il profilo con la stessa impronta. */
+    suspend fun save(profile: ImportProfile)
+    suspend fun delete(signature: String)
+}
