@@ -140,6 +140,9 @@ data class AppSettings(
     val lastAutoBackupAt: Long = 0,
     val onboardingDone: Boolean = false,
     val lastUndo: String = "",
+    /** File condiviso collegato per la sincronizzazione (URI SAF) e ultimo allineamento. */
+    val syncUri: String = "",
+    val lastSyncAt: Long = 0,
 )
 
 interface SettingsRepository {

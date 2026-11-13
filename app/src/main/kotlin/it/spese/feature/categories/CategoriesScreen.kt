@@ -1,0 +1,183 @@
+package it.spese.feature.categories
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import it.spese.app.common.DataMenu
+import it.spese.app.common.TabTopBar
+import it.spese.core.common.Money
+import it.spese.core.designsystem.component.*
+import it.spese.core.model.*
+import it.spese.domain.classification.DefaultData
+import it.spese.domain.classification.RuleEngine
+import java.math.BigDecimal
+
+@Composable
+fun CategoriesScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValues(), vm: CategoriesViewModel = hiltViewModel()) {
+    val st by vm.state.collectAsStateWithLifecycle()
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var editCat by remember { mutableStateOf<Category?>(null) }
+    var editRule by remember { mutableStateOf<Rule?>(null) }
+    var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
+    val d = st.data
+    Scaffold(
+        topBar = { TabTopBar("Categorie e regole", menu) },
+        floatingActionButton = {
+            if (tab < 2) ExtendedFloatingActionButton(onClick = {
+                if (tab == 0) editCat = Category(0, "", TxKind.SPESA, true, vm.nextColor(d.categories.size), null, true, d.categories.size)
+                else editRule = Rule(0, "", d.categories.firstOrNull { it.active }?.id ?: 0, AmountSign.ANY, BigDecimal.ZERO, BigDecimal.ZERO, 0)
+            }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (tab == 0) "Categoria" else "Regola") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding()))
+        },
+        contentWindowInsets = WindowInsets(0),
+    ) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad)) {
+            TabRow(tab) {
+                Tab(tab == 0, { tab = 0 }, text = { Text("Categorie") })
+                Tab(tab == 1, { tab = 1 }, text = { Text("Regole (${d.rules.size})") })
+                Tab(tab == 2, { tab = 2 }, text = { BadgedBox(badge = { if (st.unclassified.isNotEmpty()) Badge { Text("${st.unclassified.size}") } }) { Text("Da classificare") } })
+            }
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 96.dp)) {
+                when (tab) {
+                    0 -> {
+                        item { Text("Tipo \"trasferimento\" = giroconto tra tuoi conti: escluso da entrate e spese. \"Comprimibile\" = voce su cui il simulatore propone tagli.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                        items(d.categories, key = { it.id }) { c ->
+                            ListRow(c.name, subtitle = buildString {
+                                append(c.kind.label); if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata")
+                                c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)) }; append(" · ${st.txCount[c.id] ?: 0} mov.")
+                            }, leading = { CategoryAvatar(c.name, c.color.toColor()) },
+                                trailing = { MoneyText(st.txTotal[c.id] ?: BigDecimal.ZERO, decimals = false, muted = c.kind == TxKind.TRASFERIMENTO) }, onClick = { editCat = c })
+                        }
+                    }
+                    1 -> {
+                        item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare (es. re:coop|conad). Le assegnazioni manuali prevalgono sempre.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                        items(d.rules, key = { it.id }) { r ->
+                            ListRow(
+                                title = if (r.keyword.isBlank()) "Qualsiasi descrizione" else "“${r.keyword}”",
+                                subtitle = buildString {
+                                    append("→ ").append(d.categoryName(r.categoryId))
+                                    if (r.sign != AmountSign.ANY) append(if (r.sign == AmountSign.NEGATIVE) " · solo uscite" else " · solo entrate")
+                                    if (r.min.signum() != 0) append(" · ≥ ").append(Money.eur0(r.min)); if (r.max.signum() != 0) append(" · ≤ ").append(Money.eur0(r.max))
+                                    append(" · ${st.ruleHits[r.id] ?: 0} mov.")
+                                },
+                                leading = { CategoryAvatar(d.categoryName(r.categoryId), d.categoriesById[r.categoryId]?.color?.toColor() ?: Color.Gray, size = 32) },
+                                trailing = { Icon(Icons.Default.ChevronRight, null) }, onClick = { editRule = r })
+                        }
+                    }
+                    else -> {
+                        if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
+                        else {
+                            item { Text("Movimenti che finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
+                            items(st.unclassified, key = { it.merchant }) { u -> ListRow(u.merchant, subtitle = "${u.count} movimenti", trailing = { MoneyText(u.total, decimals = false) }, onClick = { assign = u }) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    editCat?.let { c -> CategoryDialog(c, d.categories.indexOfFirst { it.id == c.id }, d.categories.size, { editCat = null }, vm) }
+    editRule?.let { r -> RuleDialog(r, d, { editRule = null }, vm) }
+    assign?.let { u ->
+        var kw by remember(u) { mutableStateOf(u.keyword) }
+        var cat by remember(u) { mutableStateOf<Long?>(null) }
+        AlertDialog(onDismissRequest = { assign = null }, title = { Text(u.merchant) },
+            text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(u.sampleDescription, style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(kw, { kw = it }, label = { Text("Parola chiave") }, singleLine = true)
+                DropdownField("Assegna a", d.categories.firstOrNull { it.id == cat }, d.categories.filter { it.active }, { it.name }, { cat = it.id })
+            } },
+            confirmButton = { TextButton(enabled = kw.isNotBlank() && cat != null, onClick = { vm.assignUnclassified(kw.trim(), cat!!); assign = null }) { Text("Crea regola e assegna") } },
+            dismissButton = { TextButton(onClick = { assign = null }) { Text("Annulla") } })
+    }
+}
+
+@Composable
+private fun CategoryDialog(c: Category, index: Int, total: Int, onDismiss: () -> Unit, vm: CategoriesViewModel) {
+    var name by remember { mutableStateOf(c.name) }
+    var kind by remember { mutableStateOf(c.kind) }
+    var color by remember { mutableStateOf(c.color) }
+    var flexible by remember { mutableStateOf(c.flexible) }
+    var active by remember { mutableStateOf(c.active) }
+    var budget by remember { mutableStateOf(c.budgetMonthly?.toPlainString()?.replace('.', ',') ?: "") }
+    var confirmDelete by remember { mutableStateOf(false) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (c.id == 0L) "Nuova categoria" else "Modifica categoria") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    TxKind.entries.forEachIndexed { i, k -> SegmentedButton(kind == k, { kind = k }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(if (k == TxKind.TRASFERIMENTO) "Giroconto" else k.label, maxLines = 1, style = MaterialTheme.typography.labelSmall) } }
+                }
+                Text("Colore", style = MaterialTheme.typography.labelLarge)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DefaultData.PALETTE.forEach { p ->
+                        Box(Modifier.size(32.dp).background(p.toColor(), CircleShape).then(if (p == color) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier).clickable { color = p })
+                    }
+                }
+                AmountField(budget, { budget = it }, "Budget mensile (facoltativo)", Modifier.fillMaxWidth())
+                LabeledSwitch("Voce comprimibile", flexible, { flexible = it }, supporting = "Il simulatore può proporre tagli")
+                LabeledSwitch("Attiva", active, { active = it }, supporting = "Le categorie disattivate non compaiono nelle scelte")
+                if (c.id != 0L) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { vm.moveCategory(c.id, -1) }, enabled = index > 0) { Icon(Icons.Default.ArrowUpward, null); Text("Su") }
+                        OutlinedButton(onClick = { vm.moveCategory(c.id, 1) }, enabled = index < total - 1) { Icon(Icons.Default.ArrowDownward, null); Text("Giù") }
+                    }
+                    if (c.systemKey == null) TextButton(onClick = { confirmDelete = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina categoria") }
+                    else Text("Categoria di sistema: usata quando nessuna regola corrisponde. Non si può eliminare.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
+            vm.save(c.copy(name = name, kind = kind, color = color, flexible = flexible, active = active, budgetMonthly = parseAmountOrNull(budget)?.takeIf { it.signum() > 0 })); onDismiss() }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+    if (confirmDelete) ConfirmDialog("Eliminare \"${c.name}\"?", "Le regole e le assegnazioni manuali collegate vengono rimosse; i movimenti tornano alla classificazione automatica (\"Altro\" se nessuna regola corrisponde).", "Elimina", { vm.delete(c.id); onDismiss() }, { confirmDelete = false }, destructive = true)
+}
+
+@Composable
+private fun RuleDialog(r: Rule, d: it.spese.domain.repository.AppData, onDismiss: () -> Unit, vm: CategoriesViewModel) {
+    var kw by remember { mutableStateOf(r.keyword) }
+    var sign by remember { mutableStateOf(r.sign) }
+    var min by remember { mutableStateOf(if (r.min.signum() != 0) r.min.toPlainString().replace('.', ',') else "") }
+    var max by remember { mutableStateOf(if (r.max.signum() != 0) r.max.toPlainString().replace('.', ',') else "") }
+    var cat by remember { mutableStateOf(r.categoryId) }
+    val valid = RuleEngine.isValidKeyword(kw)
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (r.id == 0L) "Nuova regola" else "Modifica regola") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(kw, { kw = it }, label = { Text("Parola chiave (facoltativa)") }, placeholder = { Text("es. coop  oppure  re:coop|conad") }, isError = !valid,
+                    supportingText = { Text(if (valid) "Prefisso re: = espressione regolare" else "Espressione regolare non valida") }, modifier = Modifier.fillMaxWidth())
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf(AmountSign.ANY to "Tutti", AmountSign.NEGATIVE to "Uscite", AmountSign.POSITIVE to "Entrate").forEachIndexed { i, (s, l) -> SegmentedButton(sign == s, { sign = s }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(l) } }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AmountField(min, { min = it }, "Importo ≥", Modifier.weight(1f)); AmountField(max, { max = it }, "Importo ≤", Modifier.weight(1f))
+                }
+                Text("Importi in valore assoluto. La parola chiave può restare vuota se usi solo l'importo.", style = MaterialTheme.typography.bodySmall)
+                DropdownField("Categoria", d.categoriesById[cat], d.categories.filter { it.active }, { it.name }, { cat = it.id })
+                if (r.id != 0L) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { vm.moveRule(r.id, -1) }) { Icon(Icons.Default.ArrowUpward, null); Text("Su") }
+                    OutlinedButton(onClick = { vm.moveRule(r.id, 1) }) { Icon(Icons.Default.ArrowDownward, null); Text("Giù") }
+                    TextButton(onClick = { vm.deleteRule(r.id); onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina") }
+                }
+            }
+        },
+        confirmButton = { TextButton(enabled = valid && cat != 0L, onClick = {
+            vm.saveRule(r.copy(keyword = kw.trim(), sign = sign, min = parseAmountOrNull(min)?.abs() ?: BigDecimal.ZERO, max = parseAmountOrNull(max)?.abs() ?: BigDecimal.ZERO, categoryId = cat)); onDismiss() }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
