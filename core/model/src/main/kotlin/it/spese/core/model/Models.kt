@@ -132,7 +132,25 @@ data class Transaction(
     val origin: TxOrigin = TxOrigin.MANUAL,
     val documentId: Long? = null,
     val createdAt: Long = 0,
+    /** true = l'utente ha controllato il movimento: esce dalla sezione Verifica. */
+    val reviewed: Boolean = false,
 )
+
+/**
+ * Parte di un movimento diviso su più categorie (es. un prelievo da 800 € = 500 € Affitto + 300 € Contanti).
+ * `amount` ha lo stesso segno del movimento; la somma delle parti è l'importo del movimento.
+ */
+data class TransactionSplit(
+    val id: Long, val txId: Long, val categoryId: Long?, val amount: BigDecimal, val position: Int = 0,
+    /** true = creata automaticamente da una quota fissa. */
+    val auto: Boolean = false, val quotaId: Long? = null,
+)
+
+/**
+ * Quota fissa pagata in contanti (es. affitto 500 €): quando in un mese un prelievo la copre, la quota viene staccata
+ * dal primo prelievo che la contiene e assegnata alla categoria indicata.
+ */
+data class CashQuota(val id: Long, val name: String, val categoryId: Long, val amount: BigDecimal, val enabled: Boolean = true)
 
 data class Due(
     val id: Long,

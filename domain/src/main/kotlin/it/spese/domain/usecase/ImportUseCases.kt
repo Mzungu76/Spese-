@@ -37,6 +37,7 @@ class PreviewImportUseCase @Inject constructor(private val tx: TransactionReposi
 class CommitImportUseCase @Inject constructor(
     private val tx: TransactionRepository, private val accounts: AccountRepository,
     private val categories: CategoryRepository, private val rules: RuleRepository, private val settings: SettingsRepository,
+    private val applyQuotas: ApplyCashQuotasUseCase,
 ) {
     /** Importa solo le righe nuove (le duplicate sono scartate); registra il lotto per poterlo annullare. */
     suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String, options: ImportOptions = ImportOptions()): ImportOutcome {
@@ -60,6 +61,7 @@ class CommitImportUseCase @Inject constructor(
         }
         if (matches.isNotEmpty()) tx.delete(matches.values.map { it.id })
         val added = tx.insertAll(items)
+        applyQuotas()
         settings.update { it.copy(lastUndo = "batch:$batch") }
         return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch, matches.size)
     }

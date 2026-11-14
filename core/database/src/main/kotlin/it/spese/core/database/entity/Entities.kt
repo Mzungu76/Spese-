@@ -113,6 +113,41 @@ data class TransactionEntity(
     val documentId: Long? = null,
     val importBatchId: Long? = null,
     val createdAt: Long = 0,
+    /** 1 = controllato dall'utente (esce da Verifica). Schema 5. */
+    @ColumnInfo(defaultValue = "0") val reviewed: Boolean = false,
+)
+
+/** Parti di un movimento diviso su più categorie. Eliminando il movimento si eliminano anche le parti. Schema 5. */
+@Entity(
+    tableName = "transaction_splits",
+    foreignKeys = [
+        ForeignKey(TransactionEntity::class, ["id"], ["txId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.SET_NULL),
+    ],
+    indices = [Index("txId"), Index("categoryId")],
+)
+data class SplitEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val txId: Long,
+    val categoryId: Long? = null,
+    val amountCents: Long,
+    val position: Int = 0,
+    val auto: Boolean = false,
+    val quotaId: Long? = null,
+)
+
+/** Quote fisse pagate in contanti (es. affitto). Schema 5. */
+@Entity(
+    tableName = "cash_quotas",
+    foreignKeys = [ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("categoryId")],
+)
+data class CashQuotaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val categoryId: Long,
+    val amountCents: Long,
+    val enabled: Boolean = true,
 )
 
 @Entity(tableName = "dues", indices = [Index(value = ["legacyId"], unique = true), Index("nextDate")])

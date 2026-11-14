@@ -53,6 +53,28 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
     override suspend fun deleteImportBatch(batchId: Long): Int = db.withTransaction {
         val n = dao.deleteByBatch(batchId); db.importBatches().delete(batchId); n
     }
+
+    override fun observeSplits(): Flow<List<TransactionSplit>> = db.splits().observeAll().map { l -> l.map { it.toDomain() } }.flowOn(Dispatchers.Default)
+    override suspend fun getSplits() = db.splits().getAll().map { it.toDomain() }
+    override suspend fun replaceSplits(txId: Long, parts: List<TransactionSplit>) {
+        db.withTransaction {
+            db.splits().deleteForTx(txId)
+            if (parts.isNotEmpty()) db.splits().insertAll(parts.mapIndexed { i, p -> SplitEntity(0, txId, p.categoryId, Money.toCents(p.amount), i, p.auto, p.quotaId) })
+        }
+    }
+    override suspend fun setReviewed(ids: Collection<Long>, reviewed: Boolean) { db.withTransaction { ids.chunked(500).forEach { dao.setReviewed(it, reviewed) } } }
+}
+
+@Singleton
+class CashQuotaRepositoryImpl @Inject constructor(private val db: AppDatabase) : CashQuotaRepository {
+    private val dao = db.quotas()
+    override fun observeAll() = dao.observeAll().map { l -> l.map { it.toDomain() } }.flowOn(Dispatchers.Default)
+    override suspend fun getAll() = dao.getAll().map { it.toDomain() }
+    override suspend fun save(q: CashQuota): Long {
+        val e = CashQuotaEntity(q.id, q.name.trim(), q.categoryId, Money.toCents(q.amount), q.enabled)
+        return if (q.id == 0L) dao.insert(e) else { dao.update(e); q.id }
+    }
+    override suspend fun delete(id: Long) = dao.delete(id)
 }
 
 @Singleton

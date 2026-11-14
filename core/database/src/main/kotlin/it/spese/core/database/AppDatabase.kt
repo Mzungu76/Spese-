@@ -12,6 +12,7 @@ import it.spese.core.database.entity.*
     entities = [
         AccountEntity::class, CategoryEntity::class, RuleEntity::class, TransactionEntity::class, ImportBatchEntity::class,
         DocumentEntity::class, DueEntity::class, ScenarioEntity::class, ScenarioCutEntity::class, ScenarioRemovedEntity::class,
+        SplitEntity::class, CashQuotaEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
@@ -25,12 +26,22 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun documents(): DocumentDao
     abstract fun dues(): DueDao
     abstract fun scenarios(): ScenarioDao
+    abstract fun splits(): SplitDao
+    abstract fun quotas(): CashQuotaDao
 
     companion object {
-        const val VERSION = 4
+        const val VERSION = 5
         const val NAME = "gestione-spese.db"
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
+        /** 4 → 5: parti dei movimenti divisi, quote fisse in contanti e flag "controllato". */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0")
+                SCHEMA_4_5_SQL.forEach { db.execSQL(it) }
+            }
+        }
+
         /** 3 → 4: natura della spesa (fissa / necessaria / discrezionale). */
         val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -55,7 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
@@ -63,3 +74,12 @@ abstract class AppDatabase : RoomDatabase() {
                 .build()
     }
 }
+
+/** Istruzioni di creazione delle tabelle dello schema 5 (identiche a quelle esportate in schemas/5.json). */
+private val SCHEMA_4_5_SQL: List<String> = listOf(
+    "CREATE TABLE IF NOT EXISTS `transaction_splits` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txId` INTEGER NOT NULL, `categoryId` INTEGER, `amountCents` INTEGER NOT NULL, `position` INTEGER NOT NULL, `auto` INTEGER NOT NULL, `quotaId` INTEGER, FOREIGN KEY(`txId`) REFERENCES `transactions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_txId` ON `transaction_splits` (`txId`)",
+    "CREATE INDEX IF NOT EXISTS `index_transaction_splits_categoryId` ON `transaction_splits` (`categoryId`)",
+    "CREATE TABLE IF NOT EXISTS `cash_quotas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryId` INTEGER NOT NULL, `amountCents` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+    "CREATE INDEX IF NOT EXISTS `index_cash_quotas_categoryId` ON `cash_quotas` (`categoryId`)",
+)

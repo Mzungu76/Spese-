@@ -109,4 +109,21 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test fun `la migrazione 4-5 aggiunge parti, quote e il flag controllato, senza toccare i movimenti`() {
+        helper.createDatabase("test-splits", 4).apply {
+            execSQL("INSERT INTO accounts (name, type, openingCents, archived) VALUES ('Intesa', 'CONTO', 0, 0)")
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Contanti', 'spesa', 1, 4286611584, 1, 0, 0, 0)")
+            execSQL("INSERT INTO transactions (externalId, dedupKey, accountId, bookingDate, valueDate, description, amountCents, kind, categoryId, manualCategory, manualUpdatedAt, notes, origin, createdAt) VALUES ('e1', 'k1', 1, 19800, 19800, 'Prelievo', -80000, 'spesa', 1, 0, 0, '', 'IMPORT_FILE', 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-splits", 5, true, AppDatabase.MIGRATION_4_5)
+        db.query("SELECT amountCents, reviewed FROM transactions").use { c -> assertTrue(c.moveToFirst()); assertEquals(-80000L, c.getLong(0)); assertEquals(0, c.getInt(1)) }
+        db.execSQL("PRAGMA foreign_keys = ON")
+        db.execSQL("INSERT INTO transaction_splits (txId, categoryId, amountCents, position, auto, quotaId) VALUES (1, 1, -50000, 0, 1, NULL)")
+        db.execSQL("INSERT INTO cash_quotas (name, categoryId, amountCents, enabled) VALUES ('Affitto', 1, 50000, 1)")
+        db.execSQL("DELETE FROM transactions WHERE id = 1")
+        db.query("SELECT COUNT(*) FROM transaction_splits").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }   // le parti seguono il movimento
+        db.close()
+    }
 }

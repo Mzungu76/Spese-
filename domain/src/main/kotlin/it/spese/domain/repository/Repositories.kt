@@ -51,6 +51,20 @@ interface TransactionRepository {
     suspend fun setDocument(txId: Long, documentId: Long?)
     suspend fun createImportBatch(label: String, count: Int): Long
     suspend fun deleteImportBatch(batchId: Long): Int
+
+    fun observeSplits(): Flow<List<it.spese.core.model.TransactionSplit>>
+    suspend fun getSplits(): List<it.spese.core.model.TransactionSplit>
+    /** Sostituisce le parti di un movimento (lista vuota = movimento non più diviso). */
+    suspend fun replaceSplits(txId: Long, parts: List<it.spese.core.model.TransactionSplit>)
+    suspend fun setReviewed(ids: Collection<Long>, reviewed: Boolean)
+}
+
+interface CashQuotaRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.CashQuota>>
+    suspend fun getAll(): List<it.spese.core.model.CashQuota>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(q: it.spese.core.model.CashQuota): Long
+    suspend fun delete(id: Long)
 }
 
 interface CategoryRepository {

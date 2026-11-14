@@ -23,7 +23,7 @@ sealed interface CaptureResult {
  */
 class CaptureNotificationUseCase @Inject constructor(
     private val tx: TransactionRepository, private val accounts: AccountRepository,
-    private val categories: CategoryRepository, private val rules: RuleRepository,
+    private val categories: CategoryRepository, private val rules: RuleRepository, private val applyQuotas: ApplyCashQuotasUseCase,
 ) {
     suspend operator fun invoke(source: CaptureSource, accountId: Long?, raw: RawNotification, zone: ZoneId = ZoneId.systemDefault()): CaptureResult {
         val parsed = NotificationParser.parse(source, raw.title, raw.text) ?: return CaptureResult.Unrecognized
@@ -46,6 +46,7 @@ class CaptureNotificationUseCase @Inject constructor(
         val date = Instant.ofEpochMilli(raw.postedAtMs).atZone(zone).toLocalDate()
         tx.insertAll(listOf(NewTransaction(externalId, externalId, acc.id, date, date, parsed.description, parsed.amount, c.kind, c.categoryId, false, c.ruleId,
             null, "Da notifica · ${source.label}", TxOrigin.NOTIFICATION)))
+        applyQuotas()
         val id = tx.getAll().firstOrNull { it.externalId == externalId }?.id ?: return CaptureResult.Duplicate
         return CaptureResult.Added(id, parsed.description, parsed.amount)
     }
