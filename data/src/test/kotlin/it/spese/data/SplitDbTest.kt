@@ -82,4 +82,19 @@ class SplitDbTest {
         val q = env.quotas.getAll().single(); assertEquals("Affitto casa", q.name); assertEquals(0, BigDecimal("550.5").compareTo(q.amount)); assertFalse(q.enabled)
         env.cats.delete(rent); assertTrue(env.quotas.getAll().isEmpty())
     }
+
+    @Test fun `divisioni, quote e movimenti controllati sopravvivono al backup e al ripristino`() = runBlocking {
+        val rent = env.cats.insert(Category(0, "Affitto", TxKind.SPESA, false, 0xFF2358D8, null, true, 99))
+        env.quotas.save(CashQuota(0, "Affitto", rent, BigDecimal(500)))
+        val big = withdrawal("2026-10-05", -800, "b"); val other = withdrawal("2026-11-02", -50, "o")
+        env.applyQuotas(); env.tx.setReviewed(listOf(other), true)
+        val json = env.backup.buildBackupJson()
+        assertTrue(json.contains("\"splits\"") && json.contains("\"quotas\""))
+        env.restore(it.spese.domain.backup.LegacyBackupCodec.parse(json), it.spese.domain.repository.RestoreMode.Replace)
+        val txs = env.tx.getAll(); val newBig = txs.first { it.externalId == "b" }.id
+        assertEquals(2, env.tx.getSplits().count { it.txId == newBig })
+        assertEquals("Affitto", env.quotas.getAll().single().name)
+        assertTrue(txs.first { it.externalId == "o" }.reviewed); assertFalse(txs.first { it.externalId == "b" }.reviewed)
+        assertEquals(0, env.applyQuotas())    // dopo il ripristino non divide una seconda volta
+    }
 }

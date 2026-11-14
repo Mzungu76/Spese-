@@ -60,6 +60,11 @@ basta aggiungere un parser per tabelle di testo e un `ScanDocumentUseCase` che c
 `NotificationParser` ricava importo in euro e direzione (se dubbi, la notifica va tra le non riconosciute); `CaptureNotificationUseCase` crea un movimento con `origin = NOTIFICATION` (provvisorio), classificato dalle regole, e registra una sola volta lo stesso pagamento notificato da due app.
 `CommitImportUseCase` sostituisce i provvisori con le righe dell'estratto (`NotificationReconciler`: stesso importo, data entro 3 giorni), conservando categoria manuale e note. L'app resta senza permesso `INTERNET`.
 
+## Movimenti divisi, quote e verifica
+
+Un movimento resta una riga sola (importo intero, coerente con l'estratto); le sue **parti** stanno in `transaction_splits` (categoria e importo, stessa somma). `AppDataSource` le espande con `SplitExpander`: `AppData.transactions` contiene le parti (le analisi non cambiano), `AppData.ledger` i movimenti interi (elenco, modifica, esportazione).
+`CashQuotaEngine` applica le **quote fisse in contanti** (`cash_quotas`): una volta al mese il primo prelievo che copre l'importo viene diviso in quota + resto (in "Contanti"); mai su movimenti già divisi o controllati. `ReviewEngine` costruisce la sezione **Verifica** (divisioni automatiche, provvisori da notifica, regole con soglia, importi insoliti negli ultimi 60 giorni); il flag `reviewed` li chiude. Parti, quote e movimenti controllati sono salvati nelle estensioni native del backup.
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

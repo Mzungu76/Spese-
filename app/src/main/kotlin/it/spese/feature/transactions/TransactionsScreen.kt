@@ -31,6 +31,7 @@ import it.spese.app.common.*
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
 import it.spese.core.model.Category
+import it.spese.core.model.Transaction
 import it.spese.core.model.TxKind
 import it.spese.domain.classification.merchant
 
@@ -53,6 +54,7 @@ fun TransactionsScreen(
     var searching by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
     var filterSheet by remember { mutableStateOf(false) }
+    var splitTarget by remember { mutableStateOf<Transaction?>(null) }
     val unclassified = remember(st.data.transactions) { st.data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO } }
 
     Column(Modifier.fillMaxSize()) {
@@ -60,6 +62,7 @@ fun TransactionsScreen(
             title = { Text("${st.selection.size} selezionati") },
             navigationIcon = { IconButton(onClick = vm::clearSelection) { Icon(Icons.Default.Close, "Chiudi selezione") } },
             actions = {
+                if (st.selection.size == 1) IconButton(onClick = { st.data.ledger.firstOrNull { it.id == st.selection.first() }?.let { splitTarget = it }; vm.clearSelection() }) { Icon(Icons.Default.CallSplit, "Dividi su più categorie") }
                 IconButton(onClick = vm::selectAll) { Icon(Icons.Default.SelectAll, "Seleziona tutti") }
                 IconButton(onClick = { pickCategory = { vm.assignToSelection(it) } }) { Icon(Icons.AutoMirrored.Filled.Label, "Cambia categoria") }
                 IconButton(onClick = vm::duplicateSelection) { Icon(Icons.Default.ContentCopy, "Duplica") }
@@ -87,17 +90,19 @@ fun TransactionsScreen(
             shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
         Spacer(Modifier.height(10.dp))
         FilterPills()
-        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        if (!selecting) PillSegmented(listOf(false to "Tutti", true to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica"), st.reviewMode, vm::setReviewMode, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
+        if (!st.reviewMode) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyLarge)
             MoneyText(st.expense, decimals = false, colored = false, style = MaterialTheme.typography.bodyLarge)
         }
-        if (unclassified > 0 && !selecting) Row(Modifier.padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onOpenClassify).padding(horizontal = 16.dp, vertical = 14.dp),
+        if (unclassified > 0 && !selecting && !st.reviewMode) Row(Modifier.padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onOpenClassify).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) { Text("$unclassified", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
             Text("Da classificare", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Icon(Icons.Default.ChevronRight, null)
         }
-        if (st.items.isEmpty()) {
+        if (st.reviewMode) ReviewSection(st, vm, onOpen, { id -> pickCategory = { cid -> vm.reassign(id, cid) } }, { splitTarget = it }, bottomPadding)
+        else if (st.items.isEmpty()) {
             EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else "Nessun movimento con questi filtri.")
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
@@ -124,7 +129,10 @@ fun TransactionsScreen(
                             Column(Modifier.weight(1f)) {
                                 Text(x.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 Text(buildString {
-                                    append(cat?.name ?: "Senza categoria"); if (x.manualCategory) append(" · ✎")
+                                    val parts = st.data.splits[x.id].orEmpty()
+                                    if (parts.isNotEmpty()) append("Diviso in ").append(parts.size).append(": ").append(parts.joinToString(" + ") { (st.data.categoriesById[it.categoryId]?.name ?: "?") }) else append(cat?.name ?: "Senza categoria")
+                                    if (x.manualCategory && parts.isEmpty()) append(" · ✎")
+                                    if (x.origin == it.spese.core.model.TxOrigin.NOTIFICATION) append(" · da notifica")
                                     if (st.data.accounts.size > 1) append(" · ").append(st.data.accountName(x.accountId))
                                     if (!byDay) append(" · ").append(it.spese.core.common.Dates.fmt(x.bookingDate))
                                     if (x.documentId != null) append(" · 📎")
@@ -138,6 +146,7 @@ fun TransactionsScreen(
         }
     }
     if (filterSheet) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filterSheet = false }
+    splitTarget?.let { t -> SplitDialog(t, st.data.categories.filter { it.active }, st.data.splits[t.id].orEmpty(), { parts -> vm.split(t.id, parts) }, { vm.split(t.id, emptyList()) }, { splitTarget = null }) }
 
     pickCategory?.let { cb ->
         CategoryPickerDialog(st.data.categories, onDismiss = { pickCategory = null; bulkAll = false }) { cb(it.id); pickCategory = null }
@@ -158,4 +167,45 @@ fun CategoryPickerDialog(categories: List<Category>, onDismiss: () -> Unit, onPi
                 }
             }
         })
+}
+
+/** Sezione Verifica: i movimenti la cui associazione non è certa, con il motivo e le azioni per chiuderli. */
+@Composable
+private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOpen: (Long) -> Unit, onPickCategory: (Long) -> Unit, onSplit: (Transaction) -> Unit, bottomPadding: PaddingValues) {
+    if (st.review.isEmpty()) { EmptyState(Icons.Default.CheckCircle, "Tutto a posto", "Nessun movimento da controllare: divisioni automatiche, movimenti da notifica, regole con soglia e importi insoliti compaiono qui."); return }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${st.review.size} da controllare", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = vm::confirmAllReview) { Text("Conferma tutti") }
+            }
+        }
+        items(st.review, key = { "rv-${it.tx.id}" }) { r ->
+            val x = r.tx
+            val cat = st.data.categoriesById[x.categoryId]
+            Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow), shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp)) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth().combinedClickable(onClick = { onOpen(x.id) }), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        CategoryAvatar(if (r.splits.isNotEmpty()) null else cat, size = 44)
+                        Column(Modifier.weight(1f)) {
+                            Text(x.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            Text(it.spese.core.common.Dates.fmt(x.bookingDate) + " · " + (if (r.splits.isNotEmpty()) "diviso in ${r.splits.size}" else cat?.name ?: "Senza categoria"), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                        MoneyText(x.amount, signed = true, colored = x.amount.signum() > 0 && x.kind == TxKind.ENTRATA, style = MaterialTheme.typography.titleMedium)
+                    }
+                    r.notes.forEach { n ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                            Icon(Icons.Default.ErrorOutline, null, Modifier.size(18.dp).padding(top = 2.dp), tint = it.spese.core.designsystem.theme.SpeseTheme.finance.warning)
+                            Text(n.text, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Button(onClick = { vm.confirm(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Conferma") }
+                        TextButton(onClick = { onPickCategory(x.id) }) { Text("Categoria") }
+                        TextButton(onClick = { onSplit(x) }) { Text("Dividi") }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -14,6 +14,8 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 - **Importazione** – xlsx/csv/txt con anteprima e correzione delle colonne; backup JSON della versione web (unisci o sostituisci).
 - **Scansione OCR** – scontrini e fatture (fotocamera o galleria), riconoscimento sul dispositivo, revisione obbligatoria, foto associata al movimento.
 - **Movimenti automatici** – (opzionale) legge le notifiche e gli SMS delle sole app scelte (Revolut, Google Wallet, Postepay, Hype…), crea movimenti provvisori classificati dalle regole e li sostituisce con le righe dell'estratto conto all'importazione.
+- **Prelievi e quote in contanti** – un movimento si può dividere su più categorie (es. prelievo da 800 € = 500 € Affitto + 300 € Contanti); le quote fisse (affitto) si staccano da sole dal primo prelievo del mese che le copre.
+- **Verifica** (in Movimenti) – i movimenti la cui associazione non è certa: divisi in automatico, provvisori da notifica, regole con soglia di importo, importi insoliti.
 - **Backup** – JSON compatibile con la versione web, ZIP con foto, backup automatici, sincronizzazione con un file condiviso, annulla ultima importazione.
 
 ## Per iniziare

@@ -83,6 +83,13 @@ class BackupRepositoryImpl @Inject constructor(
                     cuts[e.id].orEmpty().mapNotNull { c -> catName[c.categoryId]?.let { it to c.percent } }.toMap(), Money.fromCents(e.incomeDeltaCents), removed[e.id].orEmpty().map { it.itemKey })
             },
             documents = db.documents().getAll().map { NativeDocument(it.fileName, it.mimeType, it.sizeBytes, it.createdAt, it.ocrText) },
+            splits = run {
+                val txExt = db.transactions().getAll().associate { it.id to it.externalId }
+                val quotaName = db.quotas().getAll().associate { it.id to it.name }
+                db.splits().getAll().mapNotNull { sp -> txExt[sp.txId]?.let { NativeSplit(it, sp.categoryId?.let { c -> catName[c] }, Money.fromCents(sp.amountCents), sp.position, sp.auto, sp.quotaId?.let { q -> quotaName[q] }) } }
+            },
+            quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled) } },
+            reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
         )
         return BackupEnvelope(Instant.now().toString(), Build.MODEL ?: "Android", legacy, extras)
     }
@@ -237,6 +244,24 @@ class BackupRepositoryImpl @Inject constructor(
         td.getAll().filter { !it.manualCategory }.forEach { t ->
             val c = classifier.classify(t.description, Money.fromCents(t.amountCents), null)
             if (c.categoryId != t.categoryId || c.kind.key != t.kind || c.ruleId != t.ruleId) td.updateClassification(t.id, c.categoryId, c.kind.key, false, c.ruleId, 0)
+        }
+        // estensioni native: quote in contanti, movimenti divisi e movimenti già controllati
+        if (extras != null) {
+            val quotaIds = HashMap<String, Long>()
+            extras.quotas.forEach { q ->
+                val cid = cd.findByName(q.category)?.id ?: return@forEach
+                val old = db.quotas().getAll().firstOrNull { it.name == q.name }
+                quotaIds[q.name] = old?.id ?: db.quotas().insert(CashQuotaEntity(name = q.name, categoryId = cid, amountCents = Money.toCents(q.amount), enabled = q.enabled))
+            }
+            db.quotas().getAll().forEach { quotaIds.putIfAbsent(it.name, it.id) }
+            val haveSplits = db.splits().getAll().map { it.txId }.toHashSet()
+            extras.splits.groupBy { it.txId }.forEach { (ext, parts) ->
+                val t = td.findByExternalId(ext) ?: return@forEach
+                if (t.id in haveSplits) return@forEach
+                db.splits().insertAll(parts.sortedBy { it.position }.mapIndexed { i, p -> SplitEntity(0, t.id, p.category?.let { cd.findByName(it)?.id }, Money.toCents(p.amount), i, p.auto, p.quota?.let { quotaIds[it] }) })
+            }
+            val reviewedIds = extras.reviewed.mapNotNull { td.findByExternalId(it)?.id }
+            if (reviewedIds.isNotEmpty()) reviewedIds.chunked(500).forEach { td.setReviewed(it, true) }
         }
         return added
     }

@@ -118,6 +118,11 @@ class MainFlowTest {
         // di partenza l'app mostra il mese corrente: per contare tutti i movimenti si sceglie "Tutto"
         filters.update { f -> f.copy(period = it.spese.domain.finance.Period.All) }
         goTab("Movimenti"); waitText("223 movimenti")
+        // sezione Verifica dei movimenti incerti
+        compose.onNodeWithTag("review_toggle").assertExists()
+        compose.onNodeWithText("Verifica", substring = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(8000) { compose.onAllNodesWithText("Tutto a posto").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("da controllare", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Tutti").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
         // dettaglio di una categoria: esercenti e andamento
         compose.onNodeWithText("Supermercato e alimentari").performClick(); waitText("Budget mensile")

@@ -41,16 +41,18 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
     var editCat by remember { mutableStateOf<Category?>(null) }
     var editRule by remember { mutableStateOf<Rule?>(null) }
     var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
+    var editQuota by remember { mutableStateOf<CashQuota?>(null) }
     val d = st.data
     val spendMax = remember(st.txTotal, d.categories) { d.categories.filter { it.kind == TxKind.SPESA }.maxOfOrNull { (st.txTotal[it.id] ?: BigDecimal.ZERO).abs() }?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE }
     Column(Modifier.fillMaxSize()) {
         BackHeader("Gestione", onBack, actions = {
-            if (tab < 2) RoundIconButton(Icons.Default.Add, if (tab == 0) "Nuova categoria" else "Nuova regola", {
+            if (tab != 2) RoundIconButton(Icons.Default.Add, when (tab) { 0 -> "Nuova categoria"; 1 -> "Nuova regola"; else -> "Nuova quota" }, {
                 if (tab == 0) editCat = Category(0, "", TxKind.SPESA, true, vm.nextColor(d.categories.size), null, true, d.categories.size)
+                else if (tab == 3) editQuota = CashQuota(0, "Affitto", d.categories.firstOrNull { it.kind == TxKind.SPESA && it.active && it.systemKey == null }?.id ?: 0, BigDecimal.ZERO)
                 else editRule = Rule(0, "", d.categories.firstOrNull { it.active }?.id ?: 0, AmountSign.ANY, BigDecimal.ZERO, BigDecimal.ZERO, 0)
             })
         })
-        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare"), tab, { tab = it }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
+        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare", 3 to "Quote"), tab, { tab = it }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             when (tab) {
                 0 -> {
@@ -96,7 +98,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                         }
                     }
                 }
-                else -> {
+                2 -> {
                     if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
                     else {
                         item { Text("Movimenti senza regola: finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -108,11 +110,28 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                         }
                     }
                 }
+                else -> {
+                    item { Text("Quote fisse pagate in contanti, come l'affitto. Una volta al mese il primo prelievo che le copre viene diviso: la quota va alla categoria scelta, il resto resta com'è. Il prelievo compare in Movimenti › Verifica per un controllo.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (d.quotas.isEmpty()) item { EmptyState(Icons.Default.Payments, "Nessuna quota", "Tocca + per aggiungere, ad esempio, un affitto da 500 € pagato in contanti.") }
+                    items(d.quotas, key = { it.id }) { q ->
+                        val c = d.categoriesById[q.categoryId]
+                        Row(Modifier.fillMaxWidth().clickable { editQuota = q }.padding(horizontal = 24.dp).heightIn(min = 76.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            CategoryAvatar(c, size = 48)
+                            Column(Modifier.weight(1f)) {
+                                Text(q.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                Text("${Money.eur0(q.amount)} al mese → ${c?.name ?: "?"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            Switch(q.enabled, { on -> vm.saveQuota(q.copy(enabled = on)) })
+                        }
+                    }
+                    if (d.quotas.any { it.enabled }) item { OutlinedButton(onClick = vm::applyQuotasNow, Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) { Text("Applica ai prelievi esistenti") } }
+                }
             }
         }
     }
     editCat?.let { c -> CategoryDialog(c, d.categories.indexOfFirst { it.id == c.id }, d.categories.size, d.categories, { editCat = null }, vm) }
     editRule?.let { r -> RuleDialog(r, d, { editRule = null }, vm) }
+    editQuota?.let { q -> QuotaDialog(q, d.categories.filter { it.kind == TxKind.SPESA && it.active }, { editQuota = null }, vm) }
     assign?.let { u ->
         var kw by remember(u) { mutableStateOf(u.keyword) }
         var cat by remember(u) { mutableStateOf<Long?>(null) }
@@ -223,5 +242,23 @@ private fun RuleDialog(r: Rule, d: it.spese.domain.repository.AppData, onDismiss
         },
         confirmButton = { TextButton(enabled = valid && cat != 0L, onClick = {
             vm.saveRule(r.copy(keyword = kw.trim(), sign = sign, min = parseAmountOrNull(min)?.abs() ?: BigDecimal.ZERO, max = parseAmountOrNull(max)?.abs() ?: BigDecimal.ZERO, categoryId = cat)); onDismiss() }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
+
+@Composable
+private fun QuotaDialog(q: CashQuota, categories: List<Category>, onDismiss: () -> Unit, vm: CategoriesViewModel) {
+    var name by remember { mutableStateOf(q.name) }
+    var amount by remember { mutableStateOf(if (q.amount.signum() > 0) q.amount.toPlainString().replace('.', ',') else "") }
+    var cat by remember { mutableStateOf(q.categoryId) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (q.id == 0L) "Nuova quota in contanti" else "Modifica quota") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                AmountField(amount, { amount = it }, "Importo mensile (€)", Modifier.fillMaxWidth(), supporting = "Si applica al primo prelievo del mese di importo pari o superiore.")
+                DropdownField("Categoria della quota", categories.firstOrNull { it.id == cat }, categories, { it.name }, { cat = it.id })
+                if (q.id != 0L) TextButton(onClick = { vm.deleteQuota(q.id); onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina quota") }
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && cat != 0L && (parseAmountOrNull(amount)?.signum() ?: 0) > 0, onClick = { vm.saveQuota(q.copy(name = name, amount = parseAmountOrNull(amount) ?: BigDecimal.ZERO, categoryId = cat)); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

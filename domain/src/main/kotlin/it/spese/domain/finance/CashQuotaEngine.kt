@@ -29,6 +29,8 @@ object CashQuotaEngine {
             parts.mapNotNull { it.quotaId }.forEach { q -> if (month != null) applied.add(q to month) }
         }
         val candidates = ledger.filter { !it.reviewed && it.id !in taken && isWithdrawal(it, categories) }.sortedWith(compareBy({ it.bookingDate }, { it.id }))
+        // il resto del prelievo è denaro contante: va in "Contanti" anche se una regola aveva mandato il prelievo altrove (es. prelievi grandi in Spesa)
+        val cashId = categories.values.firstOrNull { it.name.equals("Contanti", ignoreCase = true) }?.id
         val out = ArrayList<Application>()
         for (q in quotas.filter { it.enabled && it.amount.signum() > 0 && categories.containsKey(it.categoryId) }.sortedBy { it.id }) {
             for (month in candidates.map { YearMonth.from(it.bookingDate) }.distinct()) {
@@ -37,7 +39,7 @@ object CashQuotaEngine {
                 val rest = t.amount + q.amount   // negativo o zero
                 val parts = buildList {
                     add(TransactionSplit(0, t.id, q.categoryId, q.amount.negate(), 0, auto = true, quotaId = q.id))
-                    if (rest.signum() != 0) add(TransactionSplit(0, t.id, t.categoryId, rest, 1, auto = true, quotaId = q.id))
+                    if (rest.signum() != 0) add(TransactionSplit(0, t.id, cashId ?: t.categoryId, rest, 1, auto = true, quotaId = q.id))
                 }
                 out.add(Application(t.id, q, parts)); taken.add(t.id); applied.add(q.id to month)
             }

@@ -66,7 +66,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
             }
             item {
                 SectionCard(title = "Backup e ripristino") {
-                    Text("${data.transactions.size} movimenti · il backup contiene movimenti, categorie, regole, budget, scadenze, obiettivi e scenari (formato compatibile con la versione web).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${data.ledger.size} movimenti · il backup contiene movimenti, categorie, regole, budget, scadenze, obiettivi e scenari (formato compatibile con la versione web).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { createJson.launch("spese-backup-${stamp()}.json") }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Salva backup (JSON)") }
                     OutlinedButton(onClick = { scope.launch { Share.shareBytes(ctx, "spese-backup-${stamp()}.json", "application/json", vm.backupJsonBytes(), "Condividi backup") } }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text("Condividi backup…") }
                     OutlinedButton(onClick = { createZip.launch("spese-backup-completo-${stamp()}.zip") }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(8.dp)); Text("Backup completo con foto (ZIP)") }
@@ -105,7 +105,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         OutlinedButton(onClick = { createCsv.launch("movimenti-${stamp()}.csv") }) { Text("CSV") }
                         OutlinedButton(onClick = { createXlsx.launch("movimenti-${stamp()}.xlsx") }) { Text("Excel") }
                     }
-                    Text("Esporta tutti i ${data.transactions.size} movimenti. Per esportare solo quelli filtrati usa il menu nella scheda Movimenti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Esporta tutti i ${data.ledger.size} movimenti. Per esportare solo quelli filtrati usa il menu nella scheda Movimenti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item {

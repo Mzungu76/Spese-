@@ -52,7 +52,8 @@ class SplitReviewTest {
         assertTrue(CashQuotaEngine.plan(ledger, already, cats, listOf(quota)).isEmpty())          // ottobre già coperto, gli altri esclusi
         assertTrue(CashQuotaEngine.plan(ledgerOf(tx("2026-10-05", -800)), emptyMap(), cats, listOf(quota.copy(enabled = false))).isEmpty())
         // un prelievo riconosciuto dalla descrizione (anche se la regola l'ha messo altrove)
-        assertEquals(1, CashQuotaEngine.plan(ledgerOf(tx("2026-10-05", -800, cat = 3, desc = "Prelievo Bancomat")), emptyMap(), cats, listOf(quota)).size)
+        val viaRule = CashQuotaEngine.plan(ledgerOf(tx("2026-10-05", -800, cat = 3, desc = "Prelievo Bancomat")), emptyMap(), cats, listOf(quota))
+        assertEquals(1, viaRule.size); assertEquals(listOf(2L, 1L), viaRule[0].parts.map { it.categoryId })   // il resto va in Contanti, non in Supermercato
     }
 
     @Test fun `verifica - divisi in automatico, provvisori, regole con soglia e importi insoliti`() {

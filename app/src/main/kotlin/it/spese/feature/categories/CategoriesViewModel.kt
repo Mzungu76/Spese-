@@ -33,6 +33,7 @@ class CategoriesViewModel @Inject constructor(
     data: StateFlow<AppData>, private val categories: CategoryRepository, private val rules: RuleRepository,
     private val saveCategory: SaveCategoryUseCase, private val deleteCategory: DeleteCategoryUseCase, private val createRule: CreateRuleUseCase,
     private val reclassify: ReclassifyAllUseCase, private val messenger: UiMessenger,
+    private val quotas: CashQuotaRepository, private val applyQuotas: ApplyCashQuotasUseCase,
 ) : ViewModel() {
     val state: StateFlow<CategoriesState> = data.mapLatest { d ->
         withContext(Dispatchers.Default) {
@@ -64,5 +65,13 @@ class CategoriesViewModel @Inject constructor(
         val ids = rules.getAll().map { it.id }.toMutableList(); val i = ids.indexOf(id); val j = i + delta
         if (i >= 0 && j in ids.indices) { ids.add(j, ids.removeAt(i)); rules.reorder(ids); reclassify() }
     }
+    fun saveQuota(q: CashQuota) = run {
+        require(q.name.isNotBlank()) { "Dai un nome alla quota." }
+        require(q.amount.signum() > 0) { "Indica un importo maggiore di zero." }
+        quotas.save(q)
+        val n = applyQuotas(); if (n > 0) messenger.show(if (n == 1) "Quota applicata a 1 prelievo: controllalo in Movimenti › Verifica" else "Quota applicata a $n prelievi: controllali in Movimenti › Verifica")
+    }
+    fun deleteQuota(id: Long) = run { quotas.delete(id) }
+    fun applyQuotasNow() = run { val n = applyQuotas(); messenger.show(if (n == 0) "Nessun prelievo da dividere" else "Diviso $n prelievi: controllali in Movimenti › Verifica") }
     fun assignUnclassified(keyword: String, categoryId: Long) = run { createRule(keyword, categoryId); messenger.show("Regola \"$keyword\" creata") }
 }
