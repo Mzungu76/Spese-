@@ -36,6 +36,7 @@ import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.capture.CaptureScreen
+import it.spese.feature.reports.ReportsScreen
 import it.spese.feature.trends.TrendsScreen
 import it.spese.feature.categories.CategoriesScreen
 import it.spese.feature.categories.CategoryDetailScreen
@@ -53,7 +54,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -123,7 +124,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
 
     val menu = DataMenu(
         onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) },
-        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast,
+        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast, onReports = { nav.navigate(Routes.REPORTS) },
     )
     fun goTab(r: String) = nav.navigate(r) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true }
 
@@ -156,6 +157,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
             composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }

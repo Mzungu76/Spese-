@@ -74,8 +74,15 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
                         Icon(if (listenerOn) Icons.Default.CheckCircle else Icons.Default.ErrorOutline, null, tint = if (listenerOn) it.spese.core.designsystem.theme.SpeseTheme.finance.positive else MaterialTheme.colorScheme.error)
                         Text(if (listenerOn) "Concesso" else "Non ancora concesso", fontWeight = FontWeight.SemiBold)
                     }
-                    Button(onClick = { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text(if (listenerOn) "Gestisci in Android" else "Concedi l'accesso") }
-                    if (!listenerOn) Text("Se Android segnala un'«impostazione con restrizioni» (succede con le app installate da file): Impostazioni › App › Spese › menu ⋮ › Consenti impostazioni con restrizioni, poi riprova.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = { openListenerSettings(ctx) }) { Text(if (listenerOn) "Gestisci in Android" else "Concedi l'accesso") }
+                }
+            }
+            if (!listenerOn) item {
+                SectionCard(title = "Interruttore grigio? Sblocca l'impostazione") {
+                    Text("Android blocca l'accesso alle notifiche alle app installate da file, come misura di sicurezza: l'interruttore resta grigio e non si può attivare. Va sbloccato una volta sola, a mano:", style = MaterialTheme.typography.bodyMedium)
+                    Text("1. Tocca «Apri info app».\n2. In alto a destra tocca i tre puntini ⋮ e scegli «Consenti impostazioni con restrizioni» (conferma con PIN o impronta).\n3. Torna qui e tocca «Concedi l'accesso»: ora l'interruttore si attiva.", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { openAppInfo(ctx) }) { Icon(Icons.Default.Info, null); Spacer(Modifier.width(8.dp)); Text("Apri info app") }
+                    Text("Se i tre puntini non compaiono: prima tocca una volta l'interruttore grigio (Android mostra un avviso), poi riapri «Info app» e la voce c'è.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             items(CaptureSource.entries.toList(), key = { it.id }) { s -> SourceCard(s, cfg.of(s), data, vm, learning, now, until, seen) }
@@ -158,4 +165,21 @@ private fun TryParser() {
                 color = if (r == null) MaterialTheme.colorScheme.error else it.spese.core.designsystem.theme.SpeseTheme.finance.positive)
         }
     }
+}
+
+/** Apre direttamente la schermata dell'accesso alle notifiche di questa app (Android 11+), altrimenti l'elenco. */
+private fun openListenerSettings(ctx: android.content.Context) {
+    val list = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (Build.VERSION.SDK_INT >= 30) {
+        val detail = Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+            .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME, android.content.ComponentName(ctx, it.spese.app.capture.CaptureListenerService::class.java).flattenToString())
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (runCatching { ctx.startActivity(detail) }.isSuccess) return
+    }
+    runCatching { ctx.startActivity(list) }
+}
+
+/** Info dell'app: da qui, con ⋮, si consentono le "impostazioni con restrizioni". */
+private fun openAppInfo(ctx: android.content.Context) {
+    runCatching { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
 }

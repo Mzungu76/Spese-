@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
 /** Voci del menu "Dati" disponibili in ogni schermata principale. */
 data class DataMenu(
     val onImport: () -> Unit, val onScan: () -> Unit, val onAnalytics: () -> Unit, val onAccounts: () -> Unit,
-    val onSettings: () -> Unit, val undoAvailable: Boolean, val onUndo: () -> Unit,
+    val onSettings: () -> Unit, val undoAvailable: Boolean, val onUndo: () -> Unit, val onReports: () -> Unit = {},
 )
 
 @Composable
@@ -41,6 +41,7 @@ fun OverflowMenu(menu: DataMenu) {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Menu dati") }
         DropdownMenu(open, { open = false }) {
             DropdownMenuItem({ Text("Analisi e grafici") }, { open = false; menu.onAnalytics() }, leadingIcon = { Icon(Icons.Default.Insights, null) })
+            DropdownMenuItem({ Text("Report PDF") }, { open = false; menu.onReports() }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) })
             DropdownMenuItem({ Text("Conti") }, { open = false; menu.onAccounts() }, leadingIcon = { Icon(Icons.Default.AccountBalance, null) })
             if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla ultima importazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) })
             HorizontalDivider()

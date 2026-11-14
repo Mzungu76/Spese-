@@ -70,6 +70,10 @@ Un movimento resta una riga sola (importo intero, coerente con l'estratto); le s
 `CategoryComparisonEngine` costruisce il confronto di categorie della Home (una serie per categoria accanto alle entrate del periodo, con le quote sulle entrate; le sottocategorie confluiscono nella principale). `CategoryTrendEngine` calcola per ogni categoria la media del periodo contro lo storico, la retta ai minimi quadrati sugli ultimi 12 mesi completi e le proiezioni a 1/3/6 mesi (mai sotto zero) con l'effetto cumulato sul bilancio; dichiara la fiducia della stima.
 `SearchMatcher` normalizza (minuscole, senza accenti) e richiede tutte le parole; `FilterEngine` con un testo di ricerca ignora il periodo. `CashQuotaEngine` supporta modalità (primo che copre, ogni, esatto con tolleranza), periodicità in mesi, finestra di giorni e più quote nello stesso prelievo (la quota porta il suo `quotaId`, il resto no).
 
+## Report PDF
+
+`ReportBuilder` (dominio) trasforma dati e scelte (`ReportSpec`: periodo, conto, categorie, sezioni ordinate, opzioni) in un `ReportDocument` di blocchi (titoli, indicatori, tabelle, barre, colonne) riusando gli stessi motori della Panoramica, delle Tendenze e della Verifica. `ReportLayout` (dominio, puro) impagina i blocchi in pagine A4 come operazioni di disegno (testo, rettangoli, linee) con intestazione, piè di pagina numerato e righe di tabella ripetute: si prova con JUnit e si può disegnare su immagine. `PdfReportRenderer` (app) esegue le operazioni con `PdfDocument` di Android: PDF vettoriale, senza librerie esterne. I modelli personalizzati sono salvati in DataStore (`ReportSpecCodec`).
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

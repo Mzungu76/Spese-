@@ -46,6 +46,7 @@ abstract class RepositoryModule {
     @Binds abstract fun settings(i: SettingsRepositoryImpl): SettingsRepository
     @Binds abstract fun importProfiles(i: it.spese.data.settings.ImportProfileRepositoryImpl): ImportProfileRepository
     @Binds abstract fun backup(i: BackupRepositoryImpl): BackupRepository
+    @Binds abstract fun reportPresets(i: it.spese.data.settings.ReportPresetRepositoryImpl): ReportPresetRepository
     @Binds abstract fun captureConfig(i: it.spese.data.settings.CaptureConfigRepositoryImpl): CaptureConfigRepository
 }
 

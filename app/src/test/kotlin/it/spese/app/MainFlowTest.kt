@@ -179,7 +179,7 @@ class MainFlowTest {
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Movimenti automatici"))
         // Movimenti automatici: schermata di impostazione e prova del riconoscimento
         compose.onNode(hasText("Imposta") and hasClickAction()).performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
-        waitText("Accesso alle notifiche"); waitText("Revolut"); waitText("Google Wallet")
+        waitText("Accesso alle notifiche"); waitText("Interruttore grigio", substring = true); waitText("Revolut"); waitText("Google Wallet")
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Prova un testo"))
         compose.onNodeWithText("Testo").performTextInput("Hai pagato 12,50 € a COOP SPA con carta")
         waitText("Riconosciuta", substring = true)
@@ -188,6 +188,14 @@ class MainFlowTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
+        // Report PDF: modelli, personalizzazione e creazione
+        openMenu("Report PDF"); waitText("Modelli pronti")
+        compose.onNodeWithTag("preset_monthly").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Titolo e nota")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasTestTag("report_generate"))
+        compose.onNodeWithTag("report_generate").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(20000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.onAllNodesWithTag("report_save").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Il tuo report", substring = true).fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Nessun movimento nel periodo").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Impossibile creare il report", substring = true).fetchSemanticsNodes().isNotEmpty() }   // sulla JVM di prova PdfDocument non c'è: basta che la richiesta parta e risponda
     }
 
     @Test fun il_pulsante_piu_apre_le_quattro_azioni() {

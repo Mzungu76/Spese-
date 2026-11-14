@@ -172,6 +172,13 @@ interface CaptureConfigRepository {
     suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
 }
 
+/** Modelli di report personalizzati salvati dall'utente (solo sul telefono). */
+interface ReportPresetRepository {
+    fun observe(): Flow<List<it.spese.domain.report.SavedReport>>
+    suspend fun save(r: it.spese.domain.report.SavedReport)
+    suspend fun delete(id: String)
+}
+
 sealed interface RestoreMode { data object Merge : RestoreMode; data object Replace : RestoreMode }
 
 data class RestoreResult(val summary: List<String>, val txAdded: Int)
