@@ -40,6 +40,7 @@ class MainFlowTest {
     @Inject lateinit var restore: RestoreBackupUseCase
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
+    @Inject lateinit var filters: it.spese.app.common.FilterStore
 
     @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
 
@@ -114,6 +115,8 @@ class MainFlowTest {
         runBlocking { restore(env, RestoreMode.Replace) }
         compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 223 }
 
+        // di partenza l'app mostra il mese corrente: per contare tutti i movimenti si sceglie "Tutto"
+        filters.update { f -> f.copy(period = it.spese.domain.finance.Period.All) }
         goTab("Movimenti"); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
         compose.onNodeWithText("Regole · 32").performClick(); waitText("Vince la prima regola", substring = true)

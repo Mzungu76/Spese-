@@ -127,7 +127,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.DASHBOARD) {
                 DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> vm.showCategory(id); goTab(Routes.TRANSACTIONS) },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
-                    onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, onOpenPlan = { goTab(Routes.PLAN) }, contentPadding = pad)
+                    onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, onOpenPlan = { goTab(Routes.PLAN) },
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { goTab(Routes.CATEGORIES) }, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, bottomPadding = pad) }

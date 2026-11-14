@@ -5,11 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import it.spese.feature.categories.CategoryRankRow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -23,6 +26,7 @@ import it.spese.app.common.FilterViewModel
 import it.spese.app.common.LargeHeader
 import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Money
+import it.spese.core.model.TxKind
 import it.spese.core.designsystem.chart.GapAreaChart
 import it.spese.core.designsystem.chart.GapPoint
 import it.spese.core.designsystem.component.*
@@ -38,6 +42,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -67,6 +72,7 @@ fun DashboardScreen(
         val points = remember(st.buckets) { st.buckets.map { GapPoint(it.label, it.income, it.expense, it.title) } }
         val period = st.filter.period
         val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
+        var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
@@ -98,6 +104,28 @@ fun DashboardScreen(
                     Box(Modifier.size(11.dp).background(dot, androidx.compose.foundation.shape.CircleShape))
                     Text(if (alertCount > 0) (if (alertCount == 1) "1 cosa da guardare" else "$alertCount cose da guardare") else "Tutto sotto controllo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item(key = "cats-head") {
+                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
+                    Text("Dove vanno i soldi", style = MaterialTheme.typography.titleLarge)
+                    if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
+                }
+            }
+            val rows = if (catKind == TxKind.SPESA) m.categories else m.incomeCategories
+            val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
+            if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
+                CategoryRankRow(r, catKind, maxTotal, { onOpenCategory(r.category?.id) },
+                    budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
+            }
+            if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }
+            if (s.transfers.signum() != 0) item(key = "cats-transfers") {
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpenTransfers).padding(horizontal = 4.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Giroconti esclusi dai totali", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MoneyText(s.transfers.abs(), decimals = false, muted = true)
                 }
             }
         }

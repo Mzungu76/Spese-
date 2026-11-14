@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import it.spese.core.model.TxKind
 import it.spese.domain.repository.SettingsRepository
 import it.spese.domain.usecase.UndoImportUseCase
 import javax.inject.Inject
@@ -85,6 +86,7 @@ fun SubTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.(
 
 @HiltViewModel
 class RootViewModel @Inject constructor(settings: SettingsRepository, private val undo: UndoImportUseCase, val messenger: UiMessenger, private val filters: FilterStore, val incoming: IncomingFile) : ViewModel() {
+    fun showTransfers() = filters.update { it.copy(kind = TxKind.TRASFERIMENTO) }
     fun showCategory(id: Long?) = filters.update { it.copy(categoryId = id, period = it.period) }
     val undoAvailable = settings.observe().map { it.lastUndo.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val onboardingDone = settings.observe().map { it.onboardingDone }

@@ -33,12 +33,18 @@ data class PeriodStats(
     val byCategory: Map<Long?, BigDecimal>,
     val byMonth: Map<YearMonth, MonthStat>,
     val byMerchant: Map<String, MerchantStat>,
+    /** Entrate per categoria (valori positivi). Chiave null = senza categoria. */
+    val incomeByCategory: Map<Long?, BigDecimal> = emptyMap(),
 ) {
     val net: BigDecimal get() = income - expense
 
     /** Tasso di risparmio in % intera (null se non ci sono entrate). */
     val savingsRatePercent: Int?
         get() = if (income.signum() > 0) net.multiply(Money.HUNDRED).divide(income, 0, RoundingMode.HALF_UP).toInt() else null
+
+    /** Categorie di entrata con importo positivo, in ordine decrescente. */
+    val topIncomeCategories: List<Pair<Long?, BigDecimal>>
+        get() = incomeByCategory.entries.filter { it.value.signum() > 0 }.sortedByDescending { it.value }.map { it.key to it.value }
 
     /** Categorie con spesa positiva, in ordine decrescente. */
     val topCategories: List<Pair<Long?, BigDecimal>>
@@ -51,6 +57,7 @@ object StatsEngine {
     fun compute(list: List<Transaction>): PeriodStats {
         var inc = BigDecimal.ZERO; var exp = BigDecimal.ZERO; var tr = BigDecimal.ZERO
         val byCat = HashMap<Long?, BigDecimal>()
+        val incCat = HashMap<Long?, BigDecimal>()
         class MB { var inc = BigDecimal.ZERO; var exp = BigDecimal.ZERO; val cats = HashMap<Long?, BigDecimal>() }
         val months = TreeMap<YearMonth, MB>()
         class MM { var n = 0; var t = BigDecimal.ZERO }
@@ -60,7 +67,7 @@ object StatsEngine {
             val bm = months.getOrPut(ym) { MB() }
             when (x.kind) {
                 TxKind.TRASFERIMENTO -> tr += x.amount
-                TxKind.ENTRATA -> { inc += x.amount; bm.inc += x.amount }
+                TxKind.ENTRATA -> { inc += x.amount; bm.inc += x.amount; incCat.merge(x.categoryId, x.amount) { a, b -> a + b } }
                 TxKind.SPESA -> {
                     exp -= x.amount; bm.exp -= x.amount
                     byCat.merge(x.categoryId, x.amount.negate()) { a, b -> a + b }
@@ -73,7 +80,7 @@ object StatsEngine {
         return PeriodStats(
             inc, exp, tr, byCat,
             months.mapValuesTo(TreeMap()) { MonthStat(it.value.inc, it.value.exp, it.value.cats) },
-            merch.mapValues { MerchantStat(it.value.n, it.value.t) },
+            merch.mapValues { MerchantStat(it.value.n, it.value.t) }, incCat,
         )
     }
 
