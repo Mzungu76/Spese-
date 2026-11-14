@@ -37,6 +37,8 @@ data class CategoryEntity(
     val icon: String? = null,
     /** Categoria padre (nessuna chiave esterna: all'eliminazione le figlie tornano principali). Schema 3. */
     val parentId: Long? = null,
+    /** Natura della spesa: 'f' / 'e' / 'd' oppure null. Schema 4. */
+    val nature: String? = null,
 )
 
 @Entity(

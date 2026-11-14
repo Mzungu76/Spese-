@@ -64,7 +64,7 @@ class CategoryRepositoryImpl @Inject constructor(private val db: AppDatabase) : 
     override suspend fun insert(c: Category): Long {
         val now = System.currentTimeMillis()
         return dao.insert(CategoryEntity(name = c.name, kind = c.kind.key, flexible = c.flexible, color = c.color,
-            budgetCents = c.budgetMonthly?.let { Money.toCents(it) }, active = c.active, sortOrder = c.sortOrder, systemKey = c.systemKey, icon = c.icon, parentId = c.parentId,
+            budgetCents = c.budgetMonthly?.let { Money.toCents(it) }, active = c.active, sortOrder = c.sortOrder, systemKey = c.systemKey, icon = c.icon, parentId = c.parentId, nature = c.nature?.key,
             updatedAt = now, budgetUpdatedAt = if (c.budgetMonthly != null) now else 0))
     }
 
@@ -72,8 +72,8 @@ class CategoryRepositoryImpl @Inject constructor(private val db: AppDatabase) : 
         val old = dao.getAll().firstOrNull { it.id == c.id } ?: return
         val now = System.currentTimeMillis()
         val newBudget = c.budgetMonthly?.let { Money.toCents(it) }
-        val changed = old.name != c.name || old.kind != c.kind.key || old.flexible != c.flexible || old.color != c.color || old.active != c.active || old.icon != c.icon || old.parentId != c.parentId
-        dao.update(old.copy(name = c.name, kind = c.kind.key, flexible = c.flexible, color = c.color, active = c.active, sortOrder = c.sortOrder, icon = c.icon, parentId = c.parentId,
+        val changed = old.name != c.name || old.kind != c.kind.key || old.flexible != c.flexible || old.color != c.color || old.active != c.active || old.icon != c.icon || old.parentId != c.parentId || old.nature != c.nature?.key
+        dao.update(old.copy(name = c.name, kind = c.kind.key, flexible = c.flexible, color = c.color, active = c.active, sortOrder = c.sortOrder, icon = c.icon, parentId = c.parentId, nature = c.nature?.key,
             budgetCents = newBudget, updatedAt = if (changed) now else old.updatedAt, budgetUpdatedAt = if (newBudget != old.budgetCents) now else old.budgetUpdatedAt))
     }
 

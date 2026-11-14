@@ -95,6 +95,10 @@ fun CategoryDetailScreen(onBack: () -> Unit, onOpenTransaction: (Long) -> Unit, 
                     }
                 }
             }
+            if (d.category.kind == TxKind.SPESA) {
+                item(key = "budget") { BudgetCard(d, vm::setBudget, Modifier.padding(horizontal = 16.dp)) }
+                item(key = "nature") { NatureChoiceCard(d, vm::setNature, Modifier.padding(horizontal = 16.dp)) }
+            }
             item(key = "merchants-head") { SectionHeader("Voci di spesa", Modifier.padding(horizontal = 24.dp), action = "Tutti i movimenti", onAction = onOpenMovements) }
             if (d.merchants.isEmpty()) item(key = "merchants-empty") { Text("Nessun movimento nel periodo.", Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(d.merchants, key = { "m-${it.merchant}" }) { g -> MerchantRow(g, spese, onOpenTransaction) }

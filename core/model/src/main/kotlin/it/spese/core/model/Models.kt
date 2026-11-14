@@ -33,6 +33,17 @@ enum class DueFrequency(val key: String, val label: String) {
     }
 }
 
+/** Natura di una spesa: quanto si può incidere su di essa. */
+enum class SpendNature(val key: String, val label: String, val hint: String) {
+    FIXED("f", "Fissa", "Importo ricorrente che non cambia da un mese all'altro (affitto, rate, abbonamenti)"),
+    ESSENTIAL("e", "Necessaria", "Indispensabile ma variabile (spesa alimentare, salute, carburante)"),
+    DISCRETIONARY("d", "Discrezionale", "Di cui si può fare a meno o ridurre (ristoranti, shopping, svago)");
+
+    companion object {
+        fun fromKey(k: String?): SpendNature? = entries.firstOrNull { it.key == k }
+    }
+}
+
 enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR }
 
 enum class AccountType(val label: String) {
@@ -73,6 +84,8 @@ data class Category(
     val icon: String? = null,
     /** Categoria di cui questa è sottocategoria (un solo livello, stesso tipo); null = categoria principale. */
     val parentId: Long? = null,
+    /** Natura della spesa (fissa / necessaria / discrezionale); null = non ancora definita. */
+    val nature: SpendNature? = null,
 ) {
     /** Icona effettiva: quella scelta, se ancora nel catalogo, altrimenti il default. */
     val iconKey: String get() = CategoryIcons.resolve(this)

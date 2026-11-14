@@ -27,10 +27,17 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scenarios(): ScenarioDao
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         const val NAME = "gestione-spese.db"
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
+        /** 3 → 4: natura della spesa (fissa / necessaria / discrezionale). */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE categories ADD COLUMN nature TEXT")
+            }
+        }
+
         /** 2 → 3: sottocategorie (categoria padre opzionale). */
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -48,7 +55,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)

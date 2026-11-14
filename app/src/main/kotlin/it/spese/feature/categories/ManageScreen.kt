@@ -134,6 +134,7 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, all: List<Catego
     var color by remember { mutableStateOf(c.color) }
     var icon by remember { mutableStateOf(c.icon) }
     var parentId by remember { mutableStateOf(c.parentId) }
+    var nature by remember { mutableStateOf(c.nature) }
     var flexible by remember { mutableStateOf(c.flexible) }
     var active by remember { mutableStateOf(c.active) }
     var budget by remember { mutableStateOf(c.budgetMonthly?.toPlainString()?.replace('.', ',') ?: "") }
@@ -149,6 +150,11 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, all: List<Catego
                 val parents = all.filter { it.parentId == null && it.kind == kind && it.id != c.id && it.systemKey == null }
                 if (all.none { it.parentId == c.id && c.id != 0L } && parents.isNotEmpty())
                     DropdownField("Sottocategoria di", parents.firstOrNull { it.id == parentId }, parents, { it.name }, { parentId = it.id }, nullLabel = "Nessuna (categoria principale)", onNull = { parentId = null })
+                if (kind == TxKind.SPESA) {
+                    Text("Natura della spesa", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf<Pair<SpendNature?, String>>(null to "Non definita") + SpendNature.entries.map { it to it.label }, nature, { nature = it })
+                    Text(nature?.hint ?: "Aiuta a capire dove si può risparmiare: le spese discrezionali sono le prime da guardare.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text("Icona", style = MaterialTheme.typography.labelLarge)
                 val autoKey = CategoryIcons.defaultFor(name, kind, c.systemKey)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -182,7 +188,7 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, all: List<Catego
             }
         },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
-            vm.save(c.copy(name = name, kind = kind, color = color, icon = icon, parentId = parentId?.takeIf { p -> all.any { it.id == p && it.kind == kind } }, flexible = flexible, active = active, budgetMonthly = parseAmountOrNull(budget)?.takeIf { it.signum() > 0 })); onDismiss() }) { Text("Salva") } },
+            vm.save(c.copy(name = name, kind = kind, color = color, icon = icon, nature = if (kind == TxKind.SPESA) nature else null, parentId = parentId?.takeIf { p -> all.any { it.id == p && it.kind == kind } }, flexible = flexible, active = active, budgetMonthly = parseAmountOrNull(budget)?.takeIf { it.signum() > 0 })); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
     if (confirmDelete) ConfirmDialog("Eliminare \"${c.name}\"?", "Le regole e le assegnazioni manuali collegate vengono rimosse; i movimenti tornano alla classificazione automatica (\"Altro\" se nessuna regola corrisponde).", "Elimina", { vm.delete(c.id); onDismiss() }, { confirmDelete = false }, destructive = true)
 }

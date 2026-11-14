@@ -41,6 +41,7 @@ data class CategoryDetail(
     /** Budget proposto: media degli ultimi mesi completi, arrotondata a 5 €. */
     val suggestedBudget: BigDecimal?,
     val referenceMonth: YearMonth,
+    val suggestedNature: NatureSuggestion? = null,
 ) {
     val delta: BigDecimal? get() = previousTotal?.let { total - it }
     val changePercent: BigDecimal? get() = previousTotal?.let { prev -> it.spese.domain.simulation.Trends.changePercent(prev, total) }
@@ -105,6 +106,8 @@ object CategoryDetailCalculator {
             filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + it.spese.core.common.Dates.monthLabelLong(YearMonth.from(prevRange.first))
             else -> "rispetto al periodo precedente"
         }
-        return CategoryDetail(cat, kids, total, prevTotal, cur.size, Money.percent(total, kindTotal), prevLabel, months, avg, merchants, drivers, subs, budget, suggested, ref)
+        val suggestedNature = if (cat.kind != TxKind.SPESA) null
+            else NatureSuggester.suggest(listOf(cat), accTx.filter { it.categoryId == cat.id }, RecurringDetector.detect(accTx.filter { it.categoryId == cat.id })).values.firstOrNull()
+        return CategoryDetail(cat, kids, total, prevTotal, cur.size, Money.percent(total, kindTotal), prevLabel, months, avg, merchants, drivers, subs, budget, suggested, ref, suggestedNature)
     }
 }

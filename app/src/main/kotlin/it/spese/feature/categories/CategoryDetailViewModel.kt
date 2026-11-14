@@ -43,5 +43,9 @@ class CategoryDetailViewModel @Inject constructor(
     fun setBudget(value: BigDecimal?) = viewModelScope.launch {
         try { categories.setBudget(categoryId, value); messenger.show(if (value == null) "Budget rimosso" else "Budget impostato") } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
+    fun setNature(n: it.spese.core.model.SpendNature?) = viewModelScope.launch {
+        val c = categories.getAll().firstOrNull { it.id == categoryId } ?: return@launch
+        try { categories.update(c.copy(nature = n)) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
     fun update(c: Category) = viewModelScope.launch { try { save(c) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") } }
 }

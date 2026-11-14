@@ -3,6 +3,7 @@ package it.spese.feature.categories
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -35,6 +36,7 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
     val st by vm.state.collectAsStateWithLifecycle()
     val m = st.model
     var kind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
+    var autoNature by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         LargeHeader("Categorie", menu = menu, actions = { RoundIconButton(Icons.Default.Tune, "Gestione: categorie, regole e da fare", { onManage(0) }) })
         if (!st.data.loaded || m == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return@Column }
@@ -64,9 +66,13 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
                     }
                 }
             }
+            if (kind == TxKind.SPESA) {
+                val pending = st.data.categories.filter { it.kind == TxKind.SPESA && it.active && it.nature == null && it.systemKey == null && it.parentId == null && m.natureSuggestions.containsKey(it.id) }
+                item { NatureCard(m.natureTotals, pending.size, { autoNature = true }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            }
             if (rows.isEmpty()) item { Text("Nessun movimento di questo tipo nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(rows, key = { "r-$kind-${it.category?.id}" }) { r ->
-                CategoryRankRow(r, kind, maxTotal, { r.category?.id?.let(onOpenCategory) },
+                CategoryRankRow(r, kind, maxTotal, { r.category?.id?.let(onOpenCategory) }, showNature = kind == TxKind.SPESA,
                     budget = if (kind == TxKind.SPESA && st.filter.period == it.spese.domain.finance.Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
             }
             if (idle.isNotEmpty()) {
@@ -80,5 +86,24 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
                 }
             }
         }
+    }
+    if (autoNature && m != null) {
+        val pending = st.data.categories.filter { it.kind == TxKind.SPESA && it.active && it.nature == null && it.systemKey == null && it.parentId == null }
+            .mapNotNull { c -> m.natureSuggestions[c.id]?.let { c to it } }
+        AlertDialog(onDismissRequest = { autoNature = false }, title = { Text("Natura delle spese") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Proposta dai tuoi dati: Fissa se si ripete ogni mese, Necessaria per le spese di base, Discrezionale per il resto. Potrai correggerla categoria per categoria.", style = MaterialTheme.typography.bodySmall)
+                    pending.forEach { (c, sug) ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            CategoryAvatar(c, size = 32)
+                            Column(Modifier.weight(1f)) { Text(c.name, style = MaterialTheme.typography.titleSmall, maxLines = 1); Text(sug.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            Text(sug.nature.label, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { vm.applyNatures(pending.associate { it.first.id to it.second.nature }); autoNature = false }) { Text("Imposta tutte") } },
+            dismissButton = { TextButton(onClick = { autoNature = false }) { Text("Annulla") } })
     }
 }

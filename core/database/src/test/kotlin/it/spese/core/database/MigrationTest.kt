@@ -95,4 +95,18 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
         db.close()
     }
+
+    @Test fun `la migrazione 3-4 aggiunge la natura (NULL) e conserva sottocategorie e icone`() {
+        helper.createDatabase("test-nature", 3).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt, icon, parentId) VALUES ('Casa', 'spesa', 0, 4286611584, 1, 0, 0, 0, 'home', NULL)")
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt, icon, parentId) VALUES ('Bollette', 'spesa', 0, 4286611584, 1, 1, 0, 0, NULL, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-nature", 4, true, AppDatabase.MIGRATION_3_4)
+        db.query("SELECT name, parentId, nature FROM categories ORDER BY id").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Casa", c.getString(0)); assertTrue(c.isNull(2))
+            assertTrue(c.moveToNext()); assertEquals(1L, c.getLong(1)); assertTrue(c.isNull(2))
+        }
+        db.close()
+    }
 }

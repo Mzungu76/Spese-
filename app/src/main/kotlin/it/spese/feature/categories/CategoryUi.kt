@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
 import it.spese.core.designsystem.theme.SpeseTheme
+import it.spese.core.model.SpendNature
 import it.spese.core.model.TxKind
 import it.spese.domain.finance.BudgetUsage
 import it.spese.domain.finance.CategoryRow
@@ -42,7 +44,7 @@ fun ChangeChip(row: CategoryRow, kind: TxKind, modifier: Modifier = Modifier) {
  * Con un budget impostato mostra anche quanto ne è stato usato nel mese di riferimento.
  */
 @Composable
-fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClick: () -> Unit, modifier: Modifier = Modifier, budget: BudgetUsage? = null) {
+fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClick: () -> Unit, modifier: Modifier = Modifier, budget: BudgetUsage? = null, showNature: Boolean = false) {
     val c = row.category
     val color = c?.color?.toColor() ?: MaterialTheme.colorScheme.outline
     Row(modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -52,7 +54,7 @@ fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClic
             Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                 Box(Modifier.fillMaxWidth((row.total.toFloat() / maxTotal.toFloat().coerceAtLeast(1f)).coerceIn(0.03f, 1f)).height(4.dp).background(color))
             }
-            Text(buildString { append(row.percentOfExpense.toPlainString().replace('.', ',')).append("% · ").append(row.count).append(if (row.count == 1) " movimento" else " movimenti") },
+            Text(buildString { append(row.percentOfExpense.toPlainString().replace('.', ',')).append("% · ").append(row.count).append(if (row.count == 1) " movimento" else " movimenti"); if (showNature) c?.nature?.let { append(" · ").append(it.label) } },
                 Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             if (budget != null) {
                 UsageBar(budget.spent.toFloat() / budget.budget.toFloat().coerceAtLeast(1f), Modifier.padding(top = 6.dp), over = budget.exceeded)
@@ -71,4 +73,39 @@ fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClic
 fun PeriodPills(period: Period, onSet: (Period) -> Unit, modifier: Modifier = Modifier) {
     val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
     PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
+}
+
+private fun natureColorOf(n: SpendNature?, scheme: androidx.compose.material3.ColorScheme, warn: androidx.compose.ui.graphics.Color) = when (n) {
+    SpendNature.FIXED -> scheme.primary; SpendNature.ESSENTIAL -> scheme.tertiary; SpendNature.DISCRETIONARY -> warn; null -> scheme.outline
+}
+
+/** Spesa del periodo ripartita per natura: barra a segmenti e legenda. Con categorie da definire offre l'impostazione automatica. */
+@Composable
+fun NatureCard(totals: Map<SpendNature?, BigDecimal>, pendingCount: Int, onAuto: () -> Unit, modifier: Modifier = Modifier) {
+    val sum = totals.values.fold(BigDecimal.ZERO) { a, b -> a + b }
+    if (sum.signum() <= 0) return
+    val warn = SpeseTheme.finance.warning
+    val scheme = MaterialTheme.colorScheme
+    val order = listOf<SpendNature?>(SpendNature.FIXED, SpendNature.ESSENTIAL, SpendNature.DISCRETIONARY, null)
+    SectionCard(modifier, title = "Su cosa puoi incidere") {
+        Row(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)).background(scheme.surfaceVariant)) {
+            order.forEach { n -> val v = totals[n] ?: BigDecimal.ZERO; if (v.signum() > 0) Box(Modifier.weight(v.toFloat()).fillMaxHeight().background(natureColorOf(n, scheme, warn))) }
+        }
+        order.forEach { n ->
+            val v = totals[n] ?: BigDecimal.ZERO
+            if (v.signum() > 0) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(natureColorOf(n, scheme, warn)))
+                Column(Modifier.weight(1f)) {
+                    Text(n?.label ?: "Da definire", style = MaterialTheme.typography.titleSmall)
+                    Text(when (n) { SpendNature.FIXED -> "Difficile da ridurre senza cambiare contratto o abitudine"; SpendNature.ESSENTIAL -> "Si può ottimizzare, non eliminare"; SpendNature.DISCRETIONARY -> "Il margine di risparmio più concreto"; null -> "Categorie senza natura impostata" },
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    MoneyText(v, decimals = false, colored = false, style = MaterialTheme.typography.titleSmall)
+                    Text(Money.percent(v, sum, 0).toPlainString() + "%", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                }
+            }
+        }
+        if (pendingCount > 0) TextButton(onClick = onAuto, contentPadding = PaddingValues(0.dp)) { Text("Proponi la natura di $pendingCount categorie") }
+    }
 }

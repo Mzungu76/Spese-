@@ -2,6 +2,7 @@ package it.spese.domain.finance
 
 import it.spese.core.common.Dates
 import it.spese.core.common.Money
+import it.spese.core.model.SpendNature
 import it.spese.core.model.Account
 import it.spese.core.model.Category
 import it.spese.core.model.Transaction
@@ -68,6 +69,10 @@ data class DashboardModel(
     val incomeCategories: List<CategoryRow> = emptyList(),
     /** Titolo del confronto ("mese precedente" / "periodo precedente"); null se non confrontabile. */
     val previousLabel: String? = null,
+    /** Spesa del periodo per natura (chiave null = natura non definita). */
+    val natureTotals: Map<SpendNature?, BigDecimal> = emptyMap(),
+    /** Natura proposta per le categorie di spesa (per id). */
+    val natureSuggestions: Map<Long, NatureSuggestion> = emptyMap(),
 ) {
     /** Variazioni percentuali rispetto al periodo precedente (null se non confrontabile). */
     val incomeChange: BigDecimal? get() = previous?.let { Trends.changePercent(it.income, stats.income) }
@@ -133,6 +138,7 @@ object DashboardCalculator {
             unclassified = data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO },
             topChanges = if (previous == null) emptyList() else Trends.categoryVariation(previous.byCategory, s.byCategory).take(3),
             incomeCategories = incomeCats, previousLabel = prevLabel,
+            natureTotals = NatureSuggester.breakdown(s.byCategory, byId), natureSuggestions = NatureSuggester.suggest(data.categories, accTx, rec),
         )
     }
 

@@ -6,6 +6,7 @@ import it.spese.core.model.Category
 import it.spese.core.model.Due
 import it.spese.core.model.Rule
 import it.spese.core.model.SavingsGoal
+import it.spese.core.model.SpendNature
 import it.spese.core.model.Transaction
 import it.spese.core.model.TxKind
 import it.spese.core.model.TxOrigin
@@ -44,7 +45,7 @@ object LegacyMapper {
         val cats = ArrayList<Category>()
         var nextId = 1L
         s.cats.distinctBy { it.n }.forEachIndexed { i, c ->
-            cats.add(Category(nextId++, c.n, c.k, c.f, parseColor(c.c), s.budget[c.n]?.takeIf { it.signum() > 0 }, c.active, i, null, c.icon))
+            cats.add(Category(nextId++, c.n, c.k, c.f, parseColor(c.c), s.budget[c.n]?.takeIf { it.signum() > 0 }, c.active, i, null, c.icon, null, SpendNature.fromKey(c.nature)))
         }
         fun ensure(name: String, kind: TxKind, key: String) {
             val existing = cats.indexOfFirst { it.name == name && it.kind == kind }
@@ -91,7 +92,7 @@ object LegacyMapper {
             LegacyTx(it.externalId, it.bookingDate, it.valueDate, it.amount, it.description, acc[it.accountId] ?: "Conto principale",
                 it.notes, it.merchantOverride, it.origin.name, it.documentId?.let { id -> docNames[id] })
         }
-        val cats = d.categories.sortedBy { it.sortOrder }.map { LegacyCat(it.name, it.kind, it.flexible, colorHex(it.color), it.active, it.icon, it.parentId?.let { pid -> d.categories.firstOrNull { p -> p.id == pid }?.name }) }
+        val cats = d.categories.sortedBy { it.sortOrder }.map { LegacyCat(it.name, it.kind, it.flexible, colorHex(it.color), it.active, it.icon, it.parentId?.let { pid -> d.categories.firstOrNull { p -> p.id == pid }?.name }, it.nature?.key) }
         val rules = d.rules.sortedBy { it.priority }.mapNotNull { r ->
             cat[r.categoryId]?.let { LegacyRule(r.id, r.keyword, it, r.sign, r.min, r.max) }
         }
