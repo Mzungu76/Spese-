@@ -54,4 +54,18 @@ class CategoryIconsTest {
         val snap = LegacyMapper.toDomain(back.state)
         assertEquals("pets", snap.categories.first { it.name == back.state.cats[0].n }.icon)
     }
+
+    @Test fun `la sottocategoria sopravvive al backup (padre per nome) e senza padre il formato non cambia`() {
+        val env = Fixtures.backupA
+        assertFalse(LegacyBackupCodec.encode(env).contains("\"pc\""))
+        val a = env.state.cats[0].n; val b = env.state.cats.first { it.n != a && it.k == env.state.cats[0].k }.n
+        val st = env.state.copy(cats = env.state.cats.map { if (it.n == b) it.copy(parent = a) else it })
+        val back = LegacyBackupCodec.parse(LegacyBackupCodec.encode(env.copy(state = st)))
+        assertEquals(a, back.state.cats.first { it.n == b }.parent)
+        val snap = LegacyMapper.toDomain(back.state)
+        val parent = snap.categories.first { it.name == a }; val child = snap.categories.first { it.name == b }
+        assertEquals(parent.id, child.parentId); assertNull(parent.parentId)
+        // e ritorno
+        assertEquals(a, LegacyMapper.fromDomain(snap).cats.first { it.n == b }.parent)
+    }
 }

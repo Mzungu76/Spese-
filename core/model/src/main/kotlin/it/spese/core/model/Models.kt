@@ -71,6 +71,8 @@ data class Category(
     val systemKey: String? = null,
     /** Chiave dell'icona scelta (vedi [CategoryIcons]); null = icona di default dedotta dal nome. */
     val icon: String? = null,
+    /** Categoria di cui questa è sottocategoria (un solo livello, stesso tipo); null = categoria principale. */
+    val parentId: Long? = null,
 ) {
     /** Icona effettiva: quella scelta, se ancora nel catalogo, altrimenti il default. */
     val iconKey: String get() = CategoryIcons.resolve(this)

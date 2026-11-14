@@ -42,10 +42,14 @@ object AlertEngine {
         return by
     }
 
+    /** Speso nel mese da una categoria, sottocategorie comprese. */
+    fun spentWithChildren(by: Map<Long?, BigDecimal>, c: Category, categories: List<Category>): BigDecimal =
+        CategoryTree.withChildren(c.id, categories).fold(BigDecimal.ZERO) { a, id -> a + (by[id] ?: BigDecimal.ZERO) }
+
     fun budgetUsage(list: List<Transaction>, categories: List<Category>, month: YearMonth): List<BudgetUsage> {
         val by = monthlySpending(list, month)
         return categories.filter { (it.budgetMonthly ?: BigDecimal.ZERO).signum() > 0 }
-            .map { BudgetUsage(it, by[it.id] ?: BigDecimal.ZERO, it.budgetMonthly!!) }
+            .map { BudgetUsage(it, spentWithChildren(by, it, categories), it.budgetMonthly!!) }
     }
 
     fun goalMonthly(goal: SavingsGoal): BigDecimal =
@@ -68,7 +72,7 @@ object AlertEngine {
         for (c in categories) {
             val b = c.budgetMonthly ?: continue
             if (b.signum() <= 0) continue
-            val sp = by[c.id] ?: BigDecimal.ZERO
+            val sp = spentWithChildren(by, c, categories)
             val proj = if (dd < dim) sp.multiply(BigDecimal(dim)).divide(BigDecimal(dd), 10, RoundingMode.HALF_UP) else sp
             if (sp >= b) out.add(AlertItem(2, AlertKind.BUDGET_EXCEEDED, "Budget \"${c.name}\" superato ($label): ${Money.eur0(sp)} su ${Money.eur0(b)}", "bud:${c.id}"))
             else if (sp >= b.multiply(BigDecimal("0.8")))

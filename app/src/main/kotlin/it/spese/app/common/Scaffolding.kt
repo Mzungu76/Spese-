@@ -65,6 +65,16 @@ fun LargeHeader(title: String, modifier: Modifier = Modifier, menu: DataMenu? = 
     }
 }
 
+/** Intestazione di una schermata secondaria: freccia indietro, titolo grande e azioni. */
+@Composable
+fun BackHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        RoundIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Indietro", onBack)
+        Text(title, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        actions()
+    }
+}
+
 /** Pulsante tondo grigio scuro con icona (cerca, filtri, campanella…). */
 @Composable
 fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false, primary: Boolean = false) {

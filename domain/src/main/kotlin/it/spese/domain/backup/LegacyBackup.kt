@@ -31,7 +31,7 @@ data class LegacyTx(
     val id: String, val d: LocalDate, val v: LocalDate, val a: BigDecimal, val t: String, val acc: String,
     val notes: String = "", val merchant: String? = null, val origin: String? = null, val doc: String? = null,
 )
-data class LegacyCat(val n: String, val k: TxKind, val f: Boolean, val c: String, val active: Boolean = true, val icon: String? = null)
+data class LegacyCat(val n: String, val k: TxKind, val f: Boolean, val c: String, val active: Boolean = true, val icon: String? = null, val parent: String? = null)
 data class LegacyRule(val id: Long, val kw: String, val cat: String, val sg: AmountSign, val min: BigDecimal, val max: BigDecimal)
 data class LegacyDue(val id: String, val name: String, val amt: BigDecimal, val next: LocalDate, val freq: DueFrequency)
 data class LegacyGoal(val mode: GoalMode, val value: BigDecimal, val months: Int, val income: BigDecimal?)
@@ -102,7 +102,7 @@ object LegacyBackupCodec {
         val cats = catArr.mapNotNull { e ->
             val o = e.obj() ?: return@mapNotNull null
             val n = o["n"].str()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            LegacyCat(n, TxKind.fromKey(o["k"].str()) ?: TxKind.SPESA, flag(o["f"]), o["c"].str() ?: "#888888", o["act"]?.let { flag(it) } ?: true, o["ic"].str()?.takeIf { it.isNotBlank() })
+            LegacyCat(n, TxKind.fromKey(o["k"].str()) ?: TxKind.SPESA, flag(o["f"]), o["c"].str() ?: "#888888", o["act"]?.let { flag(it) } ?: true, o["ic"].str()?.takeIf { it.isNotBlank() }, o["pc"].str()?.takeIf { it.isNotBlank() })
         }
         val rules = ruleArr.mapIndexedNotNull { i, e ->
             val o = e.obj() ?: return@mapIndexedNotNull null
@@ -183,7 +183,7 @@ object LegacyBackupCodec {
                     t.merchant?.let { put("m", it) }; t.origin?.let { put("o", it) }; t.doc?.let { put("doc", it) }
                 }) } })
                 put("cats", buildJsonArray { s.cats.forEach { c -> add(buildJsonObject {
-                    put("n", c.n); put("k", c.k.key); put("f", if (c.f) 1 else 0); put("c", c.c); if (!c.active) put("act", 0); c.icon?.let { put("ic", it) }
+                    put("n", c.n); put("k", c.k.key); put("f", if (c.f) 1 else 0); put("c", c.c); if (!c.active) put("act", 0); c.icon?.let { put("ic", it) }; c.parent?.let { put("pc", it) }
                 }) } })
                 put("rules", buildJsonArray { s.rules.forEach { r -> add(buildJsonObject {
                     put("id", r.id); put("kw", r.kw); put("cat", r.cat); put("sg", r.sg.key); put("min", jnum(r.min)); put("max", jnum(r.max))

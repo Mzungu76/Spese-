@@ -19,6 +19,7 @@ import it.spese.core.designsystem.theme.SpeseTheme
 import it.spese.core.model.TxKind
 import it.spese.domain.finance.BudgetUsage
 import it.spese.domain.finance.CategoryRow
+import it.spese.domain.finance.Period
 import java.math.BigDecimal
 
 /** Variazione rispetto al periodo precedente: freccia e percentuale; "nuova" se prima era a zero. Gli aumenti significativi di spesa sono evidenziati. */
@@ -63,4 +64,11 @@ fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClic
             ChangeChip(row, kind)
         }
     }
+}
+
+/** Selettore del periodo condiviso (Mese / 3 mesi / Anno / Tutto): i periodi non previsti ricadono su "Tutto". */
+@Composable
+fun PeriodPills(period: Period, onSet: (Period) -> Unit, modifier: Modifier = Modifier) {
+    val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
+    PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
 }

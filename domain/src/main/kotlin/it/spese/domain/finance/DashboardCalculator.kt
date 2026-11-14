@@ -90,13 +90,18 @@ object DashboardCalculator {
             filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + Dates.monthLabelLong(YearMonth.from(prevRange.first))
             else -> "rispetto al periodo precedente"
         }
-        val cats = s.topCategories.map { (id, v) ->
-            CategoryRow(data.categoriesById[id], v, Money.percent(v, s.expense), v.divide(mo, 10, RoundingMode.HALF_UP), filtered.count { it.categoryId == id && it.kind == TxKind.SPESA },
-                previous?.let { it.byCategory[id] ?: BigDecimal.ZERO })
+        // le sottocategorie confluiscono nella categoria principale
+        val byId = data.categoriesById
+        fun top(m: Map<Long?, BigDecimal>) = CategoryTree.rollup(m, byId).entries.filter { it.value.signum() > 0 }.sortedByDescending { it.value }
+        val prevExp = previous?.let { CategoryTree.rollup(it.byCategory, byId) }
+        val prevInc = previous?.let { CategoryTree.rollup(it.incomeByCategory, byId) }
+        val cats = top(s.byCategory).map { (id, v) ->
+            CategoryRow(byId[id], v, Money.percent(v, s.expense), v.divide(mo, 10, RoundingMode.HALF_UP),
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.SPESA }, prevExp?.let { it[id] ?: BigDecimal.ZERO })
         }
-        val incomeCats = s.topIncomeCategories.map { (id, v) ->
-            CategoryRow(data.categoriesById[id], v, Money.percent(v, s.income), v.divide(mo, 10, RoundingMode.HALF_UP), filtered.count { it.categoryId == id && it.kind == TxKind.ENTRATA },
-                previous?.let { it.incomeByCategory[id] ?: BigDecimal.ZERO })
+        val incomeCats = top(s.incomeByCategory).map { (id, v) ->
+            CategoryRow(byId[id], v, Money.percent(v, s.income), v.divide(mo, 10, RoundingMode.HALF_UP),
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.ENTRATA }, prevInc?.let { it[id] ?: BigDecimal.ZERO })
         }
         val accRows = data.accounts.map { a ->
             val q = StatsEngine.compute(filtered.filter { it.accountId == a.id })

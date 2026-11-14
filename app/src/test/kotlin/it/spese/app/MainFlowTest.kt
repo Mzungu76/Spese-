@@ -119,8 +119,13 @@ class MainFlowTest {
         filters.update { f -> f.copy(period = it.spese.domain.finance.Period.All) }
         goTab("Movimenti"); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
+        // dettaglio di una categoria: esercenti e andamento
+        compose.onNodeWithText("Supermercato e alimentari").performClick(); waitText("Voci di spesa")
+        compose.onNodeWithContentDescription("Indietro").performClick(); waitText("Regole · 32")
+        // Gestione: regole e "Da fare"
         compose.onNodeWithText("Regole · 32").performClick(); waitText("Vince la prima regola", substring = true)
         compose.onNodeWithText("Da fare", substring = true).performClick(); compose.waitForIdle()
+        compose.onNodeWithContentDescription("Indietro").performClick(); compose.waitForIdle()
         goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
         goTab("Panoramica")
         compose.onNode(hasContentDescription("Avvisi", substring = true)).performClick()

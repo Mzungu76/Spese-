@@ -138,6 +138,11 @@ class BackupRepositoryImpl @Inject constructor(
             else cd.insert(CategoryEntity(name = c.n, kind = c.k.key, flexible = c.f, color = LegacyMapper.parseColor(c.c), active = c.active,
                 sortOrder = if (replace) i else order++, updatedAt = mt, icon = c.icon))
         }
+        // sottocategorie (il backup indica il padre per nome)
+        s.cats.filter { it.parent != null }.forEach { c ->
+            val child = cd.findByName(c.n); val par = cd.findByName(c.parent!!)
+            if (child != null && par != null && child.id != par.id && par.parentId == null && par.kind == child.kind) cd.setParent(child.id, par.id)
+        }
         suspend fun ensure(name: String, kind: TxKind, key: String) {
             val all = cd.getAll()
             val existing = all.firstOrNull { it.systemKey == key } ?: all.firstOrNull { it.name == name && it.kind == kind.key }
