@@ -77,8 +77,18 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
             }
             if (rows.isEmpty()) item { Text("Nessun movimento di questo tipo nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(rows, key = { "r-$kind-${it.category?.id}" }) { r ->
-                CategoryRankRow(r, kind, maxTotal, { r.category?.id?.let(onOpenCategory) }, showNature = kind == TxKind.SPESA,
-                    budget = if (kind == TxKind.SPESA && st.filter.period == it.spese.domain.finance.Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
+                var open by rememberSaveable(r.category?.id, kind) { mutableStateOf(false) }
+                Column {
+                    CategoryRankRow(r, kind, maxTotal, { r.category?.id?.let(onOpenCategory) }, showNature = kind == TxKind.SPESA,
+                        budget = if (kind == TxKind.SPESA && st.filter.period == it.spese.domain.finance.Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
+                    if (r.children.isNotEmpty()) {
+                        TextButton(onClick = { open = !open }, Modifier.padding(start = 72.dp)) {
+                            Icon(if (open) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, Modifier.size(18.dp))
+                            Text(if (open) "  Nascondi il dettaglio" else "  Dettaglio: ${r.children.count { !it.own }} sottocategorie")
+                        }
+                        if (open) ChildRows(r, kind, onOpenCategory)
+                    }
+                }
             }
             if (idle.isNotEmpty()) {
                 item { Text("SENZA MOVIMENTI NEL PERIODO", Modifier.padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 4.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, letterSpacing = 0.6.sp) }

@@ -113,7 +113,7 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         OutlinedTextField(f.notes, { v -> vm.edit { it.copy(notes = v) } }, Modifier.fillMaxWidth(), label = { Text("Note (IVA e voci riconosciute)") }, minLines = 2)
         d.vat?.let { Text("IVA riconosciuta: ${Money.eur(it)}", style = MaterialTheme.typography.bodyMedium) }
         if (d.items.isNotEmpty()) SectionCard(title = "Voci riconosciute (${d.items.size})") {
-            Text("Assegna a ogni voce la sua categoria (anche una sottocategoria): lo scontrino verrà diviso e vedrai nel dettaglio dove va la spesa. Le voci senza scelta restano nella categoria principale.",
+            Text("Assegna a ogni voce la sua categoria (anche una sottocategoria): lo scontrino verrà diviso e vedrai nel dettaglio dove va la spesa. Le scelte fatte vengono ricordate e riproposte agli scontrini successivi; le voci senza scelta restano nella categoria principale.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             d.items.forEachIndexed { i, item ->
                 var open by remember { mutableStateOf(false) }

@@ -208,3 +208,27 @@ fun ComparisonSection(c: it.spese.domain.finance.CategoryComparison, onRemove: (
         }
     }
 }
+
+
+/** Dettaglio per sottocategoria sotto la riga di una categoria principale (la quota "Altro" è ciò che non ha una sottocategoria). */
+@Composable
+fun ChildRows(row: CategoryRow, kind: TxKind, onOpen: (Long) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(start = 72.dp, end = 24.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        row.children.forEach { ch ->
+            Row(Modifier.fillMaxWidth().clickable { if (!ch.own) onOpen(ch.category.id) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CategoryAvatar(ch.category, size = 32)
+                Column(Modifier.weight(1f)) {
+                    Text(if (ch.own) "Altro (senza sottocategoria)" else ch.category.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        Box(Modifier.fillMaxWidth((ch.percentOfParent.toFloat() / 100f).coerceIn(0.03f, 1f)).height(3.dp).background(ch.category.color.toColor()))
+                    }
+                    Text(ch.percentOfParent.toPlainString().replace('.', ',') + "% della categoria", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    MoneyText(ch.total, decimals = false, colored = kind == TxKind.ENTRATA, style = MaterialTheme.typography.titleSmall)
+                    ch.delta?.let { d -> if (d.signum() != 0) DeltaBadge(d, upIsGood = kind == TxKind.ENTRATA) }
+                }
+            }
+        }
+    }
+}

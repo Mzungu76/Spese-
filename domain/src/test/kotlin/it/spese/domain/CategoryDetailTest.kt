@@ -79,3 +79,31 @@ class CategoryDetailTest {
         assertEquals(0, d.total.signum()); assertTrue(d.months.isEmpty()); assertNull(d.suggestedBudget)
     }
 }
+
+class SubcategoryBreakdownTest {
+    private val cats = listOf(
+        Category(1, "Supermercato", TxKind.SPESA, false, 0),
+        Category(2, "Frutta", TxKind.SPESA, false, 0, parentId = 1), Category(3, "Bevande", TxKind.SPESA, false, 0, parentId = 1),
+        Category(4, "Bar", TxKind.SPESA, false, 0),
+    )
+    private var n = 0L
+    private fun tx(date: String, amount: Int, cat: Long) = Transaction(++n, "e$n", 1, LocalDate.parse(date), LocalDate.parse(date), "x", BigDecimal(amount), TxKind.SPESA, cat)
+    private val txs = listOf(tx("2026-10-02", -30, 2), tx("2026-10-03", -10, 3), tx("2026-10-04", -10, 1), tx("2026-10-05", -5, 4), tx("2026-09-04", -20, 2))
+    private val data = AppData(transactions = txs, ledger = txs, categories = cats, accounts = listOf(Account(1, "C")), loaded = true)
+
+    @Test fun `la classifica mostra il dettaglio per sottocategoria con la quota senza sottocategoria`() {
+        val m = DashboardCalculator.compute(data, TxFilter(period = Period.CurrentMonth), LocalDate.parse("2026-10-14"))
+        val super_ = m.categories.first { it.category?.id == 1L }
+        assertEquals(0, BigDecimal(50).compareTo(super_.total))
+        assertEquals(listOf("Frutta", "Bevande", "Supermercato"), super_.children.map { it.category.name })
+        assertTrue(super_.children.last().own)
+        assertEquals(0, BigDecimal(30).compareTo(super_.children[0].total)); assertEquals(0, BigDecimal(10).compareTo(super_.children[0].delta))
+        assertTrue(m.categories.first { it.category?.id == 4L }.children.isEmpty())
+    }
+
+    @Test fun `le tendenze includono le sottocategorie`() {
+        val t = CategoryTrendEngine.compute(data, TxFilter(period = Period.All), LocalDate.parse("2026-10-14"))!!
+        val s = t.categories.first { it.category?.id == 1L }
+        assertEquals(setOf("Frutta", "Bevande"), s.children.map { it.category!!.name }.toSet())
+    }
+}

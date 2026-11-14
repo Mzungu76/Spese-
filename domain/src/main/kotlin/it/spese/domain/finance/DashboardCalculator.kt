@@ -24,6 +24,8 @@ import it.spese.domain.simulation.Trends
 data class CategoryRow(
     val category: Category?, val total: BigDecimal, val percentOfExpense: BigDecimal, val monthlyAvg: BigDecimal, val count: Int,
     val previousTotal: BigDecimal? = null,
+    /** Dettaglio per sottocategoria (vuoto se la categoria non ne ha o non ne usa nel periodo). */
+    val children: List<ChildRow> = emptyList(),
 ) {
     val delta: BigDecimal? get() = previousTotal?.let { total - it }
     val changePercent: BigDecimal? get() = previousTotal?.let { Trends.changePercent(it, total) }
@@ -35,6 +37,11 @@ data class CategoryRow(
         return if (p == null) total >= BigDecimal(50) else p >= BigDecimal(15)
     }
 }
+/** Parte di una categoria principale: una sua sottocategoria, oppure (`own`) i movimenti messi direttamente nella principale. */
+data class ChildRow(val category: Category, val total: BigDecimal, val percentOfParent: BigDecimal, val previousTotal: BigDecimal?, val own: Boolean = false) {
+    val delta: BigDecimal? get() = previousTotal?.let { total - it }
+}
+
 data class AccountRow(val account: Account, val income: BigDecimal, val expense: BigDecimal, val transfers: BigDecimal, val balance: BigDecimal)
 
 data class UpcomingItem(val name: String, val amount: BigDecimal, val date: LocalDate, val daysLeft: Int, val manual: Boolean)
@@ -102,13 +109,23 @@ object DashboardCalculator {
         fun top(m: Map<Long?, BigDecimal>) = CategoryTree.rollup(m, byId).entries.filter { it.value.signum() > 0 }.sortedByDescending { it.value }
         val prevExp = previous?.let { CategoryTree.rollup(it.byCategory, byId) }
         val prevInc = previous?.let { CategoryTree.rollup(it.incomeByCategory, byId) }
+        fun childrenOf(id: Long?, parentTotal: BigDecimal, cur: Map<Long?, BigDecimal>, prev: Map<Long?, BigDecimal>?): List<ChildRow> {
+            val parent = byId[id] ?: return emptyList()
+            val kids = cur.filter { (cid, v) -> cid != id && v.signum() > 0 && CategoryTree.rootId(cid, byId) == id }
+            if (kids.isEmpty()) return emptyList()
+            val rows = kids.mapNotNull { (cid, v) -> byId[cid]?.let { ChildRow(it, v, Money.percent(v, parentTotal), prev?.let { p -> p[cid] ?: BigDecimal.ZERO }) } }.toMutableList()
+            cur[id]?.takeIf { it.signum() > 0 }?.let { rows += ChildRow(parent, it, Money.percent(it, parentTotal), prev?.let { p -> p[id] ?: BigDecimal.ZERO }, own = true) }
+            return rows.sortedByDescending { it.total }
+        }
         val cats = top(s.byCategory).map { (id, v) ->
             CategoryRow(byId[id], v, Money.percent(v, s.expense), v.divide(mo, 10, RoundingMode.HALF_UP),
-                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.SPESA }, prevExp?.let { it[id] ?: BigDecimal.ZERO })
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.SPESA }, prevExp?.let { it[id] ?: BigDecimal.ZERO },
+                childrenOf(id, v, s.byCategory, previous?.byCategory))
         }
         val incomeCats = top(s.incomeByCategory).map { (id, v) ->
             CategoryRow(byId[id], v, Money.percent(v, s.income), v.divide(mo, 10, RoundingMode.HALF_UP),
-                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.ENTRATA }, prevInc?.let { it[id] ?: BigDecimal.ZERO })
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.ENTRATA }, prevInc?.let { it[id] ?: BigDecimal.ZERO },
+                childrenOf(id, v, s.incomeByCategory, previous?.incomeByCategory))
         }
         val accRows = data.accounts.map { a ->
             val q = StatsEngine.compute(filtered.filter { it.accountId == a.id })

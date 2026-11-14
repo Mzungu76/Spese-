@@ -33,7 +33,7 @@ data class ScanForm(
 
 @HiltViewModel
 class ScanViewModel @Inject constructor(
-    private val app: Application, val data: StateFlow<AppData>, private val scan: ScanReceiptUseCase, private val saveReceipt: SaveReceiptUseCase,
+    private val app: Application, val data: StateFlow<AppData>, private val scan: ScanReceiptUseCase, private val saveReceipt: SaveReceiptUseCase, private val memory: it.spese.domain.ocr.ItemMemoryRepository,
     private val deleteDoc: DeleteDocumentUseCase, private val messenger: UiMessenger,
 ) : AndroidViewModel(app) {
     private val _stage = MutableStateFlow<ScanStage>(ScanStage.Capture)
@@ -60,8 +60,10 @@ class ScanViewModel @Inject constructor(
                 d.vat?.let { append("IVA: ").append(Money.eur(it)).append('\n') }
                 if (d.items.isNotEmpty()) append("Voci: ").append(d.items.joinToString("; ") { "${it.description} ${Money.eur(it.amount)}" })
             }.trim()
+            val valid = data.value.categories.filter { c -> c.active && c.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.map { c -> c.id }.toSet()
+            val remembered = it.spese.domain.ocr.ItemMemory.suggest(d.items.map { item -> item.description }, memory.get(), valid)
             _form.value = ScanForm(d.description, d.total?.toPlainString()?.replace('.', ',') ?: "", false, d.date ?: LocalDate.now(),
-                data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = List(d.items.size) { null })
+                data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = remembered)
             _stage.value = ScanStage.Review(r)
         } catch (e: Exception) { _stage.value = ScanStage.Failed(e.message ?: "Riconoscimento non riuscito") }
         finally { if (deleteSource && !source.startsWith("content:")) File(source).delete() }
@@ -79,6 +81,8 @@ class ScanViewModel @Inject constructor(
         try {
             val signed = if (f.isIncome) amt else amt.negate()
             val parts = ReceiptSplitPlanner.plan(amt, r.data.items, f.itemCategories, f.categoryId, !f.isIncome)
+            // l'app ricorda le scelte per le voci: la prossima volta le propone da sola
+            memory.learn(r.data.items.mapIndexedNotNull { i, item -> f.itemCategories.getOrNull(i)?.let { c -> it.spese.domain.ocr.ItemMemory.key(item.description).takeIf { k -> k.isNotBlank() }?.let { k -> k to c } } }.toMap())
             val existing = candidates.value.firstOrNull()?.takeIf { f.attach }
             saveReceipt(TransactionDraft(0, acc, f.date, f.date, f.description, signed, f.categoryId, null, f.notes, r.document.id, it.spese.core.model.TxOrigin.OCR), r.document.id, parts, existing?.id)
             messenger.show(when {

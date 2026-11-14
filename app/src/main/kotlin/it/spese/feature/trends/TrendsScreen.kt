@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -53,7 +54,18 @@ fun TrendsScreen(onBack: () -> Unit, onOpenCategory: (Long) -> Unit, vm: TrendsV
                 }
             }
             r.income?.let { inc -> item(key = "income") { TrendCard(inc, "Entrate", null, Modifier.padding(horizontal = 16.dp)) } }
-            items(r.categories, key = { "t-${it.category?.id}" }) { t -> TrendCard(t, t.category?.name ?: "", t.category?.id?.let { id -> { onOpenCategory(id) } }, Modifier.padding(horizontal = 16.dp)) }
+            items(r.categories, key = { "t-${it.category?.id}" }) { t ->
+                var open by rememberSaveable(t.category?.id) { mutableStateOf(false) }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TrendCard(t, t.category?.name ?: "", t.category?.id?.let { id -> { onOpenCategory(id) } }, Modifier.padding(horizontal = 16.dp))
+                    if (t.children.isNotEmpty()) {
+                        TextButton(onClick = { open = !open }, Modifier.padding(horizontal = 16.dp)) {
+                            Text(if (open) "Nascondi le sottocategorie" else "Tendenze delle sottocategorie (${t.children.size})")
+                        }
+                        if (open) t.children.forEach { c -> TrendCard(c, c.category?.name ?: "", c.category?.id?.let { id -> { onOpenCategory(id) } }, Modifier.padding(start = 32.dp, end = 16.dp)) }
+                    }
+                }
+            }
             if (r.categories.isEmpty()) item { Text("Nessuna spesa nei mesi completi.", Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }

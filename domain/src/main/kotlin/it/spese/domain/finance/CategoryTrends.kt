@@ -42,6 +42,8 @@ data class CategoryTrend(
     val direction: TrendDirection,
     val confidence: Confidence,
     val projections: List<Projection>,
+    /** Tendenze delle singole sottocategorie (solo per le principali che ne hanno con movimenti). */
+    val children: List<CategoryTrend> = emptyList(),
 ) {
     fun projection(months: Int): Projection? = projections.firstOrNull { it.monthsAhead == months }
 }
@@ -108,7 +110,12 @@ object CategoryTrendEngine {
         }
 
         val roots = byId.values.filter { it.kind == TxKind.SPESA && (it.parentId == null || byId[it.parentId] == null) }
-        val cats = roots.map { c -> val ids = CategoryTree.withChildren(c.id, data.categories); trendOf(c, TxKind.SPESA) { it.categoryId in ids } }
+        val cats = roots.map { c ->
+            val ids = CategoryTree.withChildren(c.id, data.categories)
+            val kids = CategoryTree.children(c.id, data.categories).map { k -> trendOf(k, TxKind.SPESA) { it.categoryId == k.id } }
+                .filter { t -> t.months.any { it.second.signum() != 0 } }.sortedByDescending { it.level }
+            trendOf(c, TxKind.SPESA) { it.categoryId in ids }.copy(children = kids)
+        }
             .filter { t -> t.months.any { it.second.signum() != 0 } || t.periodAvg.signum() != 0 }
         val income = trendOf(null, TxKind.ENTRATA) { true }.takeIf { t -> t.months.any { it.second.signum() != 0 } }
 
