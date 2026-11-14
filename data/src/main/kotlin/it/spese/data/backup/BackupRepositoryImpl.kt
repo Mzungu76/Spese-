@@ -88,7 +88,7 @@ class BackupRepositoryImpl @Inject constructor(
                 val quotaName = db.quotas().getAll().associate { it.id to it.name }
                 db.splits().getAll().mapNotNull { sp -> txExt[sp.txId]?.let { NativeSplit(it, sp.categoryId?.let { c -> catName[c] }, Money.fromCents(sp.amountCents), sp.position, sp.auto, sp.quotaId?.let { q -> quotaName[q] }) } }
             },
-            quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled) } },
+            quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled, q.mode, Money.fromCents(q.toleranceCents), q.everyMonths, q.dayFrom, q.dayTo) } },
             reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
         )
         return BackupEnvelope(Instant.now().toString(), Build.MODEL ?: "Android", legacy, extras)
@@ -251,7 +251,7 @@ class BackupRepositoryImpl @Inject constructor(
             extras.quotas.forEach { q ->
                 val cid = cd.findByName(q.category)?.id ?: return@forEach
                 val old = db.quotas().getAll().firstOrNull { it.name == q.name }
-                quotaIds[q.name] = old?.id ?: db.quotas().insert(CashQuotaEntity(name = q.name, categoryId = cid, amountCents = Money.toCents(q.amount), enabled = q.enabled))
+                quotaIds[q.name] = old?.id ?: db.quotas().insert(CashQuotaEntity(name = q.name, categoryId = cid, amountCents = Money.toCents(q.amount), enabled = q.enabled, mode = q.mode, toleranceCents = Money.toCents(q.tolerance), everyMonths = q.everyMonths, dayFrom = q.dayFrom, dayTo = q.dayTo))
             }
             db.quotas().getAll().forEach { quotaIds.putIfAbsent(it.name, it.id) }
             val haveSplits = db.splits().getAll().map { it.txId }.toHashSet()

@@ -22,12 +22,15 @@ class ApplyCashQuotasUseCase @Inject constructor(
     }
 }
 
+/** Parte di una divisione scelta dall'utente; con `quotaId` conta come applicazione di quella quota (il motore non la ripete nel periodo). */
+data class SplitPartInput(val categoryId: Long?, val amount: BigDecimal, val quotaId: Long? = null)
+
 /** Divisione manuale di un movimento su più categorie (o ricomposizione, con lista vuota). Il movimento risulta controllato. */
 class SetSplitsUseCase @Inject constructor(private val tx: TransactionRepository) {
-    suspend operator fun invoke(txId: Long, parts: List<Pair<Long?, BigDecimal>>) {
+    suspend operator fun invoke(txId: Long, parts: List<SplitPartInput>) {
         val t = tx.get(txId) ?: error("Movimento non trovato")
-        if (parts.isNotEmpty()) SplitExpander.validate(t.amount, parts.map { it.second })?.let { error(it) }
-        tx.replaceSplits(txId, parts.mapIndexed { i, p -> TransactionSplit(0, txId, p.first, p.second, i) })
+        if (parts.isNotEmpty()) SplitExpander.validate(t.amount, parts.map { it.amount })?.let { error(it) }
+        tx.replaceSplits(txId, parts.mapIndexed { i, p -> TransactionSplit(0, txId, p.categoryId, p.amount, i, auto = false, quotaId = p.quotaId) })
         tx.setReviewed(listOf(txId), true)
     }
 }

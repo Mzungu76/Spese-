@@ -126,4 +126,18 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM transaction_splits").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }   // le parti seguono il movimento
         db.close()
     }
+
+    @Test fun `la migrazione 5-6 aggiunge le opzioni delle quote conservando quelle esistenti`() {
+        helper.createDatabase("test-quota", 5).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Affitto', 'spesa', 0, 4286611584, 1, 0, 0, 0)")
+            execSQL("INSERT INTO cash_quotas (name, categoryId, amountCents, enabled) VALUES ('Affitto', 1, 50000, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-quota", 6, true, AppDatabase.MIGRATION_5_6)
+        db.query("SELECT name, amountCents, mode, toleranceCents, everyMonths, dayFrom, dayTo FROM cash_quotas").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Affitto", c.getString(0)); assertEquals(50000L, c.getLong(1))
+            assertEquals("c", c.getString(2)); assertEquals(0L, c.getLong(3)); assertEquals(1, c.getInt(4)); assertEquals(0, c.getInt(5)); assertEquals(0, c.getInt(6))
+        }
+        db.close()
+    }
 }

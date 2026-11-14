@@ -17,6 +17,7 @@ import it.spese.domain.repository.TransactionRepository
 import it.spese.domain.usecase.AssignCategoryUseCase
 import it.spese.domain.usecase.ConfirmReviewUseCase
 import it.spese.domain.usecase.SetSplitsUseCase
+import it.spese.domain.usecase.SplitPartInput
 import it.spese.domain.usecase.DuplicateTransactionsUseCase
 import it.spese.domain.usecase.ExportTransactionsUseCase
 import java.math.BigDecimal
@@ -83,7 +84,7 @@ class TransactionsViewModel @Inject constructor(
     fun reassign(txId: Long, categoryId: Long) = viewModelScope.launch {
         try { setSplits(txId, emptyList()); assign(listOf(txId), categoryId); confirmReview(listOf(txId)) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
-    fun split(txId: Long, parts: List<Pair<Long?, BigDecimal>>) = viewModelScope.launch {
+    fun split(txId: Long, parts: List<SplitPartInput>) = viewModelScope.launch {
         try { setSplits(txId, parts); messenger.show(if (parts.isEmpty()) "Movimento ricomposto" else "Movimento diviso in ${parts.size} parti") } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
     fun setQuery(q: String) = filters.update { it.copy(query = q) }

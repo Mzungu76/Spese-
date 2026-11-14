@@ -146,11 +146,30 @@ data class TransactionSplit(
     val auto: Boolean = false, val quotaId: Long? = null,
 )
 
+/** Quando una quota fissa in contanti si applica a un prelievo. */
+enum class QuotaMode(val key: String, val label: String, val hint: String) {
+    COVERING("c", "Primo prelievo che la copre", "Il primo prelievo del periodo di importo pari o superiore alla quota"),
+    EVERY("e", "Ogni prelievo che la copre", "Ogni prelievo di importo pari o superiore alla quota"),
+    EXACT("x", "Solo se l'importo coincide", "Solo se il prelievo è la quota (con tolleranza): niente resto");
+
+    companion object { fun fromKey(k: String?) = entries.firstOrNull { it.key == k } ?: COVERING }
+}
+
 /**
- * Quota fissa pagata in contanti (es. affitto 500 €): quando in un mese un prelievo la copre, la quota viene staccata
- * dal primo prelievo che la contiene e assegnata alla categoria indicata.
+ * Quota fissa pagata in contanti (es. affitto 500 €): quando un prelievo la contiene, la quota viene staccata
+ * e assegnata alla categoria indicata, il resto resta com'è. Si può applicare ogni mese o ogni N mesi, entro una finestra di giorni,
+ * e più quote possono convivere nello stesso prelievo.
  */
-data class CashQuota(val id: Long, val name: String, val categoryId: Long, val amount: BigDecimal, val enabled: Boolean = true)
+data class CashQuota(
+    val id: Long, val name: String, val categoryId: Long, val amount: BigDecimal, val enabled: Boolean = true,
+    val mode: QuotaMode = QuotaMode.COVERING,
+    /** Solo per [QuotaMode.EXACT]: scostamento ammesso dall'importo. */
+    val tolerance: BigDecimal = BigDecimal.ZERO,
+    /** 1 = ogni mese, 3 = ogni trimestre, 12 = ogni anno: la quota si applica una volta per periodo (non per [QuotaMode.EVERY]). */
+    val everyMonths: Int = 1,
+    /** Finestra di giorni del mese in cui cercare il prelievo (0 = nessun limite). */
+    val dayFrom: Int = 0, val dayTo: Int = 0,
+)
 
 data class Due(
     val id: Long,

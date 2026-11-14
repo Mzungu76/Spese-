@@ -30,10 +30,21 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun quotas(): CashQuotaDao
 
     companion object {
-        const val VERSION = 5
+        const val VERSION = 6
         const val NAME = "gestione-spese.db"
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
+        /** 5 → 6: quote in contanti più flessibili (modalità, tolleranza, frequenza, finestra di giorni). */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cash_quotas ADD COLUMN mode TEXT NOT NULL DEFAULT 'c'")
+                db.execSQL("ALTER TABLE cash_quotas ADD COLUMN toleranceCents INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE cash_quotas ADD COLUMN everyMonths INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE cash_quotas ADD COLUMN dayFrom INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE cash_quotas ADD COLUMN dayTo INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         /** 4 → 5: parti dei movimenti divisi, quote fisse in contanti e flag "controllato". */
         val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -66,7 +77,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)

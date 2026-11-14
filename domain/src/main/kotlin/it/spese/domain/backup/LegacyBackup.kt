@@ -57,7 +57,10 @@ data class NativeScenario(val name: String, val goal: LegacyGoal, val cuts: Map<
 data class NativeDocument(val fileName: String, val mime: String, val size: Long, val createdAt: Long, val ocrText: String?)
 /** Parte di un movimento diviso (il movimento è indicato dal suo identificativo stabile, la categoria dal nome). */
 data class NativeSplit(val txId: String, val category: String?, val amount: BigDecimal, val position: Int, val auto: Boolean, val quota: String?)
-data class NativeQuota(val name: String, val category: String, val amount: BigDecimal, val enabled: Boolean)
+data class NativeQuota(
+    val name: String, val category: String, val amount: BigDecimal, val enabled: Boolean,
+    val mode: String = "c", val tolerance: BigDecimal = BigDecimal.ZERO, val everyMonths: Int = 1, val dayFrom: Int = 0, val dayTo: Int = 0,
+)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
     val splits: List<NativeSplit> = emptyList(), val quotas: List<NativeQuota> = emptyList(),
@@ -157,7 +160,8 @@ object LegacyBackupCodec {
         splits = o["splits"].arr()?.mapNotNull { e -> e.obj()?.let { s ->
             NativeSplit(s["tx"].str() ?: return@let null, s["cat"].str()?.takeIf { it.isNotBlank() }, s["amt"].dec() ?: return@let null, s["pos"].dec()?.toInt() ?: 0, flag(s["auto"]), s["quota"].str()?.takeIf { it.isNotBlank() }) } } ?: emptyList(),
         quotas = o["quotas"].arr()?.mapNotNull { e -> e.obj()?.let { q ->
-            NativeQuota(q["name"].str() ?: return@let null, q["cat"].str() ?: return@let null, q["amt"].dec() ?: return@let null, q["on"]?.let { flag(it) } ?: true) } } ?: emptyList(),
+            NativeQuota(q["name"].str() ?: return@let null, q["cat"].str() ?: return@let null, q["amt"].dec() ?: return@let null, q["on"]?.let { flag(it) } ?: true,
+                q["mode"].str() ?: "c", q["tol"].dec() ?: BigDecimal.ZERO, q["every"].dec()?.toInt() ?: 1, q["from"].dec()?.toInt() ?: 0, q["to"].dec()?.toInt() ?: 0) } } ?: emptyList(),
         reviewed = o["reviewed"].arr()?.mapNotNull { it.str() } ?: emptyList(),
     )
 
@@ -223,7 +227,8 @@ object LegacyBackupCodec {
                 if (x.splits.isNotEmpty()) put("splits", buildJsonArray { x.splits.forEach { s -> add(buildJsonObject {
                     put("tx", s.txId); s.category?.let { put("cat", it) }; put("amt", jnum(s.amount)); put("pos", s.position); put("auto", if (s.auto) 1 else 0); s.quota?.let { put("quota", it) } }) } })
                 if (x.quotas.isNotEmpty()) put("quotas", buildJsonArray { x.quotas.forEach { q -> add(buildJsonObject {
-                    put("name", q.name); put("cat", q.category); put("amt", jnum(q.amount)); put("on", if (q.enabled) 1 else 0) }) } })
+                    put("name", q.name); put("cat", q.category); put("amt", jnum(q.amount)); put("on", if (q.enabled) 1 else 0)
+                    put("mode", q.mode); put("tol", jnum(q.tolerance)); put("every", q.everyMonths); put("from", q.dayFrom); put("to", q.dayTo) }) } })
                 if (x.reviewed.isNotEmpty()) putJsonArray("reviewed") { x.reviewed.forEach { add(JsonPrimitive(it)) } }
             }) }
         }

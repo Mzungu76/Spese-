@@ -115,7 +115,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                     }
                 }
                 else -> {
-                    item { Text("Quote fisse pagate in contanti, come l'affitto. Una volta al mese il primo prelievo che le copre viene diviso: la quota va alla categoria scelta, il resto resta com'è. Il prelievo compare in Movimenti › Verifica per un controllo.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    item { Text("Quote fisse pagate in contanti, come l'affitto. Quando un prelievo contiene la quota, questa va alla categoria scelta e il resto resta com'è; il prelievo compare in Movimenti › Verifica per un controllo. Puoi scegliere ogni quanto si applica, in quali giorni del mese e se serve un importo esatto; più quote possono convivere nello stesso prelievo.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (d.quotas.isEmpty()) item { EmptyState(Icons.Default.Payments, "Nessuna quota", "Tocca + per aggiungere, ad esempio, un affitto da 500 € pagato in contanti.") }
                     items(d.quotas, key = { it.id }) { q ->
                         val c = d.categoriesById[q.categoryId]
@@ -123,7 +123,11 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                             CategoryAvatar(c, size = 48)
                             Column(Modifier.weight(1f)) {
                                 Text(q.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                                Text("${Money.eur0(q.amount)} al mese → ${c?.name ?: "?"}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                                Text(buildString {
+                                    append(Money.eur0(q.amount)).append(" → ").append(c?.name ?: "?").append(" · ").append(q.mode.label.lowercase())
+                                    if (q.mode != QuotaMode.EVERY && q.everyMonths > 1) append(", ogni ").append(q.everyMonths).append(" mesi")
+                                    if (q.dayFrom > 0 || q.dayTo > 0) append(", giorni ").append(if (q.dayFrom > 0) q.dayFrom else 1).append("–").append(if (q.dayTo > 0) q.dayTo else 31)
+                                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                             }
                             Switch(q.enabled, { on -> vm.saveQuota(q.copy(enabled = on)) })
                         }
@@ -254,15 +258,36 @@ private fun QuotaDialog(q: CashQuota, categories: List<Category>, onDismiss: () 
     var name by remember { mutableStateOf(q.name) }
     var amount by remember { mutableStateOf(if (q.amount.signum() > 0) q.amount.toPlainString().replace('.', ',') else "") }
     var cat by remember { mutableStateOf(q.categoryId) }
+    var mode by remember { mutableStateOf(q.mode) }
+    var every by remember { mutableStateOf(q.everyMonths) }
+    var tol by remember { mutableStateOf(if (q.tolerance.signum() > 0) q.tolerance.toPlainString().replace('.', ',') else "") }
+    var from by remember { mutableStateOf(if (q.dayFrom > 0) q.dayFrom.toString() else "") }
+    var to by remember { mutableStateOf(if (q.dayTo > 0) q.dayTo.toString() else "") }
+    fun day(s: String) = s.trim().toIntOrNull()?.coerceIn(0, 31) ?: 0
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (q.id == 0L) "Nuova quota in contanti" else "Modifica quota") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                AmountField(amount, { amount = it }, "Importo mensile (€)", Modifier.fillMaxWidth(), supporting = "Si applica al primo prelievo del mese di importo pari o superiore.")
+                AmountField(amount, { amount = it }, "Importo (€)", Modifier.fillMaxWidth())
                 DropdownField("Categoria della quota", categories.firstOrNull { it.id == cat }, categories, { it.name }, { cat = it.id })
+                Text("Quando si applica", style = MaterialTheme.typography.labelLarge)
+                ChipChoice(QuotaMode.entries.map { it to it.label }, mode, { mode = it })
+                Text(mode.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (mode == QuotaMode.EXACT) AmountField(tol, { tol = it }, "Tolleranza (€, facoltativa)", Modifier.fillMaxWidth(), supporting = "Es. 500 ± 5: un prelievo da 497 € vale come la quota")
+                if (mode != QuotaMode.EVERY) {
+                    Text("Ripetizione", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(1 to "Ogni mese", 2 to "Ogni 2 mesi", 3 to "Ogni 3 mesi", 6 to "Ogni 6 mesi", 12 to "Ogni anno"), every, { every = it })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(from, { from = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Dal giorno") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(to, { to = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Al giorno") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Text("Giorni del mese in cui cercare il prelievo (facoltativi): utile se l'affitto si paga sempre entro il 10.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (q.id != 0L) TextButton(onClick = { vm.deleteQuota(q.id); onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina quota") }
             }
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank() && cat != 0L && (parseAmountOrNull(amount)?.signum() ?: 0) > 0, onClick = { vm.saveQuota(q.copy(name = name, amount = parseAmountOrNull(amount) ?: BigDecimal.ZERO, categoryId = cat)); onDismiss() }) { Text("Salva") } },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && cat != 0L && (parseAmountOrNull(amount)?.signum() ?: 0) > 0, onClick = {
+            vm.saveQuota(q.copy(name = name, amount = parseAmountOrNull(amount) ?: BigDecimal.ZERO, categoryId = cat, mode = mode, tolerance = if (mode == QuotaMode.EXACT) parseAmountOrNull(tol)?.abs() ?: BigDecimal.ZERO else BigDecimal.ZERO,
+                everyMonths = if (mode == QuotaMode.EVERY) 1 else every, dayFrom = day(from), dayTo = day(to))); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

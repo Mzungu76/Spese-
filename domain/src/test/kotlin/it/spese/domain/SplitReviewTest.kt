@@ -42,7 +42,8 @@ class SplitReviewTest {
         assertEquals(listOf(2L, 1L), plan[0].parts.map { it.categoryId })           // quota Affitto + resto Contanti
         assertEquals(0, BigDecimal(-300).compareTo(plan[0].parts[1].amount))
         assertEquals(1, plan[1].parts.size)                                          // 500 esatti: nessun resto
-        assertTrue(plan.all { p -> p.parts.all { it.auto && it.quotaId == 7L } })
+        assertTrue(plan.all { p -> p.parts.all { it.auto } && p.parts[0].quotaId == 7L })     // la quota porta il suo id, il resto no
+        assertNull(plan[0].parts[1].quotaId)
     }
 
     @Test fun `non tocca movimenti gia divisi, controllati, non prelievi o mesi gia coperti`() {
@@ -94,5 +95,49 @@ class SplitReviewTest {
         assertEquals(2, src.transactions.size); assertEquals(1, src.ledger.size)
         val m = DashboardCalculator.compute(src, TxFilter(period = Period.All), LocalDate.parse("2026-10-14"))
         assertEquals(listOf(2L, 1L), m.categories.map { it.category?.id })
+    }
+
+    // ---- quote flessibili ----
+    private fun plan(l: List<Transaction>, vararg q: CashQuota, splits: Map<Long, List<TransactionSplit>> = emptyMap()) = CashQuotaEngine.plan(l, splits, cats, q.toList())
+
+    @Test fun `ogni prelievo che la copre, e piu quote nello stesso prelievo`() {
+        val a = tx("2026-10-03", -800); val b = tx("2026-10-20", -600); val small = tx("2026-10-25", -100)
+        val every = plan(listOf(a, b, small), quota.copy(mode = QuotaMode.EVERY))
+        assertEquals(listOf(a.id, b.id), every.map { it.txId })                       // entrambi, non il piccolo
+        // due quote sullo stesso prelievo da 800: 500 affitto + 200 spese condominiali, resto 100 in Contanti
+        val cond = CashQuota(8, "Condominio", 3, BigDecimal(200))
+        val two = plan(listOf(a), quota, cond).single()
+        assertEquals(listOf(2L, 3L, 1L), two.parts.map { it.categoryId })
+        assertEquals(listOf(-500, -200, -100), two.parts.map { it.amount.toInt() }); assertEquals(0, BigDecimal(-800).compareTo(two.parts.fold(BigDecimal.ZERO) { s, p -> s + p.amount }))
+        // la seconda quota non entra se il resto non basta
+        assertEquals(listOf(2L, 1L), plan(listOf(tx("2026-10-03", -600)), quota, cond).single().parts.map { it.categoryId })
+        // aggiungere una quota a un prelievo già diviso in automatico riduce il resto
+        val first = plan(listOf(a), quota).single()
+        val again = plan(listOf(a), quota, cond, splits = mapOf(a.id to first.parts.mapIndexed { i, p -> p.copy(id = i + 1L) })).single()
+        assertEquals(listOf(2L, 3L, 1L), again.parts.map { it.categoryId })
+    }
+
+    @Test fun `importo esatto con tolleranza, finestra di giorni e ripetizione trimestrale`() {
+        val exact = quota.copy(mode = QuotaMode.EXACT, tolerance = BigDecimal(5))
+        val near = tx("2026-10-04", -497); val big = tx("2026-10-05", -800)
+        val p = plan(listOf(big, near), exact).single()
+        assertEquals(near.id, p.txId); assertEquals(1, p.parts.size); assertEquals(0, BigDecimal(-497).compareTo(p.parts[0].amount))   // tutto il prelievo alla quota, nessun resto
+        assertTrue(plan(listOf(tx("2026-10-04", -480)), exact).isEmpty())                  // fuori tolleranza
+        // finestra: l'affitto si paga entro il 10
+        val early = quota.copy(dayFrom = 1, dayTo = 10)
+        val l = listOf(tx("2026-10-15", -800), tx("2026-10-08", -700))
+        assertEquals(l[1].id, plan(l, early).single().txId)
+        // ogni 3 mesi: una sola applicazione nel trimestre gen-mar, poi di nuovo ad aprile
+        val q3 = quota.copy(everyMonths = 3)
+        val tri = listOf(tx("2026-01-05", -800), tx("2026-02-05", -800), tx("2026-03-05", -800), tx("2026-04-05", -800))
+        assertEquals(listOf(tri[0].id, tri[3].id), plan(tri, q3).map { it.txId })
+        // un'applicazione manuale con l'id della quota conta come fatta nel periodo
+        val manual = tx("2026-10-02", -900, reviewed = true)
+        val done = mapOf(manual.id to listOf(TransactionSplit(1, manual.id, 2, BigDecimal(-500), 0, false, 7), TransactionSplit(2, manual.id, 1, BigDecimal(-400), 1)))
+        assertTrue(plan(listOf(manual, tx("2026-10-20", -800)), quota, splits = done).isEmpty())
+        // le divisioni manuali non si toccano
+        val manualSplit = tx("2026-11-02", -800)
+        val ms = mapOf(manualSplit.id to listOf(TransactionSplit(1, manualSplit.id, 2, BigDecimal(-300), 0), TransactionSplit(2, manualSplit.id, 1, BigDecimal(-500), 1)))
+        assertTrue(plan(listOf(manualSplit), quota, splits = ms).isEmpty())
     }
 }

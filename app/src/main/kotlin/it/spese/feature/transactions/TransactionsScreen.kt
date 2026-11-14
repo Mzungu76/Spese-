@@ -154,7 +154,7 @@ fun TransactionsScreen(
         }
     }
     if (filterSheet) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filterSheet = false }
-    splitTarget?.let { t -> SplitDialog(t, st.data.categories.filter { it.active }, st.data.splits[t.id].orEmpty(), { parts -> vm.split(t.id, parts) }, { vm.split(t.id, emptyList()) }, { splitTarget = null }) }
+    splitTarget?.let { t -> SplitDialog(t, st.data.categories.filter { it.active }, st.data.splits[t.id].orEmpty(), st.data.quotas, { parts -> vm.split(t.id, parts) }, { vm.split(t.id, emptyList()) }, { splitTarget = null }) }
 
     pickCategory?.let { cb ->
         CategoryPickerDialog(st.data.categories, onDismiss = { pickCategory = null; bulkAll = false }) { cb(it.id); pickCategory = null }

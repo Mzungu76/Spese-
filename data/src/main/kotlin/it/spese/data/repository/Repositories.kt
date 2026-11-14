@@ -71,7 +71,7 @@ class CashQuotaRepositoryImpl @Inject constructor(private val db: AppDatabase) :
     override fun observeAll() = dao.observeAll().map { l -> l.map { it.toDomain() } }.flowOn(Dispatchers.Default)
     override suspend fun getAll() = dao.getAll().map { it.toDomain() }
     override suspend fun save(q: CashQuota): Long {
-        val e = CashQuotaEntity(q.id, q.name.trim(), q.categoryId, Money.toCents(q.amount), q.enabled)
+        val e = CashQuotaEntity(q.id, q.name.trim(), q.categoryId, Money.toCents(q.amount), q.enabled, q.mode.key, Money.toCents(q.tolerance), q.everyMonths.coerceIn(1, 12), q.dayFrom.coerceIn(0, 31), q.dayTo.coerceIn(0, 31))
         return if (q.id == 0L) dao.insert(e) else { dao.update(e); q.id }
     }
     override suspend fun delete(id: Long) = dao.delete(id)

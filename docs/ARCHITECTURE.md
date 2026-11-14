@@ -65,6 +65,11 @@ basta aggiungere un parser per tabelle di testo e un `ScanDocumentUseCase` che c
 Un movimento resta una riga sola (importo intero, coerente con l'estratto); le sue **parti** stanno in `transaction_splits` (categoria e importo, stessa somma). `AppDataSource` le espande con `SplitExpander`: `AppData.transactions` contiene le parti (le analisi non cambiano), `AppData.ledger` i movimenti interi (elenco, modifica, esportazione).
 `CashQuotaEngine` applica le **quote fisse in contanti** (`cash_quotas`): una volta al mese il primo prelievo che copre l'importo viene diviso in quota + resto (in "Contanti"); mai su movimenti già divisi o controllati. `ReviewEngine` costruisce la sezione **Verifica** (divisioni automatiche, provvisori da notifica, regole con soglia, importi insoliti negli ultimi 60 giorni); il flag `reviewed` li chiude. Parti, quote e movimenti controllati sono salvati nelle estensioni native del backup.
 
+## Confronto, tendenze e ricerca
+
+`CategoryComparisonEngine` costruisce il confronto di categorie della Home (una serie per categoria accanto alle entrate del periodo, con le quote sulle entrate; le sottocategorie confluiscono nella principale). `CategoryTrendEngine` calcola per ogni categoria la media del periodo contro lo storico, la retta ai minimi quadrati sugli ultimi 12 mesi completi e le proiezioni a 1/3/6 mesi (mai sotto zero) con l'effetto cumulato sul bilancio; dichiara la fiducia della stima.
+`SearchMatcher` normalizza (minuscole, senza accenti) e richiede tutte le parole; `FilterEngine` con un testo di ricerca ignora il periodo. `CashQuotaEngine` supporta modalità (primo che copre, ogni, esatto con tolleranza), periodicità in mesi, finestra di giorni e più quote nello stesso prelievo (la quota porta il suo `quotaId`, il resto no).
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

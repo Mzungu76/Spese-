@@ -148,6 +148,11 @@ data class CashQuotaEntity(
     val categoryId: Long,
     val amountCents: Long,
     val enabled: Boolean = true,
+    @ColumnInfo(defaultValue = "'c'") val mode: String = "c",
+    @ColumnInfo(defaultValue = "0") val toleranceCents: Long = 0,
+    @ColumnInfo(defaultValue = "1") val everyMonths: Int = 1,
+    @ColumnInfo(defaultValue = "0") val dayFrom: Int = 0,
+    @ColumnInfo(defaultValue = "0") val dayTo: Int = 0,
 )
 
 @Entity(tableName = "dues", indices = [Index(value = ["legacyId"], unique = true), Index("nextDate")])

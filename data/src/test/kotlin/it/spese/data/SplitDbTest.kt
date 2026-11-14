@@ -6,6 +6,7 @@ import it.spese.domain.capture.RawNotification
 import it.spese.domain.repository.AppDataSource
 import it.spese.domain.repository.NewTransaction
 import it.spese.domain.usecase.CaptureResult
+import it.spese.domain.usecase.SplitPartInput
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -53,8 +54,8 @@ class SplitDbTest {
     @Test fun `divisione manuale con controlli, controllato e ricomposizione`() = runBlocking {
         val id = withdrawal("2026-10-05", -800, "m")
         val food = cat("Supermercato e alimentari").id; val cash = cat("Contanti").id
-        assertTrue(runCatching { env.setSplits(id, listOf(food to BigDecimal(-500), cash to BigDecimal(-200))) }.isFailure)
-        env.setSplits(id, listOf(food to BigDecimal(-500), cash to BigDecimal(-300)))
+        assertTrue(runCatching { env.setSplits(id, listOf(SplitPartInput(food, BigDecimal(-500)), SplitPartInput(cash, BigDecimal(-200)))) }.isFailure)
+        env.setSplits(id, listOf(SplitPartInput(food, BigDecimal(-500)), SplitPartInput(cash, BigDecimal(-300))))
         assertEquals(2, env.tx.getSplits().size); assertTrue(env.tx.get(id)!!.reviewed)
         env.setSplits(id, emptyList())
         assertTrue(env.tx.getSplits().isEmpty()); assertTrue(env.tx.get(id)!!.reviewed)
@@ -96,5 +97,30 @@ class SplitDbTest {
         assertEquals("Affitto", env.quotas.getAll().single().name)
         assertTrue(txs.first { it.externalId == "o" }.reviewed); assertFalse(txs.first { it.externalId == "b" }.reviewed)
         assertEquals(0, env.applyQuotas())    // dopo il ripristino non divide una seconda volta
+    }
+
+    @Test fun `le opzioni della quota si salvano e sopravvivono al backup`() = runBlocking {
+        val rent = env.cats.insert(Category(0, "Affitto", TxKind.SPESA, false, 0, null, true, 99))
+        env.quotas.save(CashQuota(0, "Affitto", rent, BigDecimal(500), true, QuotaMode.EXACT, BigDecimal(5), 3, 1, 10))
+        val q = env.quotas.getAll().single()
+        assertEquals(QuotaMode.EXACT, q.mode); assertEquals(0, BigDecimal(5).compareTo(q.tolerance)); assertEquals(3, q.everyMonths); assertEquals(1, q.dayFrom); assertEquals(10, q.dayTo)
+        val json = env.backup.buildBackupJson()
+        env.restore(it.spese.domain.backup.LegacyBackupCodec.parse(json), it.spese.domain.repository.RestoreMode.Replace)
+        val back = env.quotas.getAll().single()
+        assertEquals(q.copy(id = back.id, categoryId = back.categoryId), back)
+    }
+
+    @Test fun `quota applicata a mano da un prelievo e il motore non la ripete su un altro dello stesso mese`() = runBlocking {
+        val rent = env.cats.insert(Category(0, "Affitto", TxKind.SPESA, false, 0, null, true, 99))
+        val qid = env.quotas.save(CashQuota(0, "Affitto", rent, BigDecimal(500)))
+        val first = withdrawal("2026-10-05", -800, "p1"); withdrawal("2026-10-20", -600, "p2")
+        env.setSplits(first, listOf(SplitPartInput(rent, BigDecimal(-500), qid), SplitPartInput(cat("Contanti").id, BigDecimal(-300))))
+        assertEquals(0, env.applyQuotas())
+        // due quote sullo stesso prelievo, in automatico
+        val cond = env.cats.insert(Category(0, "Condominio", TxKind.SPESA, false, 0, null, true, 98))
+        env.quotas.save(CashQuota(0, "Condominio", cond, BigDecimal(100)))
+        val n = env.applyQuotas()
+        assertTrue(n >= 1)
+        assertTrue(env.tx.getSplits().none { it.txId == first && it.auto })       // la divisione manuale non si tocca
     }
 }

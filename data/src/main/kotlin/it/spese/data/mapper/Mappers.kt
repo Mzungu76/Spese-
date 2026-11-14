@@ -23,7 +23,7 @@ fun TransactionEntity.toDomain() = Transaction(
 )
 
 fun SplitEntity.toDomain() = TransactionSplit(id, txId, categoryId, Money.fromCents(amountCents), position, auto, quotaId)
-fun CashQuotaEntity.toDomain() = CashQuota(id, name, categoryId, Money.fromCents(amountCents), enabled)
+fun CashQuotaEntity.toDomain() = CashQuota(id, name, categoryId, Money.fromCents(amountCents), enabled, QuotaMode.fromKey(mode), Money.fromCents(toleranceCents), everyMonths, dayFrom, dayTo)
 
 fun NewTransaction.toEntity(now: Long) = TransactionEntity(
     externalId = externalId, dedupKey = dedupKey, accountId = accountId, bookingDate = bookingDate.toEpochDay(), valueDate = valueDate.toEpochDay(),
