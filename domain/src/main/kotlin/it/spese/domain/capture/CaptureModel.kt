@@ -71,13 +71,13 @@ object NotificationReconciler {
     data class Row(val index: Int, val amount: BigDecimal, val date: LocalDate)
 
     /** index della riga → movimento provvisorio da sostituire. Ogni provvisorio è usato una sola volta, scegliendo il più vicino nel tempo. */
-    fun match(provisional: List<Transaction>, rows: List<Row>, maxDays: Int = 3, recurringDays: Int = 5): Map<Int, Transaction> {
-        val free = provisional.filter { it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING }.toMutableList()
+    fun match(provisional: List<Transaction>, rows: List<Row>, maxDays: Int = 3, recurringDays: Int = 5, receiptDays: Int = 5): Map<Int, Transaction> {
+        val free = provisional.filter { it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING || it.origin == TxOrigin.OCR }.toMutableList()
         val out = LinkedHashMap<Int, Transaction>()
         for (r in rows.sortedBy { it.date }) {
             val best = free.filter { it.amount.compareTo(r.amount) == 0 }
                 .map { it to abs(ChronoUnit.DAYS.between(it.bookingDate, r.date)).toInt() }
-                .filter { it.second <= (if (it.first.origin == TxOrigin.RECURRING) recurringDays else maxDays) }.minByOrNull { it.second } ?: continue
+                .filter { it.second <= when (it.first.origin) { TxOrigin.RECURRING -> recurringDays; TxOrigin.OCR -> receiptDays; else -> maxDays } }.minByOrNull { it.second } ?: continue
             out[r.index] = best.first; free.remove(best.first)
         }
         return out

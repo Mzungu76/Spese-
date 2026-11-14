@@ -82,3 +82,22 @@ class CaptureTest {
         assertFalse(3 in m)                                                       // un movimento inserito a mano non viene mai sostituito
     }
 }
+
+class ReceiptReconcileTest {
+    private fun tx(id: Long, origin: it.spese.core.model.TxOrigin, amount: String, date: String) = it.spese.core.model.Transaction(
+        id, "e$id", 1, java.time.LocalDate.parse(date), java.time.LocalDate.parse(date), "x", java.math.BigDecimal(amount), it.spese.core.model.TxKind.SPESA, null, false, null, origin = origin)
+
+    @org.junit.Test fun `lo scontrino scansionato e sostituito dalla riga dell estratto conto entro 5 giorni`() {
+        val rows = listOf(NotificationReconciler.Row(0, java.math.BigDecimal("-12.00"), java.time.LocalDate.parse("2026-11-18")))
+        val m = NotificationReconciler.match(listOf(tx(1, it.spese.core.model.TxOrigin.OCR, "-12.00", "2026-11-14")), rows)
+        org.junit.Assert.assertEquals(1L, m[0]?.id)
+        // oltre la finestra, o con importo diverso, resta separato
+        org.junit.Assert.assertTrue(NotificationReconciler.match(listOf(tx(1, it.spese.core.model.TxOrigin.OCR, "-12.00", "2026-11-10")), rows).isEmpty())
+        org.junit.Assert.assertTrue(NotificationReconciler.match(listOf(tx(1, it.spese.core.model.TxOrigin.OCR, "-12.50", "2026-11-17")), rows).isEmpty())
+    }
+
+    @org.junit.Test fun `suggerimenti e etichette delle sottocategorie`() {
+        org.junit.Assert.assertTrue("Frutta e verdura" in it.spese.domain.finance.SubcategoryTemplates.suggest("Supermercato e alimentari"))
+        org.junit.Assert.assertTrue(it.spese.domain.finance.SubcategoryTemplates.suggest("Zzz").isEmpty())
+    }
+}

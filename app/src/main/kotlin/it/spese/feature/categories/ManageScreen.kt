@@ -1,5 +1,6 @@
 package it.spese.feature.categories
 
+import it.spese.domain.finance.SubcategoryTemplates
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -60,6 +61,10 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
             if (tab in 0..2) item(key = "search-$tab") { SearchField(q, { q = it }, when (tab) { 0 -> "Cerca categoria…"; 1 -> "Cerca regola o categoria…"; else -> "Cerca esercente…" }, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
             when (tab) {
                 0 -> {
+                    item(key = "subs-hint") {
+                        Text("Per vedere la spesa nel dettaglio (es. Supermercato → frutta e verdura, pulizia casa, bevande) tocca ⊕ accanto a una categoria per aggiungere una sottocategoria. Nei totali restano dentro la categoria principale.",
+                            Modifier.padding(horizontal = 24.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate", TxKind.TRASFERIMENTO to "Giroconti (esclusi dai totali)").forEach { (kind, title) ->
                         val ofKind = d.categories.filter { it.kind == kind && SearchMatcher.matches(q, it.name) }
                         // le sottocategorie stanno sotto la loro principale
@@ -78,9 +83,13 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                                     if (c.kind == TxKind.SPESA) Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                         Box(Modifier.fillMaxWidth((total.abs().toFloat() / spendMax.toFloat()).coerceIn(0.02f, 1f)).height(4.dp).background(c.color.toColor()))
                                     }
-                                    Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
+                                    Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); if (c.parentId == null) ofKind.count { it.parentId == c.id }.takeIf { it > 0 }?.let { append(" · $it sottocategorie") }; c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
                                         Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 }
+                                if (c.parentId == null && c.kind != TxKind.TRASFERIMENTO && c.systemKey == null)
+                                    IconButton(onClick = { editCat = Category(0, "", c.kind, true, c.color, null, true, d.categories.size, parentId = c.id, nature = c.nature) }) {
+                                        Icon(Icons.Default.AddCircleOutline, "Aggiungi sottocategoria a ${c.name}")
+                                    }
                             }
                         }
                     }
@@ -177,6 +186,17 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, all: List<Catego
                 val parents = all.filter { it.parentId == null && it.kind == kind && it.id != c.id && it.systemKey == null }
                 if (all.none { it.parentId == c.id && c.id != 0L } && parents.isNotEmpty())
                     DropdownField("Sottocategoria di", parents.firstOrNull { it.id == parentId }, parents, { it.name }, { parentId = it.id }, nullLabel = "Nessuna (categoria principale)", onNull = { parentId = null })
+                parentId?.let { pid ->
+                    val parent = all.firstOrNull { it.id == pid }
+                    val taken = all.filter { it.parentId == pid }.map { it.name.lowercase() }
+                    val ideas = parent?.let { SubcategoryTemplates.suggest(it.name).filter { n -> n.lowercase() !in taken } }.orEmpty()
+                    if (c.id == 0L && ideas.isNotEmpty()) {
+                        Text("Suggerimenti per ${parent?.name}", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ideas.forEach { n -> AssistChip(onClick = { name = n }, label = { Text(n) }) }
+                        }
+                    }
+                }
                 if (kind == TxKind.SPESA) {
                     Text("Natura della spesa", style = MaterialTheme.typography.labelLarge)
                     ChipChoice(listOf<Pair<SpendNature?, String>>(null to "Non definita") + SpendNature.entries.map { it to it.label }, nature, { nature = it })

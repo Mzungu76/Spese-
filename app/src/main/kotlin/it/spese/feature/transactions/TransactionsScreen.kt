@@ -168,14 +168,15 @@ fun TransactionsScreen(
 @Composable
 fun CategoryPickerDialog(categories: List<Category>, onDismiss: () -> Unit, onPick: (Category) -> Unit) {
     var q by remember { mutableStateOf("") }
-    val list = remember(q, categories) { categories.filter { it.active && SearchMatcher.matches(q, it.name, it.kind.label) } }
+    val byId = remember(categories) { categories.associateBy { it.id } }
+    val list = remember(q, categories) { it.spese.domain.finance.CategoryTree.ordered(categories).filter { c -> SearchMatcher.matches(q, it.spese.domain.finance.CategoryTree.label(c, byId), c.kind.label) } }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Scegli la categoria") }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } },
         text = {
             Column {
                 SearchField(q, { q = it }, "Cerca categoria…", Modifier.padding(bottom = 8.dp), debounceMs = 0)
                 androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 380.dp)) {
                     if (list.isEmpty()) item { Text("Nessuna categoria trovata.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(list, key = { it.id }) { c -> ListRow(c.name, subtitle = c.kind.label, leading = { CategoryAvatar(c, size = 32) }, onClick = { onPick(c) }) }
+                    items(list, key = { it.id }) { c -> ListRow(it.spese.domain.finance.CategoryTree.label(c, byId), subtitle = c.kind.label, leading = { CategoryAvatar(c, size = 32) }, onClick = { onPick(c) }) }
                 }
             }
         })

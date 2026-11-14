@@ -48,7 +48,9 @@ class CommitImportUseCase @Inject constructor(
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val fresh = preview.rows.filter { !it.duplicate }
         // le righe dell'estratto sostituiscono i movimenti provvisori nati da notifiche (stesso importo, data vicina)
-        val provisional = tx.getAll().filter { it.accountId == acc.id && (it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING) }
+        // (anche gli scontrini scansionati, su qualunque conto: spesso li si registra su un conto diverso da quello addebitato)
+        val ledger = tx.getAll()
+        val provisional = ledger.filter { (it.accountId == acc.id && (it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING)) || it.origin == TxOrigin.OCR }
         val matches = NotificationReconciler.match(provisional, fresh.mapIndexed { i, p -> NotificationReconciler.Row(i, p.row.amount, p.row.date) })
         val batch = tx.createImportBatch(table.fileName, fresh.size)
         val items = fresh.mapIndexed { i, p ->
@@ -57,10 +59,21 @@ class CommitImportUseCase @Inject constructor(
             val c = if (prov != null && prov.manualCategory) it.spese.domain.classification.Classification(prov.categoryId, prov.kind, true, null) else classifier.classify(r.text, r.amount, null)
             val notes = prov?.notes?.takeIf { it.isNotBlank() && !it.startsWith("Da notifica") && !it.startsWith("Ricorrente") } ?: ""
             NewTransaction(Duplicates.key(name, r.date, r.valueDate, r.amount, r.text) + "#" + p.occurrence, p.key, acc.id, r.date, r.valueDate, r.text,
-                r.amount, c.kind, c.categoryId, c.manual, c.ruleId, prov?.merchantOverride, notes, TxOrigin.IMPORT_FILE, null, batch)
+                r.amount, c.kind, c.categoryId, c.manual, c.ruleId, prov?.merchantOverride, notes, TxOrigin.IMPORT_FILE, prov?.documentId, batch)
         }
+        // le suddivisioni per voce dello scontrino passano alla riga dell'estratto conto
+        val carriedSplits = tx.getSplits().groupBy { it.txId }
         if (matches.isNotEmpty()) tx.delete(matches.values.map { it.id })
         val added = tx.insertAll(items)
+        if (matches.any { carriedSplits.containsKey(it.value.id) }) {
+            val byExt = tx.getAll().associateBy { it.externalId }
+            matches.forEach { (i, prov) ->
+                val parts = carriedSplits[prov.id] ?: return@forEach
+                val now = byExt[items[i].externalId] ?: return@forEach
+                tx.replaceSplits(now.id, parts.map { it.copy(id = 0, txId = now.id) })
+                if (prov.reviewed) tx.setReviewed(listOf(now.id), true)
+            }
+        }
         applyQuotas()
         settings.update { it.copy(lastUndo = "batch:$batch") }
         return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch, matches.size)

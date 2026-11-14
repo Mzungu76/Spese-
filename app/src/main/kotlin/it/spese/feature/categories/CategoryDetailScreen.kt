@@ -65,6 +65,10 @@ fun CategoryDetailScreen(onBack: () -> Unit, onOpenTransaction: (Long) -> Unit, 
                         lines = listOf(ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, d.months.map { d.monthlyAvg })), height = 200.dp, interactive = false)
                 }
             }
+            if (d.subcategories.isEmpty() && d.category.parentId == null && spese) item(key = "subs-hint") {
+                Text("Vuoi più dettaglio? In Gestione › Categorie tocca ⊕ accanto a ${d.category.name} per creare sottocategorie e assegnare ad esse i singoli movimenti.",
+                    Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (d.subcategories.isNotEmpty()) item(key = "subs") {
                 SectionCard(Modifier.padding(horizontal = 16.dp), title = "Sottocategorie") {
                     d.subcategories.forEach { s ->

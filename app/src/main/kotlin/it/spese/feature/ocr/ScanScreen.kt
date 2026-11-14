@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.FileImage
 import it.spese.app.common.SubTopBar
 import it.spese.core.common.Money
+import it.spese.domain.finance.CategoryTree
 import it.spese.core.designsystem.component.*
 import java.io.File
 
@@ -108,10 +109,42 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         OutlinedTextField(f.description, { v -> vm.edit { it.copy(description = v) } }, Modifier.fillMaxWidth(), label = { Text("Descrizione / esercente" + if (d.merchant == null) " (non riconosciuto)" else "") })
         DateField(f.date, { v -> vm.edit { it.copy(date = v) } }, "Data" + if (d.date == null) " (non riconosciuta)" else "", Modifier.fillMaxWidth())
         DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts.filter { !it.archived }, { it.name }, { a -> vm.edit { it.copy(accountId = a.id) } })
-        DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories.filter { it.active }, { it.name }, { c -> vm.edit { it.copy(categoryId = c.id) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
+        DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, CategoryTree.ordered(data.categories), { CategoryTree.label(it, data.categoriesById) }, { c -> vm.edit { it.copy(categoryId = c.id) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
         OutlinedTextField(f.notes, { v -> vm.edit { it.copy(notes = v) } }, Modifier.fillMaxWidth(), label = { Text("Note (IVA e voci riconosciute)") }, minLines = 2)
         d.vat?.let { Text("IVA riconosciuta: ${Money.eur(it)}", style = MaterialTheme.typography.bodyMedium) }
-        if (d.items.isNotEmpty()) SectionCard(title = "Voci riconosciute (${d.items.size})") { d.items.forEach { Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(it.description, Modifier.weight(1f), maxLines = 1); MoneyText(it.amount, colored = false, style = MaterialTheme.typography.bodyMedium) } } }
+        if (d.items.isNotEmpty()) SectionCard(title = "Voci riconosciute (${d.items.size})") {
+            Text("Assegna a ogni voce la sua categoria (anche una sottocategoria): lo scontrino verrà diviso e vedrai nel dettaglio dove va la spesa. Le voci senza scelta restano nella categoria principale.",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            d.items.forEachIndexed { i, item ->
+                var open by remember { mutableStateOf(false) }
+                val chosen = f.itemCategories.getOrNull(i)?.let { data.categoriesById[it] }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(item.description, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                        MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Box {
+                        AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: "Come principale", maxLines = 1) })
+                        DropdownMenu(open, { open = false }) {
+                            DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
+                            CategoryTree.ordered(data.categories).filter { cat -> cat.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.forEach { c ->
+                                DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        val cands by vm.candidates.collectAsStateWithLifecycle()
+        cands.firstOrNull()?.let { c ->
+            SectionCard(title = "Esiste già questo movimento") {
+                Text("${c.description} · ${it.spese.core.common.Dates.fmt(c.bookingDate)} · ${Money.eur(c.amount)}", style = MaterialTheme.typography.bodyMedium)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(f.attach, { v -> vm.edit { it.copy(attach = v) } })
+                    Text("  Collega lo scontrino a questo movimento (niente doppione)", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
         var showText by remember { mutableStateOf(false) }
         TextButton(onClick = { showText = !showText }) { Text(if (showText) "Nascondi testo estratto" else "Mostra testo estratto") }
         if (showText) Text(d.rawText.ifBlank { "(nessun testo riconosciuto)" }, style = MaterialTheme.typography.bodySmall)
