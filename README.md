@@ -27,7 +27,7 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 
 ## Per iniziare
 
-1. Scarica l'APK dagli artifact di *Actions* (`gestione-spese-debug-apk`) e installalo (abilita "Origini sconosciute").
+1. Scarica l'APK dagli artifact di *Actions* (`gestione-spese-debug-apk-<numero build>` (prendi sempre quello col numero più alto)) e installalo (abilita "Origini sconosciute").
 2. Importa un estratto conto dal menu ⋮ → *Importa estratto conto*, oppure un backup della versione web da *Backup e impostazioni*.
 
 ## Sviluppo

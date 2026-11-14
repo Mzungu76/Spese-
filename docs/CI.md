@@ -4,7 +4,7 @@
 
 | File | Quando | Cosa fa |
 |---|---|---|
-| `.github/workflows/android-build.yml` | ogni `push`, `pull_request`, manuale | JDK 17 → Android SDK → Gradle (con cache) → **test** (dominio, database, dati, UI/Robolectric) → **APK debug** → carica gli artifact `gestione-spese-debug-apk` e `test-reports` |
+| `.github/workflows/android-build.yml` | ogni `push`, `pull_request`, manuale | JDK 17 → Android SDK → Gradle (con cache) → **test** (dominio, database, dati, UI/Robolectric) → **APK debug** → carica gli artifact `gestione-spese-debug-apk-<numero build>` (prendi sempre quello col numero più alto) e `test-reports` |
 | `.github/workflows/android-release.yml` | manuale (Run workflow) o tag `v*` | verifica i segreti → test → **APK release firmato** → verifica la firma con `apksigner` → artifact `gestione-spese-release-apk` (e GitHub Release se è un tag) |
 
 L'APK debug usa `applicationId` `it.spese.gestione.debug` e si installa accanto alla versione release.
