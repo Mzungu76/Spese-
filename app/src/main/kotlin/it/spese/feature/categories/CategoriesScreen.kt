@@ -60,7 +60,7 @@ fun CategoriesScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValue
                         items(list, key = { it.id }) { c ->
                             val total = st.txTotal[c.id] ?: BigDecimal.ZERO
                             Row(Modifier.fillMaxWidth().clickable { editCat = c }.padding(horizontal = 24.dp).heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                CategoryAvatar(c.name, c.color.toColor(), size = 48)
+                                CategoryAvatar(c, size = 48)
                                 Column(Modifier.weight(1f)) {
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Text(c.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
@@ -80,7 +80,7 @@ fun CategoriesScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValue
                     item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare. Le assegnazioni manuali prevalgono sempre.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     items(d.rules, key = { it.id }) { r ->
                         Row(Modifier.fillMaxWidth().clickable { editRule = r }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            CategoryAvatar(d.categoryName(r.categoryId), d.categoriesById[r.categoryId]?.color?.toColor() ?: Color.Gray, size = 44)
+                            CategoryAvatar(d.categoriesById[r.categoryId], size = 44)
                             Column(Modifier.weight(1f)) {
                                 Text(if (r.keyword.isBlank()) "Qualsiasi descrizione" else "“${r.keyword}”", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 Text(buildString {
@@ -129,6 +129,7 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, onDismiss: () ->
     var name by remember { mutableStateOf(c.name) }
     var kind by remember { mutableStateOf(c.kind) }
     var color by remember { mutableStateOf(c.color) }
+    var icon by remember { mutableStateOf(c.icon) }
     var flexible by remember { mutableStateOf(c.flexible) }
     var active by remember { mutableStateOf(c.active) }
     var budget by remember { mutableStateOf(c.budgetMonthly?.toPlainString()?.replace('.', ',') ?: "") }
@@ -140,6 +141,19 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, onDismiss: () ->
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     TxKind.entries.forEachIndexed { i, k -> SegmentedButton(kind == k, { kind = k }, SegmentedButtonDefaults.itemShape(i, 3)) { Text(if (k == TxKind.TRASFERIMENTO) "Giroconto" else k.label, maxLines = 1, style = MaterialTheme.typography.labelSmall) } }
                 }
+                Text("Icona", style = MaterialTheme.typography.labelLarge)
+                val autoKey = CategoryIcons.defaultFor(name, kind, c.systemKey)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CategoryIcons.KEYS.forEach { k ->
+                        val on = (icon ?: autoKey) == k
+                        Box(Modifier.size(40.dp).background(if (on) color.toColor().copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh, CircleShape)
+                            .then(if (on) Modifier.border(2.dp, color.toColor(), CircleShape) else Modifier)
+                            .clickable { icon = k }, contentAlignment = Alignment.Center) {
+                            Icon(CategoryIconSet.vector(k), CategoryIcons.LABELS[k] ?: k, Modifier.size(22.dp), tint = if (on) color.toColor() else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (icon != null) TextButton(onClick = { icon = null }) { Text("Ripristina icona automatica") }
                 Text("Colore", style = MaterialTheme.typography.labelLarge)
                 androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     DefaultData.PALETTE.forEach { p ->
@@ -160,7 +174,7 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, onDismiss: () ->
             }
         },
         confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = {
-            vm.save(c.copy(name = name, kind = kind, color = color, flexible = flexible, active = active, budgetMonthly = parseAmountOrNull(budget)?.takeIf { it.signum() > 0 })); onDismiss() }) { Text("Salva") } },
+            vm.save(c.copy(name = name, kind = kind, color = color, icon = icon, flexible = flexible, active = active, budgetMonthly = parseAmountOrNull(budget)?.takeIf { it.signum() > 0 })); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
     if (confirmDelete) ConfirmDialog("Eliminare \"${c.name}\"?", "Le regole e le assegnazioni manuali collegate vengono rimosse; i movimenti tornano alla classificazione automatica (\"Altro\" se nessuna regola corrisponde).", "Elimina", { vm.delete(c.id); onDismiss() }, { confirmDelete = false }, destructive = true)
 }

@@ -59,4 +59,18 @@ class MigrationTest {
         assertTrue("RESTRICT deve impedire l'eliminazione", failed)
         db.close()
     }
+
+    @Test fun `la migrazione 1-2 aggiunge l'icona (NULL) senza toccare le categorie esistenti`() {
+        helper.createDatabase("test-icon", 1).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Bar', 'spesa', 1, 4286611584, 1, 3, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-icon", 2, true, AppDatabase.MIGRATION_1_2)
+        db.query("SELECT name, sortOrder, icon FROM categories").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Bar", c.getString(0)); assertEquals(3, c.getInt(1)); assertTrue(c.isNull(2))
+        }
+        db.execSQL("UPDATE categories SET icon = 'coffee' WHERE name = 'Bar'")
+        db.query("SELECT icon FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals("coffee", c.getString(0)) }
+        db.close()
+    }
 }

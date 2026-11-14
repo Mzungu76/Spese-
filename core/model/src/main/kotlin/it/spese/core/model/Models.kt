@@ -69,7 +69,12 @@ data class Category(
     val sortOrder: Int = 0,
     /** Categoria di sistema usata come fallback ("FALLBACK_EXPENSE" / "FALLBACK_INCOME"): non eliminabile. */
     val systemKey: String? = null,
+    /** Chiave dell'icona scelta (vedi [CategoryIcons]); null = icona di default dedotta dal nome. */
+    val icon: String? = null,
 ) {
+    /** Icona effettiva: quella scelta, se ancora nel catalogo, altrimenti il default. */
+    val iconKey: String get() = CategoryIcons.resolve(this)
+
     companion object {
         const val FALLBACK_EXPENSE = "FALLBACK_EXPENSE"
         const val FALLBACK_INCOME = "FALLBACK_INCOME"

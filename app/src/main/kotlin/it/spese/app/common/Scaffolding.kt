@@ -66,9 +66,10 @@ fun LargeHeader(title: String, modifier: Modifier = Modifier, menu: DataMenu? = 
 
 /** Pulsante tondo grigio scuro con icona (cerca, filtri, campanella…). */
 @Composable
-fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false) {
+fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false, primary: Boolean = false) {
     Box(modifier.padding(horizontal = 4.dp)) {
-        FilledIconButton(onClick = onClick, Modifier.size(44.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
+        FilledIconButton(onClick = onClick, Modifier.size(44.dp), colors = if (primary) IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
+        else IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
             Icon(icon, description, Modifier.size(22.dp))
         }
         if (badge) Box(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 8.dp, end = 8.dp).size(11.dp).background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape))

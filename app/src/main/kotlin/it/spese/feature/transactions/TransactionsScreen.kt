@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
@@ -66,6 +67,7 @@ fun TransactionsScreen(
             },
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
         ) else LargeHeader("Movimenti", actions = {
+            RoundIconButton(Icons.Default.Add, "Aggiungi", onAdd, Modifier.testTag("fab_add"), primary = true)
             RoundIconButton(Icons.Default.Search, "Cerca", { searching = !searching }, badge = st.filter.query.isNotBlank())
             RoundIconButton(Icons.Default.Tune, "Filtri", { filterSheet = true }, badge = st.filter.activeCount > 0)
             Box {
@@ -118,7 +120,7 @@ fun TransactionsScreen(
                         Row(Modifier.fillMaxWidth().background(if (picked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else androidx.compose.ui.graphics.Color.Transparent)
                             .combinedClickable(onClick = { if (selecting) vm.toggle(x.id) else onOpen(x.id) }, onLongClick = { vm.toggle(x.id) })
                             .padding(horizontal = 24.dp).heightIn(min = 76.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if (picked) Icon(Icons.Default.CheckCircle, "Selezionato", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp)) else CategoryAvatar(cat?.name ?: "?", cat?.color?.toColor() ?: Color.Gray, size = 48)
+                            if (picked) Icon(Icons.Default.CheckCircle, "Selezionato", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp)) else CategoryAvatar(cat, size = 48)
                             Column(Modifier.weight(1f)) {
                                 Text(x.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 Text(buildString {
@@ -152,7 +154,7 @@ fun CategoryPickerDialog(categories: List<Category>, onDismiss: () -> Unit, onPi
         text = {
             androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 420.dp)) {
                 items(categories.filter { it.active }, key = { it.id }) { c ->
-                    ListRow(c.name, subtitle = c.kind.label, leading = { CategoryAvatar(c.name, c.color.toColor(), size = 32) }, onClick = { onPick(c) })
+                    ListRow(c.name, subtitle = c.kind.label, leading = { CategoryAvatar(c, size = 32) }, onClick = { onPick(c) })
                 }
             }
         })

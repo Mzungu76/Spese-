@@ -84,11 +84,17 @@ fun KpiCard(label: String, modifier: Modifier = Modifier, valueColor: Color = Ma
 }
 
 @Composable
-fun CategoryAvatar(name: String, color: Color, modifier: Modifier = Modifier, size: Int = 40) {
+fun CategoryAvatar(name: String, color: Color, modifier: Modifier = Modifier, size: Int = 40, iconKey: String? = null) {
     Box(modifier.size(size.dp).clip(CircleShape).background(color.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
-        Text(name.firstOrNull()?.uppercase() ?: "?", color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+        if (iconKey != null) Icon(CategoryIconSet.vector(iconKey), null, Modifier.size((size * 0.52f).dp), tint = color)
+        else Text(name.firstOrNull()?.uppercase() ?: "?", color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
     }
 }
+
+/** Avatar di una categoria: icona a linea sul colore della categoria (iniziale se la categoria è sconosciuta). */
+@Composable
+fun CategoryAvatar(category: it.spese.core.model.Category?, modifier: Modifier = Modifier, size: Int = 40) =
+    CategoryAvatar(category?.name ?: "?", category?.color?.toColor() ?: Color.Gray, modifier, size, category?.iconKey)
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable

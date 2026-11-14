@@ -12,6 +12,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -45,6 +46,7 @@ fun DashboardScreen(
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
     Column(Modifier.fillMaxSize()) {
         LargeHeader("Panoramica", menu = menu, actions = {
+            RoundIconButton(Icons.Default.Add, "Aggiungi", onAdd, Modifier.testTag("fab_add"), primary = true)
             RoundIconButton(Icons.Default.Notifications, if (alertCount > 0) "Avvisi: $alertCount da vedere" else "Avvisi", onOpenAlerts, badge = alertCount > 0)
             RoundIconButton(Icons.Default.Tune, "Filtri", { filters = true }, badge = st.filter.activeCount > 0)
         })
