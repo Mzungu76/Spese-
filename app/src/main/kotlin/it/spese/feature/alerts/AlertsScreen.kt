@@ -31,7 +31,7 @@ fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: AlertsViewM
                 SectionCard(title = "Avvisi") {
                     if (st.alerts.isEmpty()) Text("Nessun avviso. Imposta dei budget nel Piano per ricevere avvisi di superamento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     st.alerts.forEach { a -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) { Box(Modifier.padding(top = 6.dp)) { SeverityDot(a.level) }; Text(a.message, style = MaterialTheme.typography.bodyMedium) } }
-                    Text("Calcolati sull'ultimo mese (${Dates.monthLabel(YearMonth.from(st.today))})${st.accountName?.let { " del conto $it" } ?: " di tutti i conti"}, riferimento al ${Dates.fmt(st.today)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Calcolati sull'ultimo mese (${Dates.monthLabel(st.data.calendar.monthOf(st.today))})${st.accountName?.let { " del conto $it" } ?: " di tutti i conti"}, riferimento al ${Dates.fmt(st.today)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = onOpenSettings) { Icon(Icons.Default.NotificationsActive, null); Spacer(Modifier.width(6.dp)); Text("Configura le notifiche") }
                 }
             }

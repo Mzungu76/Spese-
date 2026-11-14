@@ -1,6 +1,7 @@
 package it.spese.domain.finance
 
 import it.spese.core.common.Dates
+import it.spese.core.common.MonthCalendar
 import it.spese.core.model.Transaction
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -20,16 +21,16 @@ data class Bucket(val label: String, val start: LocalDate, val weekly: Boolean, 
 
 object TrendBuckets {
     /** Mensile se i dati coprono almeno 2,5 mesi, altrimenti settimanale (lunedì-domenica). */
-    fun compute(list: List<Transaction>): List<Bucket> {
+    fun compute(list: List<Transaction>, cal: MonthCalendar = MonthCalendar.SOLAR): List<Bucket> {
         if (list.isEmpty()) return emptyList()
-        return if (StatsEngine.monthsSpan(list) >= BigDecimal("2.5")) monthly(list) else weekly(list)
+        return if (StatsEngine.monthsSpan(list) >= BigDecimal("2.5")) monthly(list, cal) else weekly(list)
     }
 
-    fun monthly(list: List<Transaction>): List<Bucket> {
-        val s = StatsEngine.compute(list)
+    fun monthly(list: List<Transaction>, cal: MonthCalendar = MonthCalendar.SOLAR): List<Bucket> {
+        val s = StatsEngine.compute(list, cal)
         return StatsEngine.allMonths(s.byMonth).map { m ->
             val b = s.byMonth[m]
-            Bucket(Dates.monthLabel(m).substringBefore(' '), m.atDay(1), false, b?.income ?: BigDecimal.ZERO, b?.expense ?: BigDecimal.ZERO)
+            Bucket(Dates.monthLabel(m).substringBefore(' '), cal.start(m), false, b?.income ?: BigDecimal.ZERO, b?.expense ?: BigDecimal.ZERO)
         }
     }
 

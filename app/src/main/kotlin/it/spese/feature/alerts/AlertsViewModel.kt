@@ -37,8 +37,8 @@ class AlertsViewModel @Inject constructor(data: StateFlow<AppData>, filters: Fil
             val tx = d.transactions.filter { f.accountId == null || it.accountId == f.accountId }
             val today = AlertEngine.referenceToday(LocalDate.now(), tx)
             val excl = RecurringDetector.defaultExclusions(d.categories)
-            val alerts = AlertEngine.compute(tx, d.categories, d.goal, d.dues, today, excl)
-            val usage = AlertEngine.budgetUsage(tx, d.categories, YearMonth.from(today))
+            val alerts = AlertEngine.compute(tx, d.categories, d.goal, d.dues, today, excl, d.calendar)
+            val usage = AlertEngine.budgetUsage(tx, d.categories, d.calendar.monthOf(today), d.calendar)
             val rec = RecurringDetector.detect(tx, excl)
             val rows = (d.dues.map { ScheduleRow(it.name, it.amount, it.next, it.id, ChronoUnit.DAYS.between(today, it.next).toInt(), it.frequency) } +
                 rec.map { ScheduleRow(it.merchant, it.mean, it.next, null, ChronoUnit.DAYS.between(today, it.next).toInt(), null) }).sortedBy { it.date }

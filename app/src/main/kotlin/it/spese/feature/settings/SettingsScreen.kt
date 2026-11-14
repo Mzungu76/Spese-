@@ -60,6 +60,22 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                 }
             }
             item {
+                SectionCard(title = "Mese contabile") {
+                    LabeledSwitch("Mese che non segue il calendario", s.monthStartDay > 1, { on -> vm.update { it.copy(monthStartDay = if (on) 20 else 1) } },
+                        supporting = "Utile se lo stipendio arriva a metà mese: tutta la contabilità (periodi, confronti, budget, tendenze, report) va da quel giorno al giorno prima del mese successivo.")
+                    if (s.monthStartDay > 1) {
+                        Text("Il mese inizia il giorno", style = MaterialTheme.typography.labelLarge)
+                        ChipChoice(listOf(5, 10, 15, 20, 25, 27).map { it to "$it" }, s.monthStartDay, { d -> vm.update { it.copy(monthStartDay = d) } })
+                        var text by remember(s.monthStartDay) { mutableStateOf(s.monthStartDay.toString()) }
+                        OutlinedTextField(text, { v -> text = v.filter { c -> c.isDigit() }.take(2); text.toIntOrNull()?.takeIf { it in 2..28 }?.let { d -> vm.update { it.copy(monthStartDay = d) } } },
+                            label = { Text("Giorno (2–28)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        val cal = it.spese.core.common.MonthCalendar(s.monthStartDay)
+                        val ex = java.time.YearMonth.of(2026, 1)
+                        Text("Esempio: «gennaio» va dal ${it.spese.core.common.Dates.fmt(cal.start(ex))} al ${it.spese.core.common.Dates.fmt(cal.end(ex))}. Ogni mese prende il nome da quello in cui inizia.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
                 SectionCard(title = "Aspetto") {
                     ChipChoice(listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Chiaro", ThemeMode.DARK to "Scuro"), s.themeMode, { m -> vm.update { it.copy(themeMode = m) } })
                 }

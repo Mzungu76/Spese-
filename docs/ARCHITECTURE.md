@@ -78,6 +78,10 @@ Un movimento resta una riga sola (importo intero, coerente con l'estratto); le s
 
 `RecurringRule` (tabella `recurring_rules`, schema 7) descrive un'entrata o spesa che si ripete: ogni N mesi, giorno del mese (l'ultimo giorno se il mese è più corto), inizio e fine, conto e categoria opzionali. `RecurringEngine` calcola le date dovute; `GenerateRecurringUseCase` (all'avvio, a ogni ripresa e dopo il salvataggio) crea i movimenti con origine `RECURRING` e identificativo `rec|regola|data`, e la regola ricorda l'ultima data creata (ciò che l'utente elimina non viene ricreato). I movimenti passano da Verifica, salvo «registra senza verifica»; `NotificationReconciler` li sostituisce con la riga dell'estratto (stesso importo, fino a 5 giorni di distanza).
 
+## Mese contabile
+
+`MonthCalendar(startDay)` (core:common) definisce un mese che inizia nel giorno scelto (1–28) e prende il nome dal mese in cui inizia (calendario di default). Il valore sta nelle impostazioni (`monthStartDay`), arriva ai motori in `AppData.calendar` e in `TxFilter.calendar` (`FilterStore` lo combina col filtro, così ogni schermata lo riceve). `PeriodResolver`, `StatsEngine` (mesi), `TrendBuckets`, `AlertEngine` (budget e ritmo), `DashboardCalculator` (confronto sul mese prima), `CategoryDetail`, `CategoryTrendEngine`, `CategoryComparisonEngine`, `CashQuotaEngine` e `ReportBuilder` ragionano in mesi contabili; con il calendario il comportamento è identico a prima.
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

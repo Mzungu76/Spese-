@@ -31,16 +31,17 @@ enum class ReportPeriodKind(val key: String, val label: String) {
 
 /** Periodo di un report. "Corrente" e "precedente" sono relativi all'ultimo movimento (come nel resto dell'app). */
 data class ReportPeriod(val kind: ReportPeriodKind, val month: YearMonth? = null, val from: LocalDate? = null, val to: LocalDate? = null) {
-    fun resolve(dataMax: LocalDate?): Period {
+    fun resolve(dataMax: LocalDate?, cal: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR): Period {
         val ref = dataMax ?: LocalDate.now()
+        val cur = cal.monthOf(ref)
         return when (kind) {
             ReportPeriodKind.CURRENT_MONTH -> Period.CurrentMonth
-            ReportPeriodKind.PREVIOUS_MONTH -> Period.Month(YearMonth.from(ref).minusMonths(1))
-            ReportPeriodKind.MONTH -> Period.Month(month ?: YearMonth.from(ref))
+            ReportPeriodKind.PREVIOUS_MONTH -> Period.Month(cur.minusMonths(1))
+            ReportPeriodKind.MONTH -> Period.Month(month ?: cur)
             ReportPeriodKind.LAST_3 -> Period.Last3Months
             ReportPeriodKind.LAST_6 -> Period.Last6Months
             ReportPeriodKind.YEAR_TO_DATE -> Period.YearToDate
-            ReportPeriodKind.PREVIOUS_YEAR -> Period.Custom(LocalDate.of(ref.year - 1, 1, 1), LocalDate.of(ref.year - 1, 12, 31))
+            ReportPeriodKind.PREVIOUS_YEAR -> Period.Custom(cal.start(YearMonth.of(cur.year - 1, 1)), cal.end(YearMonth.of(cur.year - 1, 12)))
             ReportPeriodKind.ALL -> Period.All
             ReportPeriodKind.CUSTOM -> Period.Custom(from, to)
         }

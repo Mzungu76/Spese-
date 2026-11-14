@@ -11,6 +11,8 @@ import it.spese.core.model.Scenario
 import it.spese.core.model.Transaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** Fotografia coerente di tutti i dati osservabili; le schermate la combinano con i filtri correnti. */
 data class AppData(
@@ -26,6 +28,8 @@ data class AppData(
     val ledger: List<Transaction> = transactions,
     val splits: Map<Long, List<TransactionSplit>> = emptyMap(),
     val quotas: List<CashQuota> = emptyList(),
+    /** Mese contabile scelto dall'utente (calendario di default). */
+    val calendar: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR,
 ) {
     val categoriesById: Map<Long, Category> by lazy { categories.associateBy { it.id } }
     val accountsById: Map<Long, Account> by lazy { accounts.associateBy { it.id } }
@@ -45,10 +49,12 @@ class AppDataSource(
     private val dues: DueRepository,
     private val scenarios: ScenarioRepository,
     private val quotas: CashQuotaRepository,
+    private val settings: SettingsRepository? = null,
 ) {
     fun observe(): Flow<AppData> = combine(
         tx.observeAll(), cats.observeAll(), accounts.observeAll(), rules.observeAll(), dues.observeAll(), scenarios.observeAll(),
         tx.observeSplits(), quotas.observeAll(),
+        (settings?.observe() ?: kotlinx.coroutines.flow.flowOf(AppSettings())).map { it.monthStartDay }.distinctUntilChanged(),
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val raw = values[0] as List<Transaction>
@@ -57,7 +63,7 @@ class AppDataSource(
         AppData(
             it.spese.domain.finance.SplitExpander.expand(raw, splits, categories.associateBy { it.id }), categories, values[2] as List<Account>,
             values[3] as List<Rule>, values[4] as List<Due>, values[5] as List<Scenario>, true,
-            raw, splits, values[7] as List<CashQuota>,
+            raw, splits, values[7] as List<CashQuota>, it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28)),
         )
     }
 }

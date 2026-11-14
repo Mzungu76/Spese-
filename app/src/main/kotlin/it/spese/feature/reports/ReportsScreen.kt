@@ -83,7 +83,7 @@ private fun ReportEditor(st: ReportsState, vm: ReportsViewModel) {
     var pickCategories by remember { mutableStateOf(false) }
     var saveDialog by remember { mutableStateOf(false) }
     val create = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { it?.let(vm::saveTo) }
-    val months = remember(data.ledger.size) { data.ledger.map { YearMonth.from(it.bookingDate) }.distinct().sortedDescending().take(24) }
+    val months = remember(data.ledger.size) { data.ledger.map { data.calendar.monthOf(it.bookingDate) }.distinct().sortedDescending().take(24) }
     Column(Modifier.fillMaxSize()) {
         BackHeader(st.name, { vm.backToList() })
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -96,7 +96,7 @@ private fun ReportEditor(st: ReportsState, vm: ReportsViewModel) {
             item {
                 SectionCard(title = "Periodo") {
                     ChipChoice(ReportPeriodKind.entries.map { it to it.label }, spec.period.kind, { k -> vm.edit { it.copy(period = it.period.copy(kind = k, month = if (k == ReportPeriodKind.MONTH) (it.period.month ?: months.firstOrNull()) else it.period.month)) } })
-                    if (spec.period.kind == ReportPeriodKind.MONTH) ChipChoice(months.map { m -> m to it.spese.core.common.Dates.monthLabelLong(m) }, spec.period.month, { m -> vm.edit { it.copy(period = it.period.copy(month = m)) } })
+                    if (spec.period.kind == ReportPeriodKind.MONTH) ChipChoice(months.map { m -> m to data.calendar.label(m) }, spec.period.month, { m -> vm.edit { it.copy(period = it.period.copy(month = m)) } })
                     if (spec.period.kind == ReportPeriodKind.CUSTOM) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         DateField(spec.period.from, { d -> vm.edit { it.copy(period = it.period.copy(from = d)) } }, "Dal", Modifier.weight(1f))
                         DateField(spec.period.to, { d -> vm.edit { it.copy(period = it.period.copy(to = d)) } }, "Al", Modifier.weight(1f))

@@ -1,6 +1,7 @@
 package it.spese.domain.finance
 
 import it.spese.core.common.Dates
+import it.spese.core.common.MonthCalendar
 import it.spese.core.common.Money
 import it.spese.core.model.Category
 import it.spese.core.model.Due
@@ -35,9 +36,9 @@ object AlertEngine {
         return if (ChronoUnit.DAYS.between(mx, realToday) > 45) mx else realToday
     }
 
-    fun monthlySpending(list: List<Transaction>, month: YearMonth): Map<Long?, BigDecimal> {
+    fun monthlySpending(list: List<Transaction>, month: YearMonth, cal: MonthCalendar = MonthCalendar.SOLAR): Map<Long?, BigDecimal> {
         val by = HashMap<Long?, BigDecimal>()
-        list.filter { YearMonth.from(it.bookingDate) == month && it.kind == TxKind.SPESA }
+        list.filter { cal.monthOf(it.bookingDate) == month && it.kind == TxKind.SPESA }
             .forEach { by.merge(it.categoryId, it.amount.negate()) { a, b -> a + b } }
         return by
     }
@@ -46,8 +47,8 @@ object AlertEngine {
     fun spentWithChildren(by: Map<Long?, BigDecimal>, c: Category, categories: List<Category>): BigDecimal =
         CategoryTree.withChildren(c.id, categories).fold(BigDecimal.ZERO) { a, id -> a + (by[id] ?: BigDecimal.ZERO) }
 
-    fun budgetUsage(list: List<Transaction>, categories: List<Category>, month: YearMonth): List<BudgetUsage> {
-        val by = monthlySpending(list, month)
+    fun budgetUsage(list: List<Transaction>, categories: List<Category>, month: YearMonth, cal: MonthCalendar = MonthCalendar.SOLAR): List<BudgetUsage> {
+        val by = monthlySpending(list, month, cal)
         return categories.filter { (it.budgetMonthly ?: BigDecimal.ZERO).signum() > 0 }
             .map { BudgetUsage(it, spentWithChildren(by, it, categories), it.budgetMonthly!!) }
     }
@@ -63,11 +64,12 @@ object AlertEngine {
         dues: List<Due>,
         today: LocalDate,
         excludedRecurringCategories: Set<Long?> = emptySet(),
+        cal: MonthCalendar = MonthCalendar.SOLAR,
     ): List<AlertItem> {
         val out = ArrayList<AlertItem>()
         if (accountTx.isEmpty()) return out
-        val ym = YearMonth.from(today); val dim = ym.lengthOfMonth(); val dd = today.dayOfMonth
-        val by = monthlySpending(accountTx, ym)
+        val ym = cal.monthOf(today); val dim = cal.length(ym); val dd = cal.dayIndex(today)
+        val by = monthlySpending(accountTx, ym, cal)
         val label = Dates.monthLabel(ym)
         for (c in categories) {
             val b = c.budgetMonthly ?: continue
@@ -80,7 +82,7 @@ object AlertEngine {
             else if (dd >= 7 && dd < dim && proj > b.multiply(BigDecimal("1.05")))
                 out.add(AlertItem(1, AlertKind.BUDGET_PACE, "\"${c.name}\": a questo ritmo chiuderai $label a ${Money.eur0(proj)} (budget ${Money.eur0(b)})", "bud:${c.id}"))
         }
-        val prev = StatsEngine.compute(accountTx.filter { YearMonth.from(it.bookingDate) < ym })
+        val prev = StatsEngine.compute(accountTx.filter { cal.monthOf(it.bookingDate) < ym }, cal)
         val pm = prev.byMonth.keys.sorted().takeLast(3)
         if (pm.isNotEmpty()) {
             var i = BigDecimal.ZERO; var e = BigDecimal.ZERO
@@ -103,7 +105,7 @@ object AlertEngine {
             if (d < 0) out.add(AlertItem(2, AlertKind.DUE_LATE, "Scadenza in ritardo: ${x.name} (${Money.eur0(x.amount)}) del ${Dates.fmt(x.next)}", "due:${x.id}"))
             else if (d <= 7) out.add(AlertItem(1, AlertKind.DUE_SOON, "Scadenza ${if (d == 0) "oggi" else "tra $d giorni"}: ${x.name} (${Money.eur0(x.amount)})", "due:${x.id}"))
         }
-        out.addAll(unexpectedExpenses(accountTx, categories, ym))
+        out.addAll(unexpectedExpenses(accountTx, categories, ym, cal))
         return out.sortedByDescending { it.level }
     }
 
@@ -111,11 +113,11 @@ object AlertEngine {
      * Spese non previste: nel mese corrente, spese di importo >= 50 € che superano di oltre 3 deviazioni standard
      * la spesa media storica della stessa categoria (servono almeno 5 movimenti precedenti).
      */
-    fun unexpectedExpenses(list: List<Transaction>, categories: List<Category>, month: YearMonth): List<AlertItem> {
+    fun unexpectedExpenses(list: List<Transaction>, categories: List<Category>, month: YearMonth, cal: MonthCalendar = MonthCalendar.SOLAR): List<AlertItem> {
         val names = categories.associate { it.id to it.name }
         val out = ArrayList<AlertItem>()
-        val hist = list.filter { it.kind == TxKind.SPESA && YearMonth.from(it.bookingDate) < month }.groupBy { it.categoryId }
-        list.filter { it.kind == TxKind.SPESA && YearMonth.from(it.bookingDate) == month && it.amount.negate() >= BigDecimal(50) }.forEach { t ->
+        val hist = list.filter { it.kind == TxKind.SPESA && cal.monthOf(it.bookingDate) < month }.groupBy { it.categoryId }
+        list.filter { it.kind == TxKind.SPESA && cal.monthOf(it.bookingDate) == month && it.amount.negate() >= BigDecimal(50) }.forEach { t ->
             val h = hist[t.categoryId] ?: return@forEach
             if (h.size < 5) return@forEach
             val xs = h.map { it.amount.negate() }

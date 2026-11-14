@@ -44,9 +44,10 @@ object CategoryComparisonEngine {
         val base = filter.copy(categoryId = null, kind = null, query = "", minAmount = null, maxAmount = null)
         val period = FilterEngine.apply(data.transactions, base, data.categoriesById)
         if (period.isEmpty()) return null
-        val buckets = TrendBuckets.compute(period)
+        val cal = filter.calendar
+        val buckets = TrendBuckets.compute(period, cal)
         val weekly = buckets.firstOrNull()?.weekly ?: false
-        fun key(d: LocalDate): LocalDate = if (weekly) d.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) else YearMonth.from(d).atDay(1)
+        fun key(d: LocalDate): LocalDate = if (weekly) d.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) else cal.start(cal.monthOf(d))
         val idx = buckets.withIndex().associate { it.value.start to it.index }
         val stats = StatsEngine.compute(period)
         fun magnitude(t: Transaction, kind: TxKind) = if (kind == TxKind.ENTRATA) t.amount else t.amount.negate()

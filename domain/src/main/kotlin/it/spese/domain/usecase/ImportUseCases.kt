@@ -105,7 +105,7 @@ class ExportTransactionsUseCase @Inject constructor() {
         Exporters.csv(list, data.accounts.associate { it.id to it.name }, data.categoriesById).toByteArray(Charsets.UTF_8)
 
     fun xlsx(data: AppData, list: List<it.spese.core.model.Transaction>): ByteArray =
-        Exporters.xlsx(list, data.accounts.associate { it.id to it.name }, data.categoriesById)
+        Exporters.xlsx(list, data.accounts.associate { it.id to it.name }, data.categoriesById, data.calendar)
 }
 
 /** Cerca un formato già ricordato per questo file e permette di ricordarne di nuovi. */

@@ -9,14 +9,14 @@ import javax.inject.Inject
 
 /** Applica le quote fisse in contanti ai prelievi (una volta al mese, sul primo che le copre). Restituisce quanti movimenti ha diviso. */
 class ApplyCashQuotasUseCase @Inject constructor(
-    private val tx: TransactionRepository, private val quotas: CashQuotaRepository, private val categories: CategoryRepository,
+    private val tx: TransactionRepository, private val quotas: CashQuotaRepository, private val categories: CategoryRepository, private val settings: SettingsRepository,
 ) {
     suspend operator fun invoke(): Int {
         val q = quotas.getAll().filter { it.enabled }
         if (q.isEmpty()) return 0
         val ledger = tx.getAll()
         val splits = tx.getSplits().groupBy { it.txId }
-        val plan = CashQuotaEngine.plan(ledger, splits, categories.getAll().associateBy { it.id }, q)
+        val plan = CashQuotaEngine.plan(ledger, splits, categories.getAll().associateBy { it.id }, q, it.spese.core.common.MonthCalendar(settings.get().monthStartDay.coerceIn(1, 28)))
         plan.forEach { tx.replaceSplits(it.txId, it.parts) }
         return plan.size
     }

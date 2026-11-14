@@ -157,6 +157,8 @@ data class AppSettings(
     /** File condiviso collegato per la sincronizzazione (URI SAF) e ultimo allineamento. */
     val syncUri: String = "",
     val lastSyncAt: Long = 0,
+    /** Giorno in cui inizia il mese contabile (1 = mese di calendario). */
+    val monthStartDay: Int = 1,
 )
 
 interface SettingsRepository {

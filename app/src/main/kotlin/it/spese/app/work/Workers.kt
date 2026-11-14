@@ -68,7 +68,7 @@ class AlertsWorker @AssistedInject constructor(
         val d = data.first { it.loaded }
         if (d.transactions.isEmpty() && d.dues.isEmpty()) return Result.success()
         val today = AlertEngine.referenceToday(java.time.LocalDate.now(), d.transactions)
-        val alerts = AlertEngine.compute(d.transactions, d.categories, d.goal, d.dues, today, RecurringDetector.defaultExclusions(d.categories))
+        val alerts = AlertEngine.compute(d.transactions, d.categories, d.goal, d.dues, today, RecurringDetector.defaultExclusions(d.categories), d.calendar)
             .filter { a ->
                 when (a.kind) {
                     AlertKind.BUDGET_EXCEEDED, AlertKind.BUDGET_NEAR, AlertKind.BUDGET_PACE -> s.notifyBudgets

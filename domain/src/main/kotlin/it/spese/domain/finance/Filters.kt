@@ -6,6 +6,7 @@ import it.spese.core.model.TxKind
 import it.spese.domain.classification.merchant
 import java.math.BigDecimal
 import java.time.LocalDate
+import it.spese.core.common.MonthCalendar
 import java.time.YearMonth
 
 /** Periodi predefiniti (stessi della versione HTML: Tutto, Anno, 3 mesi, 6 mesi, Mese corrente + mese singolo e intervallo). */
@@ -24,19 +25,23 @@ data class DateRange(val from: LocalDate?, val to: LocalDate?) {
 }
 
 object PeriodResolver {
-    /** Risolve un periodo rispetto all'intervallo dei dati (come `setPeriod` dell'HTML: l'estremo finale è l'ultimo movimento). */
-    fun resolve(period: Period, dataMin: LocalDate?, dataMax: LocalDate?): DateRange {
+    /**
+     * Risolve un periodo rispetto all'intervallo dei dati (come `setPeriod` dell'HTML: l'estremo finale è l'ultimo movimento).
+     * "Mese", "3 mesi", "6 mesi" e "Anno" seguono il mese contabile scelto (calendario di default).
+     */
+    fun resolve(period: Period, dataMin: LocalDate?, dataMax: LocalDate?, cal: MonthCalendar = MonthCalendar.SOLAR): DateRange {
         if (dataMin == null || dataMax == null) return when (period) {
             is Period.Custom -> DateRange(period.from, period.to)
             else -> DateRange(null, null)
         }
+        val cur = cal.monthOf(dataMax)
         return when (period) {
             Period.All -> DateRange(dataMin, dataMax)
-            Period.YearToDate -> DateRange(maxOf(LocalDate.of(dataMax.year, 1, 1), dataMin), dataMax)
-            Period.CurrentMonth -> DateRange(maxOf(dataMax.withDayOfMonth(1), dataMin), dataMax)
-            Period.Last3Months -> DateRange(maxOf(YearMonth.from(dataMax).minusMonths(2).atDay(1), dataMin), dataMax)
-            Period.Last6Months -> DateRange(maxOf(YearMonth.from(dataMax).minusMonths(5).atDay(1), dataMin), dataMax)
-            is Period.Month -> DateRange(period.month.atDay(1), period.month.atEndOfMonth())
+            Period.YearToDate -> DateRange(maxOf(cal.start(YearMonth.of(cur.year, 1)), dataMin), dataMax)
+            Period.CurrentMonth -> DateRange(maxOf(cal.start(cur), dataMin), dataMax)
+            Period.Last3Months -> DateRange(maxOf(cal.start(cur.minusMonths(2)), dataMin), dataMax)
+            Period.Last6Months -> DateRange(maxOf(cal.start(cur.minusMonths(5)), dataMin), dataMax)
+            is Period.Month -> DateRange(cal.start(period.month), cal.end(period.month))
             is Period.Custom -> DateRange(period.from, period.to)
         }
     }
@@ -51,6 +56,8 @@ data class TxFilter(
     val query: String = "",
     val minAmount: BigDecimal? = null,
     val maxAmount: BigDecimal? = null,
+    /** Mese contabile in uso (lo imposta l'app dalle impostazioni; qui si riporta perché i periodi lo seguono). */
+    val calendar: MonthCalendar = MonthCalendar.SOLAR,
 ) {
     val activeCount: Int
         get() = listOfNotNull(accountId, categoryId, kind, minAmount, maxAmount).size +
@@ -66,8 +73,8 @@ object FilterEngine {
         val tokens = SearchMatcher.tokens(filter.query)
         val searching = tokens.isNotEmpty()
         val period = if (searching) Period.All else filter.period
-        val range = if (all.isEmpty()) PeriodResolver.resolve(period, null, null)
-        else PeriodResolver.resolve(period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
+        val range = if (all.isEmpty()) PeriodResolver.resolve(period, null, null, filter.calendar)
+        else PeriodResolver.resolve(period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate }, filter.calendar)
         // filtrando una categoria principale sono incluse anche le sue sottocategorie
         val catIds = filter.categoryId?.let { CategoryTree.withChildren(it, categories.values) }
         return all.filter { x ->

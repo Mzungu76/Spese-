@@ -29,7 +29,9 @@ import it.spese.app.common.FilterSheet
 import it.spese.app.common.FilterViewModel
 import it.spese.app.common.LargeHeader
 import it.spese.app.common.RoundIconButton
+import it.spese.core.common.Dates
 import it.spese.core.common.Money
+import it.spese.domain.finance.PeriodResolver
 import it.spese.core.model.TxKind
 import it.spese.core.designsystem.chart.GapAreaChart
 import it.spese.core.designsystem.chart.GapPoint
@@ -103,6 +105,11 @@ fun DashboardScreen(
             } else item(key = "compare") { ComparisonSection(st.compare!!, vm::toggleCategory, vm::clearSelection, Modifier.padding(top = 20.dp, bottom = 8.dp)) }
             item(key = "period") {
                 PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+            }
+            if (!st.filter.calendar.isSolar && st.data.ledger.isNotEmpty()) item(key = "calendar-note") {
+                val r = PeriodResolver.resolve(shownPeriod, st.data.ledger.minOf { it.bookingDate }, st.data.ledger.maxOf { it.bookingDate }, st.filter.calendar)
+                Text("Mese contabile dal giorno ${st.filter.calendar.startDay}" + (r.from?.let { f -> r.to?.let { t -> " · periodo ${Dates.fmt(f)} – ${Dates.fmt(t)}" } } ?: ""),
+                    Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item(key = "alerts") {
                 Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),

@@ -17,13 +17,18 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 /** Filtri condivisi da Panoramica, Movimenti, Piano e Analisi (periodo, conto, categoria, tipo, testo, importo). */
 @Singleton
-class FilterStore @Inject constructor() {
+class FilterStore @Inject constructor(settings: it.spese.domain.repository.SettingsRepository, @it.spese.data.di.ApplicationScope scope: kotlinx.coroutines.CoroutineScope) {
     /** Di partenza: il mese corrente (l'ultimo con movimenti), confrontato con il precedente. */
     private val _filter = MutableStateFlow(TxFilter(period = Period.CurrentMonth))
-    val filter: StateFlow<TxFilter> = _filter.asStateFlow()
+    /** Il filtro con il mese contabile scelto nelle impostazioni (calendario di default): i periodi lo seguono ovunque. */
+    val filter: StateFlow<TxFilter> = kotlinx.coroutines.flow.combine(_filter, settings.observe().map { it.monthStartDay.coerceIn(1, 28) }.distinctUntilChanged()) { f, day -> f.copy(calendar = it.spese.core.common.MonthCalendar(day)) }
+        .stateIn(scope, kotlinx.coroutines.flow.SharingStarted.Eagerly, _filter.value)
     fun update(transform: (TxFilter) -> TxFilter) { _filter.value = transform(_filter.value) }
     fun reset() { _filter.value = TxFilter(period = Period.CurrentMonth) }
 

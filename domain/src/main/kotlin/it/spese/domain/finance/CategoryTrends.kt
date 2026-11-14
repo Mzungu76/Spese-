@@ -77,8 +77,9 @@ object CategoryTrendEngine {
     fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now()): TrendReport? {
         val all = data.transactions.filter { filter.accountId == null || it.accountId == filter.accountId }
         if (all.isEmpty()) return null
-        val ref = YearMonth.from(AlertEngine.referenceToday(realToday, all))
-        val first = YearMonth.from(all.minOf { it.bookingDate })
+        val cal = filter.calendar
+        val ref = cal.monthOf(AlertEngine.referenceToday(realToday, all))
+        val first = cal.monthOf(all.minOf { it.bookingDate })
         // mesi completi; se ce ne sono meno di 3 si include anche quello in corso
         var last = ref.minusMonths(1)
         if (ChronoCount.months(first, last) < 3) last = ref
@@ -87,19 +88,19 @@ object CategoryTrendEngine {
         val window = generateSequence(start) { it.plusMonths(1) }.takeWhile { !it.isAfter(last) }.toList()
 
         val byId = data.categoriesById
-        val range = PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
+        val range = PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate }, cal)
         val periodTx = all.filter { it.bookingDate in range }
         val histTx = if (filter.period == Period.All || range.from == null) emptyList() else all.filter { it.bookingDate < range.from }
         // mesi coperti: dai giorni dell'intervallo (non dalle date dei movimenti, che potrebbero essere rade)
         fun monthsOf(from: LocalDate, to: LocalDate): BigDecimal =
             BigDecimal(java.time.temporal.ChronoUnit.DAYS.between(from, to) + 1).divide(BigDecimal("30.44"), 10, RoundingMode.HALF_UP).max(BigDecimal.ONE)
         val periodMonths = if (range.from == null || range.to == null) BigDecimal.ONE else monthsOf(range.from, range.to)
-        val histMonths = if (range.from == null) BigDecimal.ONE else monthsOf(first.atDay(1), range.from.minusDays(1))
+        val histMonths = if (range.from == null) BigDecimal.ONE else monthsOf(cal.start(first), range.from.minusDays(1))
 
         fun mag(t: Transaction, k: TxKind) = if (k == TxKind.ENTRATA) t.amount else t.amount.negate()
         fun trendOf(cat: Category?, kind: TxKind, match: (Transaction) -> Boolean): CategoryTrend {
             val mine = all.filter { it.kind == kind && match(it) }
-            val perMonth = mine.groupBy { YearMonth.from(it.bookingDate) }.mapValues { (_, l) -> l.fold(BigDecimal.ZERO) { a, t -> a + mag(t, kind) } }
+            val perMonth = mine.groupBy { cal.monthOf(it.bookingDate) }.mapValues { (_, l) -> l.fold(BigDecimal.ZERO) { a, t -> a + mag(t, kind) } }
             val series = window.map { it to (perMonth[it] ?: BigDecimal.ZERO) }
             val pAvg = periodTx.filter { it.kind == kind && match(it) }.fold(BigDecimal.ZERO) { a, t -> a + mag(t, kind) }.divide(periodMonths, 2, RoundingMode.HALF_UP)
             val hAvg = if (histTx.isEmpty()) null else histTx.filter { it.kind == kind && match(it) }.fold(BigDecimal.ZERO) { a, t -> a + mag(t, kind) }.divide(histMonths, 2, RoundingMode.HALF_UP)

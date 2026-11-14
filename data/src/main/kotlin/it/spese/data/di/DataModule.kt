@@ -56,8 +56,8 @@ abstract class RepositoryModule {
 @InstallIn(SingletonComponent::class)
 object AppDataModule {
     @Provides @Singleton
-    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository, q: CashQuotaRepository) =
-        AppDataSource(tx, c, a, r, d, s, q)
+    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository, q: CashQuotaRepository, settings: SettingsRepository) =
+        AppDataSource(tx, c, a, r, d, s, q, settings)
 
     @Provides @Singleton
     fun appData(src: AppDataSource, @ApplicationScope scope: CoroutineScope): StateFlow<AppData> = src.observe().stateIn(scope, SharingStarted.Eagerly, AppData())

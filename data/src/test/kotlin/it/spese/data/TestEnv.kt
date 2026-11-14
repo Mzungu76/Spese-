@@ -28,7 +28,7 @@ class TestEnv {
     val reclassify = ReclassifyAllUseCase(tx, cats, rules)
     val restore = RestoreBackupUseCase(backup, reclassify)
     val quotas = CashQuotaRepositoryImpl(db)
-    val applyQuotas = ApplyCashQuotasUseCase(tx, quotas, cats)
+    val applyQuotas = ApplyCashQuotasUseCase(tx, quotas, cats, settings)
     val setSplits = SetSplitsUseCase(tx)
     val commit = CommitImportUseCase(tx, accounts, cats, rules, settings, applyQuotas)
     val undo = UndoImportUseCase(tx, backup, settings)

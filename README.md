@@ -20,6 +20,7 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 - **Verifica** (in Movimenti) – i movimenti la cui associazione non è certa: divisi in automatico, provvisori da notifica, regole con soglia di importo, importi insoliti.
 - **Report PDF** (menu ⋮) – modelli pronti (riepilogo mensile e annuale, categorie, tendenze e proiezioni, budget, elenco movimenti, contanti, per il commercialista) e personalizzabili: periodo, conto, categorie, sezioni e ordine, grafici, orientamento; anteprima, salvataggio e condivisione; i tuoi modelli si salvano.
 - **Entrate e spese ricorrenti** – stipendio, affitto incassato, abbonamenti: ogni mese (o ogni 2/3/6/12 mesi), nel giorno scelto, con categoria fissa o dalle regole; l'app crea il movimento da sola come provvisorio (in Verifica) e l'estratto conto lo sostituisce.
+- **Mese contabile** (Impostazioni) – opzionale: il mese può iniziare in un giorno a scelta (es. il 20, dal 20 al 19 del mese dopo) invece che dal calendario; periodi, confronti, budget, tendenze, grafici e report lo seguono.
 - **Backup** – JSON compatibile con la versione web, ZIP con foto, backup automatici, sincronizzazione con un file condiviso, annulla ultima importazione.
 
 ## Per iniziare

@@ -32,7 +32,7 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)
-                DashboardState(d, m, f, TrendBuckets.compute(m.filtered), cm, sel, CategoryComparisonEngine.compute(d, f, sel))
+                DashboardState(d, m, f, TrendBuckets.compute(m.filtered, f.calendar), cm, sel, CategoryComparisonEngine.compute(d, f, sel))
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())

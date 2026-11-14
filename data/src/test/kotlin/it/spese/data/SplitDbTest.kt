@@ -124,3 +124,23 @@ class SplitDbTest {
         assertTrue(env.tx.getSplits().none { it.txId == first && it.auto })       // la divisione manuale non si tocca
     }
 }
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class AccountingMonthDbTest {
+    private lateinit var env: TestEnv
+    @Before fun setUp() { env = TestEnv(); runBlocking { env.seeder.ensureSeeded() } }
+    @After fun tearDown() = env.close()
+
+    @Test fun `il giorno iniziale del mese contabile si salva e arriva ai dati`() = runBlocking {
+        assertEquals(1, env.settings.get().monthStartDay)
+        val src = AppDataSource(env.tx, env.cats, env.accounts, env.rules, env.dues, env.scenarios, env.quotas, env.settings)
+        assertTrue(src.observe().first().calendar.isSolar)
+        env.settings.update { it.copy(monthStartDay = 20) }
+        assertEquals(20, env.settings.get().monthStartDay)
+        assertEquals(20, src.observe().first().calendar.startDay)
+        env.settings.update { it.copy(monthStartDay = 99) }                         // valori fuori misura vengono riportati a 28
+        assertEquals(28, env.settings.get().monthStartDay)
+        env.settings.update { it.copy(monthStartDay = 1) }
+    }
+}

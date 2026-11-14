@@ -1,5 +1,6 @@
 package it.spese.domain.finance
 
+import it.spese.core.common.MonthCalendar
 import it.spese.core.model.CashQuota
 import it.spese.core.model.Category
 import it.spese.core.model.QuotaMode
@@ -30,8 +31,8 @@ object CashQuotaEngine {
 
     private class State(val tx: Transaction, val quotaParts: MutableList<TransactionSplit>, var remainder: BigDecimal, val remainderCategory: Long?) { var changed = false }
 
-    fun plan(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: Map<Long, Category>, quotas: List<CashQuota>): List<Application> {
-        val monthOf = ledger.associate { it.id to YearMonth.from(it.bookingDate) }
+    fun plan(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: Map<Long, Category>, quotas: List<CashQuota>, cal: MonthCalendar = MonthCalendar.SOLAR): List<Application> {
+        val monthOf = ledger.associate { it.id to cal.monthOf(it.bookingDate) }
         val applied = HashSet<Pair<Long, Int>>()   // (quota, periodo) già coperti, anche da divisioni manuali
         val usable = HashMap<Long, State>()
         val cashId = categories.values.firstOrNull { it.name.equals("Contanti", ignoreCase = true) }?.id
@@ -66,9 +67,9 @@ object CashQuotaEngine {
 
         for (q in quotas.filter { it.enabled && it.amount.signum() > 0 && categories.containsKey(it.categoryId) }.sortedBy { it.id }) {
             if (q.mode == QuotaMode.EVERY) { order.filter { fits(q, it) }.forEach { apply(q, it) }; continue }
-            for (b in order.map { bucket(q, YearMonth.from(it.tx.bookingDate)) }.distinct()) {
+            for (b in order.map { bucket(q, cal.monthOf(it.tx.bookingDate)) }.distinct()) {
                 if ((q.id to b) in applied) continue
-                val s = order.firstOrNull { bucket(q, YearMonth.from(it.tx.bookingDate)) == b && fits(q, it) } ?: continue
+                val s = order.firstOrNull { bucket(q, cal.monthOf(it.tx.bookingDate)) == b && fits(q, it) } ?: continue
                 apply(q, s); applied.add(q.id to b)
             }
         }

@@ -26,10 +26,11 @@ object ReportBuilder {
 
     fun build(data: AppData, spec: ReportSpec, today: LocalDate = LocalDate.now(), presetTitle: String? = null): ReportDocument {
         val dataMax = data.ledger.maxOfOrNull { it.bookingDate }
-        val period = spec.period.resolve(dataMax)
-        val filter = TxFilter(period = period, accountId = spec.accountId)
+        val cal = data.calendar
+        val period = spec.period.resolve(dataMax, cal)
+        val filter = TxFilter(period = period, accountId = spec.accountId, calendar = cal)
         val model = DashboardCalculator.compute(data, filter, today)
-        val range = if (data.ledger.isEmpty()) DateRange(null, null) else PeriodResolver.resolve(period, data.ledger.minOf { it.bookingDate }, dataMax!!)
+        val range = if (data.ledger.isEmpty()) DateRange(null, null) else PeriodResolver.resolve(period, data.ledger.minOf { it.bookingDate }, dataMax!!, cal)
         val byId = data.categoriesById
         val selected: Set<Long>? = spec.categoryIds.takeIf { it.isNotEmpty() }?.flatMap { CategoryTree.withChildren(it, data.categories) }?.toSet()
 
@@ -104,7 +105,7 @@ object ReportBuilder {
     }
 
     private fun monthly(c: Ctx, out: MutableList<Block>) {
-        val buckets = TrendBuckets.compute(c.m.filtered)
+        val buckets = TrendBuckets.compute(c.m.filtered, c.data.calendar)
         if (buckets.isEmpty()) return
         out += Block.Heading("Andamento nel tempo")
         if (c.spec.charts && buckets.size >= 2) out += Block.Columns(null, buckets.map { it.label }, listOf(
@@ -185,7 +186,7 @@ object ReportBuilder {
         ))
         val b = m.budgets.filter { c.selected == null || it.category.id in c.selected }
         if (b.isEmpty()) out += Block.Paragraph("Nessun budget impostato" + (if (c.selected != null) " per le categorie scelte" else "") + ".", Tone.MUTED)
-        else out += Block.Table("Budget di " + Dates.monthLabelLong(YearMonth.from(m.today)), listOf(Col("Categoria", weight = 2f), Col("Speso", Align.RIGHT), Col("Budget", Align.RIGHT), Col("Usato", Align.RIGHT, 0.8f), Col("Stato", Align.CENTER, 1.1f)),
+        else out += Block.Table("Budget di " + c.data.calendar.label(c.data.calendar.monthOf(m.today)), listOf(Col("Categoria", weight = 2f), Col("Speso", Align.RIGHT), Col("Budget", Align.RIGHT), Col("Usato", Align.RIGHT, 0.8f), Col("Stato", Align.CENTER, 1.1f)),
             b.map { u -> val p = u.percent.multiply(BigDecimal(100)).setScale(0, RoundingMode.HALF_UP)
                 val (txt, tone) = when { u.exceeded -> "Superato" to Tone.NEGATIVE; p >= BigDecimal(80) -> "Vicino" to Tone.WARNING; else -> "Nei limiti" to Tone.POSITIVE }
                 TRow(listOf(u.category.name, eur0(u.spent), eur0(u.budget), p.toPlainString() + "%", txt), tones = mapOf(3 to tone, 4 to tone)) })
@@ -241,7 +242,7 @@ object ReportBuilder {
 
     private fun transactions(c: Ctx, out: MutableList<Block>) {
         val data = c.data
-        val f = TxFilter(period = c.spec.period.resolve(data.ledger.maxOfOrNull { it.bookingDate }), accountId = c.spec.accountId, categoryId = null)
+        val f = TxFilter(period = c.spec.period.resolve(data.ledger.maxOfOrNull { it.bookingDate }, data.calendar), accountId = c.spec.accountId, categoryId = null, calendar = data.calendar)
         val parts = FilterEngine.apply(data.transactions, f, data.categoriesById).filter { c.selected == null || it.categoryId in c.selected }
         val ids = parts.mapTo(HashSet()) { it.id }
         val list = data.ledger.filter { it.id in ids && (c.spec.includeTransfers || it.kind != TxKind.TRASFERIMENTO) }.sortedWith(compareBy({ it.bookingDate }, { it.id }))
@@ -264,7 +265,7 @@ object ReportBuilder {
             else -> {
                 val groups: List<Pair<String, List<Transaction>>> = if (c.spec.grouping == TxGrouping.CATEGORY)
                     list.groupBy { data.categoryName(it.categoryId) }.entries.sortedBy { it.key }.map { it.key to it.value }
-                else list.groupBy { YearMonth.from(it.bookingDate) }.entries.sortedBy { it.key }.map { Dates.monthLabelLong(it.key) to it.value }
+                else list.groupBy { data.calendar.monthOf(it.bookingDate) }.entries.sortedBy { it.key }.map { data.calendar.label(it.key) to it.value }
                 val rows = ArrayList<TRow>()
                 groups.forEach { (name, l) -> rows += TRow(listOf(name), group = true); l.forEach { rows += row(it) }; rows += subtotal("Subtotale $name", l) }
                 out += Block.Table(null, cols, rows, footer)
