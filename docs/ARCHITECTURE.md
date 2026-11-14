@@ -54,6 +54,12 @@ Flusso dati: `Room → repository (Flow) → AppDataSource (una sola sottoscrizi
 con euristiche per scontrini e fatture italiane; l'utente rivede **sempre** i dati prima del salvataggio. Per estratti conto fotografati o documenti multipagina
 basta aggiungere un parser per tabelle di testo e un `ScanDocumentUseCase` che concateni le pagine: il contratto `TextRecognizer.recognize(path)` e l'archivio documenti non cambiano.
 
+## Cattura da notifiche
+
+`CaptureListenerService` (NotificationListenerService) instrada ogni notifica con `CaptureRouting`: solo fonti attive, pacchetti noti o aggiunti, e per gli SMS solo i mittenti scelti; il resto è scartato prima di leggerne il testo.
+`NotificationParser` ricava importo in euro e direzione (se dubbi, la notifica va tra le non riconosciute); `CaptureNotificationUseCase` crea un movimento con `origin = NOTIFICATION` (provvisorio), classificato dalle regole, e registra una sola volta lo stesso pagamento notificato da due app.
+`CommitImportUseCase` sostituisce i provvisori con le righe dell'estratto (`NotificationReconciler`: stesso importo, data entro 3 giorni), conservando categoria manuale e note. L'app resta senza permesso `INTERNET`.
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

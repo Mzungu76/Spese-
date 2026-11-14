@@ -41,7 +41,11 @@ data class SourceConfig(
 /** Una notifica delle fonti scelte che non è stato possibile interpretare (testo conservato solo sul telefono, per correggere il riconoscimento). */
 data class UnrecognizedNotification(val atMs: Long, val source: String, val text: String)
 
-data class CaptureConfig(val sources: Map<String, SourceConfig> = emptyMap(), val unrecognized: List<UnrecognizedNotification> = emptyList()) {
+data class CaptureConfig(
+    val sources: Map<String, SourceConfig> = emptyMap(), val unrecognized: List<UnrecognizedNotification> = emptyList(),
+    /** Avvisa (con "Annulla") ogni volta che un movimento viene aggiunto da una notifica. */
+    val notifyOnAdd: Boolean = true,
+) {
     fun of(s: CaptureSource): SourceConfig = sources[s.id] ?: SourceConfig()
     val anyEnabled: Boolean get() = CaptureSource.entries.any { of(it).enabled }
 }

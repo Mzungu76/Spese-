@@ -19,7 +19,7 @@ private val Context.captureStore: DataStore<Preferences> by preferencesDataStore
 class CaptureConfigRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers.ApplicationContext private val context: Context) : CaptureConfigRepository {
     private companion object {
         const val REC = '\u001E'; const val FLD = '\u001F'; const val MAX_UNRECOGNIZED = 30
-        val unrec = stringPreferencesKey("unrecognized")
+        val unrec = stringPreferencesKey("unrecognized"); val notify = booleanPreferencesKey("notify_on_add")
         fun on(id: String) = booleanPreferencesKey("${id}_on")
         fun acc(id: String) = longPreferencesKey("${id}_acc")
         fun pk(id: String) = stringSetPreferencesKey("${id}_pk")
@@ -35,6 +35,7 @@ class CaptureConfigRepositoryImpl @Inject constructor(@dagger.hilt.android.quali
             val f = e.split(FLD, limit = 3)
             if (f.size == 3) f[0].toLongOrNull()?.let { UnrecognizedNotification(it, f[1], f[2]) } else null
         },
+        this[notify] ?: true,
     )
 
     override fun observe(): Flow<CaptureConfig> = context.captureStore.data.map { it.toConfig() }
@@ -47,6 +48,7 @@ class CaptureConfigRepositoryImpl @Inject constructor(@dagger.hilt.android.quali
                 val c = n.of(s)
                 p[on(s.id)] = c.enabled; p[acc(s.id)] = c.accountId ?: 0L; p[pk(s.id)] = c.extraPackages; p[snd(s.id)] = c.smsSenders
             }
+            p[notify] = n.notifyOnAdd
             p[unrec] = n.unrecognized.sortedByDescending { it.atMs }.take(MAX_UNRECOGNIZED).joinToString(REC.toString()) { "${it.atMs}$FLD${clean(it.source)}$FLD${clean(it.text)}" }
         }
     }

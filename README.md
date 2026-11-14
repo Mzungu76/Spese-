@@ -13,6 +13,7 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 - **Avvisi e ricorrenti** – budget, scadenze, ricorrenze rilevate, spese non previste, notifiche locali configurabili.
 - **Importazione** – xlsx/csv/txt con anteprima e correzione delle colonne; backup JSON della versione web (unisci o sostituisci).
 - **Scansione OCR** – scontrini e fatture (fotocamera o galleria), riconoscimento sul dispositivo, revisione obbligatoria, foto associata al movimento.
+- **Movimenti automatici** – (opzionale) legge le notifiche e gli SMS delle sole app scelte (Revolut, Google Wallet, Postepay, Hype…), crea movimenti provvisori classificati dalle regole e li sostituisce con le righe dell'estratto conto all'importazione.
 - **Backup** – JSON compatibile con la versione web, ZIP con foto, backup automatici, sincronizzazione con un file condiviso, annulla ultima importazione.
 
 ## Per iniziare

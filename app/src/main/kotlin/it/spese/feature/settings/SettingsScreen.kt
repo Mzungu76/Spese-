@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 private val ANY_MIME = arrayOf("application/json", "application/zip", "application/octet-stream", "text/plain", "*/*")
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: SettingsViewModel = hiltViewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
     val pending by vm.pending.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -53,6 +53,12 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) 
     Scaffold(topBar = { SubTopBar("Backup e impostazioni", onBack) }, contentWindowInsets = WindowInsets.safeDrawing) { pad ->
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
+            item {
+                SectionCard(title = "Movimenti automatici") {
+                    Text("Aggiungi i movimenti dalle notifiche e dagli SMS di Revolut, Google Wallet, Postepay, Hype e delle altre app che scegli.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onOpenCapture) { Text("Imposta") }
+                }
+            }
             item {
                 SectionCard(title = "Aspetto") {
                     ChipChoice(listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Chiaro", ThemeMode.DARK to "Scuro"), s.themeMode, { m -> vm.update { it.copy(themeMode = m) } })

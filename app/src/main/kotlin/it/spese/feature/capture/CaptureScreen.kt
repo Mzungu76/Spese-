@@ -1,0 +1,161 @@
+package it.spese.feature.capture
+
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import it.spese.app.common.SubTopBar
+import it.spese.core.common.Money
+import it.spese.core.designsystem.component.*
+import it.spese.domain.capture.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.delay
+
+private val TIME = DateTimeFormatter.ofPattern("dd/MM HH:mm")
+
+/** Cattura automatica dei movimenti dalle notifiche e dagli SMS delle sole app scelte. Tutto resta sul telefono. */
+@Composable
+fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
+    val ctx = LocalContext.current
+    val cfg by vm.config.collectAsStateWithLifecycle()
+    val data by vm.data.collectAsStateWithLifecycle()
+    val seen by vm.seen.collectAsStateWithLifecycle()
+    val until by vm.learningUntil.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
+    var listenerOn by remember { mutableStateOf(false) }
+    var postOk by remember { mutableStateOf(true) }
+    fun refresh() {
+        listenerOn = NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
+        postOk = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { refresh() }
+    LaunchedEffect(Unit) { refresh() }
+    val askPost = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { refresh() }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(until) { while (System.currentTimeMillis() < until) { now = System.currentTimeMillis(); delay(1000) }; now = System.currentTimeMillis() }
+    val learning = now < until
+
+    Scaffold(topBar = { SubTopBar("Movimenti da notifiche", onBack) }, contentWindowInsets = WindowInsets.safeDrawing) { pad ->
+        LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item {
+                SectionCard(title = "Come funziona") {
+                    Text("Quando la tua banca o Google Wallet ti notificano un pagamento, l'app lo aggiunge da sola come movimento provvisorio e lo classifica con le tue regole. Quando poi importi l'estratto conto, la riga della banca lo sostituisce (categoria e note che hai scelto restano).", style = MaterialTheme.typography.bodyMedium)
+                    Text("Privacy: l'app legge solo le notifiche delle app che attivi qui sotto, e per gli SMS solo dei mittenti che indichi. Tutte le altre sono scartate senza leggerle. Nessun dato lascia il telefono: l'app non ha accesso alla rete.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
+                SectionCard(title = "Accesso alle notifiche") {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(if (listenerOn) Icons.Default.CheckCircle else Icons.Default.ErrorOutline, null, tint = if (listenerOn) it.spese.core.designsystem.theme.SpeseTheme.finance.positive else MaterialTheme.colorScheme.error)
+                        Text(if (listenerOn) "Concesso" else "Non ancora concesso", fontWeight = FontWeight.SemiBold)
+                    }
+                    Button(onClick = { ctx.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }) { Text(if (listenerOn) "Gestisci in Android" else "Concedi l'accesso") }
+                    if (!listenerOn) Text("Se Android segnala un'«impostazione con restrizioni» (succede con le app installate da file): Impostazioni › App › Spese › menu ⋮ › Consenti impostazioni con restrizioni, poi riprova.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            items(CaptureSource.entries.toList(), key = { it.id }) { s -> SourceCard(s, cfg.of(s), data, vm, learning, now, until, seen) }
+            item {
+                SectionCard(title = "Avvisi") {
+                    LabeledSwitch("Avvisami quando aggiungo un movimento", cfg.notifyOnAdd, vm::setNotify, supporting = "Con il pulsante Annulla, se ha letto male")
+                    if (cfg.notifyOnAdd && !postOk && Build.VERSION.SDK_INT >= 33) OutlinedButton(onClick = { askPost.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Consenti gli avvisi di Spese") }
+                }
+            }
+            item { TryParser() }
+            item {
+                SectionCard(title = "Non riconosciute (${cfg.unrecognized.size})", action = { if (cfg.unrecognized.isNotEmpty()) TextButton(onClick = vm::clearUnrecognized) { Text("Svuota") } }) {
+                    Text("Notifiche delle fonti attive da cui non si è riusciti a ricavare un importo e una direzione certi. Restano solo qui, sul telefono. Copia il testo e provalo in «Prova un testo».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (cfg.unrecognized.isEmpty()) Text("Nessuna.", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+            items(cfg.unrecognized, key = { "u-${it.atMs}" }) { u ->
+                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("${u.source} · ${TIME.format(Instant.ofEpochMilli(u.atMs).atZone(ZoneId.systemDefault()))}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(u.text, style = MaterialTheme.typography.bodyMedium)
+                        Row { TextButton(onClick = { clipboard.setText(AnnotatedString(u.text)) }) { Text("Copia") }; TextButton(onClick = { vm.removeUnrecognized(u.atMs) }) { Text("Elimina") } }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SourceCard(s: CaptureSource, c: SourceConfig, data: it.spese.domain.repository.AppData, vm: CaptureViewModel, learning: Boolean, now: Long, until: Long, seen: List<it.spese.app.capture.CaptureLearning.Seen>) {
+    SectionCard(title = s.label) {
+        LabeledSwitch("Leggi ${if (s.kind == SourceKind.SMS) "gli SMS" else "le notifiche"} di ${s.label}", c.enabled, { on -> vm.updateSource(s) { it.copy(enabled = on) } },
+            supporting = when (s.kind) { SourceKind.WALLET -> "Notifica i pagamenti contactless; non dice da quale conto"; SourceKind.SMS -> "Solo dai mittenti indicati sotto"; SourceKind.BANK_APP -> null })
+        if (c.enabled) {
+            val acc = data.accounts.filter { !it.archived }
+            DropdownField("Registra sul conto", acc.firstOrNull { it.id == c.accountId } ?: acc.firstOrNull(), acc, { it.name }, { a -> vm.updateSource(s) { it.copy(accountId = a.id) } })
+            if (s.kind == SourceKind.SMS) {
+                var text by remember(c.smsSenders) { mutableStateOf(c.smsSenders.joinToString(", ")) }
+                OutlinedTextField(text, { text = it; vm.updateSource(s) { c0 -> c0.copy(smsSenders = it.split(',').map { x -> x.trim() }.filter { x -> x.isNotEmpty() }.toSet()) } },
+                    label = { Text("Mittenti (separati da virgola)") }, placeholder = { Text("es. Postepay, HYPE") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                    supportingText = { Text("Come compare il nome del mittente nella notifica dell'SMS. Gli altri SMS non vengono letti.") })
+            }
+            if (c.extraPackages.isNotEmpty()) c.extraPackages.forEach { p ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(p, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    TextButton(onClick = { vm.updateSource(s) { it.copy(extraPackages = it.extraPackages - p) } }) { Text("Rimuovi") }
+                }
+            }
+        }
+        if (s == CaptureSource.POSTE || s == CaptureSource.HYPE) {
+            if (!learning) OutlinedButton(onClick = vm::startLearning) { Icon(Icons.Default.Search, null); Spacer(Modifier.width(8.dp)); Text("Rileva l'app") }
+            else {
+                Text("Fai arrivare ora una notifica dell'app di ${s.label} (o aprila): compare qui sotto. Rimangono ${((until - now) / 1000).coerceAtLeast(0)} s. Si ricorda solo il nome delle app, non il contenuto.", style = MaterialTheme.typography.bodySmall)
+                seen.forEach { app ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) { Text(app.label, style = MaterialTheme.typography.titleSmall); Text(app.packageName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        TextButton(onClick = { vm.useAsSource(s, app.packageName); vm.stopLearning() }) { Text("Usa per ${s.label}") }
+                    }
+                }
+                TextButton(onClick = vm::stopLearning) { Text("Annulla") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TryParser() {
+    var source by remember { mutableStateOf(CaptureSource.REVOLUT) }
+    var title by remember { mutableStateOf("") }
+    var text by remember { mutableStateOf("") }
+    SectionCard(title = "Prova un testo") {
+        Text("Incolla titolo e testo di una notifica per vedere cosa ne ricava l'app, senza aggiungere nulla.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        ChipChoice(CaptureSource.entries.map { it to it.label }, source, { source = it })
+        OutlinedTextField(title, { title = it }, label = { Text("Titolo (mittente per gli SMS)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(text, { text = it }, label = { Text("Testo") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+        if (title.isNotBlank() || text.isNotBlank()) {
+            val r = NotificationParser.parse(source, title, text)
+            Text(if (r == null) "Non riconosciuta: manca un importo in euro o una direzione certa (pagamento o accredito)." else "Riconosciuta: ${Money.eurSigned(r.amount)} · ${r.description}", style = MaterialTheme.typography.titleSmall,
+                color = if (r == null) MaterialTheme.colorScheme.error else it.spese.core.designsystem.theme.SpeseTheme.finance.positive)
+        }
+    }
+}

@@ -35,6 +35,7 @@ import it.spese.app.common.RootViewModel
 import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
+import it.spese.feature.capture.CaptureScreen
 import it.spese.feature.categories.CategoriesScreen
 import it.spese.feature.categories.CategoryDetailScreen
 import it.spese.feature.categories.CategoryDetailViewModel
@@ -51,7 +52,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -152,7 +153,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.IMPORT) { ImportScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
+            composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }
     }

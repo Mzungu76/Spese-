@@ -147,7 +147,17 @@ class MainFlowTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
 
-        openMenu("Backup e impostazioni"); waitText("Backup e ripristino"); waitText("Sincronizzazione con un file condiviso")
+        openMenu("Backup e impostazioni"); waitText("Backup e ripristino")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sincronizzazione con un file condiviso")); waitText("Sincronizzazione con un file condiviso")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Movimenti automatici"))
+        // Movimenti automatici: schermata di impostazione e prova del riconoscimento
+        compose.onNode(hasText("Imposta") and hasClickAction()).performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Accesso alle notifiche"); waitText("Revolut"); waitText("Google Wallet")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Prova un testo"))
+        compose.onNodeWithText("Testo").performTextInput("Hai pagato 12,50 € a COOP SPA con carta")
+        waitText("Riconosciuta", substring = true)
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
