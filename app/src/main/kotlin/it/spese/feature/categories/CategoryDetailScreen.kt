@@ -97,6 +97,7 @@ fun CategoryDetailScreen(onBack: () -> Unit, onOpenTransaction: (Long) -> Unit, 
             }
             if (d.category.kind == TxKind.SPESA) {
                 item(key = "budget") { BudgetCard(d, vm::setBudget, Modifier.padding(horizontal = 16.dp)) }
+                item(key = "cut") { CutSimulationCard(d, vm::saveCutToPlan, onOpenPlan, Modifier.padding(horizontal = 16.dp)) }
                 item(key = "nature") { NatureChoiceCard(d, vm::setNature, Modifier.padding(horizontal = 16.dp)) }
             }
             item(key = "merchants-head") { SectionHeader("Voci di spesa", Modifier.padding(horizontal = 24.dp), action = "Tutti i movimenti", onAction = onOpenMovements) }

@@ -26,7 +26,9 @@ data class CategoryDetailState(val data: AppData = AppData(), val detail: Catego
 class CategoryDetailViewModel @Inject constructor(
     savedState: SavedStateHandle, data: StateFlow<AppData>, private val filters: FilterStore,
     private val categories: CategoryRepository, private val save: SaveCategoryUseCase, private val messenger: UiMessenger,
+    private val scenarios: it.spese.domain.repository.ScenarioRepository,
 ) : ViewModel() {
+    private val latest = data
     val categoryId: Long = savedState.get<Long>("id") ?: 0L
 
     val state: StateFlow<CategoryDetailState> = combine(data, filters.filter) { d, f -> d to f }
@@ -43,6 +45,15 @@ class CategoryDetailViewModel @Inject constructor(
     fun setBudget(value: BigDecimal?) = viewModelScope.launch {
         try { categories.setBudget(categoryId, value); messenger.show(if (value == null) "Budget rimosso" else "Budget impostato") } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
+    /** Salva il taglio nello scenario di base del Piano (0 = rimuove il taglio). */
+    fun saveCutToPlan(percent: Int) = viewModelScope.launch {
+        val base = latest.value.baseScenario ?: run { messenger.show("Nessuno scenario di base nel Piano"); return@launch }
+        try {
+            scenarios.save(base.copy(cuts = base.cuts.toMutableMap().also { if (percent == 0) it.remove(categoryId) else it[categoryId] = percent }))
+            messenger.show(if (percent == 0) "Taglio rimosso dal Piano" else "Taglio del $percent% salvato nel Piano")
+        } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
+
     fun setNature(n: it.spese.core.model.SpendNature?) = viewModelScope.launch {
         val c = categories.getAll().firstOrNull { it.id == categoryId } ?: return@launch
         try { categories.update(c.copy(nature = n)) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }

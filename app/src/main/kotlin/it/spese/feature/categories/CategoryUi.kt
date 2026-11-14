@@ -109,3 +109,42 @@ fun NatureCard(totals: Map<SpendNature?, BigDecimal>, pendingCount: Int, onAuto:
         if (pendingCount > 0) TextButton(onClick = onAuto, contentPadding = PaddingValues(0.dp)) { Text("Proponi la natura di $pendingCount categorie") }
     }
 }
+
+/** Categorie di spesa in aumento significativo rispetto al periodo precedente. */
+@Composable
+fun WatchCard(rows: List<CategoryRow>, previousLabel: String?, onOpen: (Long) -> Unit, modifier: Modifier = Modifier) {
+    if (rows.isEmpty()) return
+    SectionCard(modifier, title = "Da tenere d'occhio") {
+        Text("Spese salite " + (previousLabel ?: "rispetto al periodo precedente"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        rows.forEach { r ->
+            Row(Modifier.fillMaxWidth().clickable { r.category?.id?.let(onOpen) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CategoryAvatar(r.category, size = 40)
+                Column(Modifier.weight(1f)) {
+                    Text(r.category?.name ?: "Senza categoria", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text("da ${Money.eur0(r.previousTotal ?: BigDecimal.ZERO)} a ${Money.eur0(r.total)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(Money.eurSigned(r.delta ?: BigDecimal.ZERO).replace(",00", ""), color = SpeseTheme.finance.negative, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/** Dove si può risparmiare: le spese discrezionali più pesanti, con il risparmio di un taglio del 20%. */
+@Composable
+fun OpportunitiesCard(list: List<it.spese.domain.finance.Opportunity>, onOpen: (Long) -> Unit, modifier: Modifier = Modifier, percent: Int = 20) {
+    if (list.isEmpty()) return
+    val monthly = list.fold(BigDecimal.ZERO) { a, o -> a + o.monthlySaving }
+    SectionCard(modifier, title = "Dove puoi risparmiare") {
+        Text("Un taglio del $percent% su queste spese libererebbe circa ${Money.eur0(monthly)} al mese (${Money.eur0(monthly.multiply(BigDecimal(12)))} all'anno).", style = MaterialTheme.typography.bodyMedium)
+        list.forEach { o ->
+            Row(Modifier.fillMaxWidth().clickable { o.row.category?.id?.let(onOpen) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CategoryAvatar(o.row.category, size = 40)
+                Column(Modifier.weight(1f)) {
+                    Text(o.row.category?.name ?: "", style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                    Text("spendi ${Money.eur0(o.row.monthlyAvg)} al mese", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text("−" + Money.eur0(o.monthlySaving) + "/mese", color = SpeseTheme.finance.positive, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}

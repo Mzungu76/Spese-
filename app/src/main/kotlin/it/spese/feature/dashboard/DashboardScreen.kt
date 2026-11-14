@@ -13,6 +13,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import it.spese.feature.categories.CategoryRankRow
+import it.spese.feature.categories.OpportunitiesCard
+import it.spese.feature.categories.WatchCard
+import it.spese.domain.finance.SavingsOpportunities
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -106,6 +109,10 @@ fun DashboardScreen(
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            val watch = SavingsOpportunities.surging(m.categories)
+            val opps = SavingsOpportunities.compute(m.categories, 20)
+            if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             item(key = "cats-head") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
                     Text("Dove vanno i soldi", style = MaterialTheme.typography.titleLarge)

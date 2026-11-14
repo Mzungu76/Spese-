@@ -121,6 +121,11 @@ class MainFlowTest {
         goTab("Categorie"); waitText("Supermercato e alimentari")
         // dettaglio di una categoria: esercenti e andamento
         compose.onNodeWithText("Supermercato e alimentari").performClick(); waitText("Budget mensile")
+        // simulazione "e se la riducessi?": il taglio si salva nello scenario di base del Piano
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("E se la riducessi?"))
+        compose.onNode(hasText("Salva nel Piano") and hasClickAction()).assertIsEnabled().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        val superId = data.value.categories.first { it.name == "Supermercato e alimentari" }.id
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.cuts[superId] == 20 }
         compose.onNodeWithContentDescription("Indietro").performClick(); waitText("Regole · 32")
         // Gestione: regole e "Da fare"
         compose.onNodeWithText("Regole · 32").performClick(); waitText("Vince la prima regola", substring = true)

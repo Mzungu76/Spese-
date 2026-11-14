@@ -42,6 +42,11 @@ data class CategoryDetail(
     val suggestedBudget: BigDecimal?,
     val referenceMonth: YearMonth,
     val suggestedNature: NatureSuggestion? = null,
+    /** Obiettivo di risparmio mensile del Piano e risparmio mensile attuale (periodo scelto): per valutare l'effetto di un taglio. */
+    val goalMonthly: BigDecimal = BigDecimal.ZERO,
+    val savingsPerMonth: BigDecimal = BigDecimal.ZERO,
+    /** Taglio già salvato nel Piano per questa categoria (0 = nessuno). */
+    val planCut: Int = 0,
 ) {
     val delta: BigDecimal? get() = previousTotal?.let { total - it }
     val changePercent: BigDecimal? get() = previousTotal?.let { prev -> it.spese.domain.simulation.Trends.changePercent(prev, total) }
@@ -108,6 +113,20 @@ object CategoryDetailCalculator {
         }
         val suggestedNature = if (cat.kind != TxKind.SPESA) null
             else NatureSuggester.suggest(listOf(cat), accTx.filter { it.categoryId == cat.id }, RecurringDetector.detect(accTx.filter { it.categoryId == cat.id })).values.firstOrNull()
-        return CategoryDetail(cat, kids, total, prevTotal, cur.size, Money.percent(total, kindTotal), prevLabel, months, avg, merchants, drivers, subs, budget, suggested, ref, suggestedNature)
+        return CategoryDetail(cat, kids, total, prevTotal, cur.size, Money.percent(total, kindTotal), prevLabel, months, avg, merchants, drivers, subs, budget, suggested, ref, suggestedNature,
+            goalMonthly = PlanEngine.goalMonthly(data.goal), savingsPerMonth = StatsEngine.compute(periodAll).net.divide(StatsEngine.monthsSpan(periodAll), 10, RoundingMode.HALF_UP),
+            planCut = data.cuts[categoryId] ?: 0)
+    }
+}
+
+/** Effetto di un taglio percentuale sulla spesa mensile media di una categoria. */
+data class CutEffect(val percent: Int, val monthly: BigDecimal, val yearly: BigDecimal, val newSavingsPerMonth: BigDecimal, val goalCoverage: Int?) {
+    companion object {
+        fun of(d: CategoryDetail, percent: Int): CutEffect {
+            val monthly = Money.pctOf(d.monthlyAvg, percent)
+            val newSaving = d.savingsPerMonth + monthly
+            val cover = if (d.goalMonthly.signum() > 0) newSaving.multiply(Money.HUNDRED).divide(d.goalMonthly, 0, RoundingMode.HALF_UP).toInt().coerceAtLeast(0) else null
+            return CutEffect(percent, monthly, monthly.multiply(BigDecimal(12)), newSaving, cover)
+        }
     }
 }

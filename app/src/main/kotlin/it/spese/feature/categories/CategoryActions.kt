@@ -54,3 +54,30 @@ fun NatureChoiceCard(d: CategoryDetail, onSet: (SpendNature?) -> Unit, modifier:
         if (cur == null && sug != null) TextButton(onClick = { onSet(sug.nature) }, contentPadding = PaddingValues(0.dp)) { Text("Proposta: ${sug.nature.label} (${sug.reason}) · Applica") }
     }
 }
+
+/** "E se riducessi questa spesa del …%?": risparmio mensile e annuo, effetto sull'obiettivo del Piano e salvataggio del taglio nel Piano. */
+@Composable
+fun CutSimulationCard(d: CategoryDetail, onSaveToPlan: (Int) -> Unit, onOpenPlan: () -> Unit, modifier: Modifier = Modifier) {
+    if (d.monthlyAvg.signum() <= 0) return
+    var pct by remember(d.category.id) { mutableFloatStateOf((d.planCut.takeIf { it > 0 } ?: 20).toFloat()) }
+    val e = it.spese.domain.finance.CutEffect.of(d, pct.toInt())
+    SectionCard(modifier, title = "E se la riducessi?") {
+        Text("Oggi spendi in media ${Money.eur0(d.monthlyAvg)} al mese.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("Riduzione", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text("${pct.toInt()}%", style = MaterialTheme.typography.titleMedium)
+        }
+        Slider(pct, { pct = it }, valueRange = 0f..50f, steps = 9)
+        if (pct.toInt() > 0) {
+            Text("Risparmi ${Money.eur0(e.monthly)} al mese, ${Money.eur0(e.yearly)} all'anno.", style = MaterialTheme.typography.titleSmall)
+            e.goalCoverage?.let { c ->
+                Text("Con questo risparmio metteresti da parte ${Money.eur0(e.newSavingsPerMonth)} al mese: ${c}% del tuo obiettivo di ${Money.eur0(d.goalMonthly)}.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = { onSaveToPlan(pct.toInt()) }, enabled = pct.toInt() != d.planCut) { Text(if (pct.toInt() == 0) "Rimuovi dal Piano" else "Salva nel Piano") }
+            if (d.planCut > 0) TextButton(onClick = onOpenPlan) { Text("Apri il Piano") }
+        }
+        if (d.planCut > 0) Text("Nel Piano c'è già un taglio del ${d.planCut}% su questa categoria.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
