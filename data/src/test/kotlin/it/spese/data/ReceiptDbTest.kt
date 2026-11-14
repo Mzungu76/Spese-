@@ -84,4 +84,19 @@ class ReceiptDbTest {
         // le voci assegnate superano il totale
         assertThrows(IllegalArgumentException::class.java) { ReceiptSplitPlanner.plan(BigDecimal("5.00"), items, listOf(7L, 7L, 7L), 1L, true) }
     }
+
+    @Test fun `la memoria delle voci viaggia nel backup e si ritrova per nome di categoria`() = runBlocking {
+        val mem = it.spese.data.settings.ItemMemoryRepositoryImpl(env.context)
+        mem.clear()
+        val food = env.cats.getAll().first { it.name == "Supermercato e alimentari" }
+        mem.learn(mapOf("latte" to food.id, "pane" to food.id))
+        val json = env.backup.buildBackupJson()
+        assertTrue(json.contains("\"items\""))
+        // ripristino su un'app vuota: la memoria si ricostruisce con gli id attuali
+        mem.clear()
+        assertTrue(mem.get().isEmpty())
+        env.restore(it.spese.domain.backup.LegacyBackupCodec.parse(json), it.spese.domain.repository.RestoreMode.Replace)
+        val idNow = env.cats.getAll().first { it.name == "Supermercato e alimentari" }.id
+        assertEquals(mapOf("latte" to idNow, "pane" to idNow), mem.get())
+    }
 }

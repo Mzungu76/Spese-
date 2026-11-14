@@ -70,13 +70,17 @@ class BackupRepositoryImpl @Inject constructor(
 
     private suspend fun currentLegacy(): LegacyState { val (s, mt, d) = loadSnapshot(); return LegacyMapper.fromDomain(s, mt, d) }
 
+    private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
+
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
         val legacy = LegacyMapper.fromDomain(s, mt, docs)
         val catName = s.categories.associate { it.id to it.name }
+        val catIdName = catName
         val scenarioE = db.scenarios().getScenarios().filter { !it.isBase }
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
+            itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
             scenarios = scenarioE.map { e ->
                 NativeScenario(e.name, LegacyGoal(GoalMode.fromKey(e.goalMode), Money.fromCents(e.goalValueCents), e.goalMonths, e.expectedIncomeCents?.let { Money.fromCents(it) }),
@@ -130,6 +134,12 @@ class BackupRepositoryImpl @Inject constructor(
             if (mode == RestoreMode.Replace) wipeInTransaction()
             added = writeState(target, env.extras, mode == RestoreMode.Replace, extraFiles)
         }
+        // memoria delle voci di scontrino (DataStore, fuori dal database): le categorie si ritrovano per nome
+        env.extras?.itemMemory?.takeIf { it.isNotEmpty() }?.let { items ->
+            val idByName = db.categories().getAll().associate { it.name to it.id }
+            if (mode == RestoreMode.Replace) itemMemory.clear()
+            itemMemory.learn(items.mapNotNull { m -> idByName[m.category]?.let { m.key to it } }.toMap())
+        } ?: if (mode == RestoreMode.Replace) itemMemory.clear() else Unit
         return RestoreResult(plan?.summary() ?: listOf("Dati sostituiti dal backup (${env.state.tx.size} movimenti)"), added)
     }
 
@@ -293,7 +303,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed()
+        seeder.wipeAndSeed(); itemMemory.clear()
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {
