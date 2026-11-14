@@ -56,7 +56,7 @@ class TransactionsViewModel @Inject constructor(
             val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = a[4] as Boolean
             withContext(Dispatchers.Default) {
                 // i filtri guardano le parti (un prelievo diviso compare cercando una sua categoria), l'elenco mostra il movimento intero
-                val parts = FilterEngine.apply(d.transactions, f, d.categoriesById)
+                val parts = FilterEngine.apply(d.transactions, f, d.categoriesById, d.accounts.associate { it.id to it.name })
                 val ids = parts.mapTo(HashSet()) { it.id }
                 val filtered = d.ledger.filter { it.id in ids }
                 val cmp: Comparator<Transaction> = when (s.first) {
@@ -74,6 +74,8 @@ class TransactionsViewModel @Inject constructor(
             }.also { current = it }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionsState())
 
+    val searchRequested = filters.searchRequested
+    fun consumeSearch() = filters.consumeSearch()
     fun setReviewMode(on: Boolean) { reviewMode.value = on }
     fun confirm(ids: Collection<Long>) = viewModelScope.launch { confirmReview(ids); messenger.show(if (ids.size == 1) "Confermato" else "Confermati ${ids.size} movimenti") }
     fun confirmAllReview() = confirm(current.review.map { it.tx.id })

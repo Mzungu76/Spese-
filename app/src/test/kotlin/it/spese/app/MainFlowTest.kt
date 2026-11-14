@@ -118,6 +118,12 @@ class MainFlowTest {
         // di partenza l'app mostra il mese corrente: per contare tutti i movimenti si sceglie "Tutto"
         filters.update { f -> f.copy(period = it.spese.domain.finance.Period.All) }
         goTab("Movimenti"); waitText("223 movimenti")
+        // ricerca testuale: il campo non perde lettere e la lista si restringe
+        compose.onNodeWithContentDescription("Cerca").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.onNodeWithTag("search_field").performTextInput("coop")
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.onAllNodesWithText("223 movimenti").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("search_field").assert(hasText("coop"))
+        compose.onNodeWithContentDescription("Cancella ricerca").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("223 movimenti")
         // sezione Verifica dei movimenti incerti
         compose.onNodeWithTag("review_toggle").assertExists()
         compose.onNodeWithText("Verifica", substring = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)

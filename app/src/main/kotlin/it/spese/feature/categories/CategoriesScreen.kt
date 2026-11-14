@@ -21,6 +21,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.DataMenu
 import it.spese.app.common.LargeHeader
 import it.spese.app.common.RoundIconButton
+import it.spese.app.common.SearchField
+import it.spese.domain.finance.SearchMatcher
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
 import it.spese.core.model.TxKind
@@ -37,16 +39,18 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
     val m = st.model
     var kind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
     var autoNature by remember { mutableStateOf(false) }
+    var q by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         LargeHeader("Categorie", menu = menu, actions = { RoundIconButton(Icons.Default.Tune, "Gestione: categorie, regole e da fare", { onManage(0) }) })
         if (!st.data.loaded || m == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return@Column }
-        val rows = if (kind == TxKind.SPESA) m.categories else m.incomeCategories
+        val rows = (if (kind == TxKind.SPESA) m.categories else m.incomeCategories).filter { r -> SearchMatcher.matches(q, r.category?.name, r.category?.parentId?.let { st.data.categoriesById[it]?.name }) }
         val shownIds = rows.mapNotNull { it.category?.id }.toSet()
-        val idle = st.data.categories.filter { it.active && it.kind == kind && it.parentId == null && it.id !in shownIds && it.systemKey == null }
+        val idle = st.data.categories.filter { it.active && it.kind == kind && it.parentId == null && it.id !in shownIds && it.systemKey == null && SearchMatcher.matches(q, it.name) }
         val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
         val total = if (kind == TxKind.SPESA) m.stats.expense else m.stats.income
         val change = if (kind == TxKind.SPESA) m.expenseChange else m.incomeChange
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
+            item { SearchField(q, { q = it }, "Cerca categoria…", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item { PeriodPills(st.filter.period, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item { PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), kind, { kind = it }, Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item {

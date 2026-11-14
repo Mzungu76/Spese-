@@ -58,22 +58,31 @@ data class TxFilter(
 }
 
 object FilterEngine {
-    /** Applica il filtro. La ricerca testuale cerca in descrizione, esercente, note e nome categoria. */
-    fun apply(all: List<Transaction>, filter: TxFilter, categories: Map<Long, Category>): List<Transaction> {
-        val range = if (all.isEmpty()) PeriodResolver.resolve(filter.period, null, null)
-        else PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
-        val q = filter.query.trim().lowercase()
+    /**
+     * Applica il filtro. Con un testo di ricerca si cerca in TUTTO lo storico (il periodo scelto viene ignorato: altrimenti
+     * un esercente di un altro mese sembrerebbe "non trovato") in descrizione, esercente, note, categoria (e principale), conto, data e importo.
+     */
+    fun apply(all: List<Transaction>, filter: TxFilter, categories: Map<Long, Category>, accounts: Map<Long, String> = emptyMap()): List<Transaction> {
+        val tokens = SearchMatcher.tokens(filter.query)
+        val searching = tokens.isNotEmpty()
+        val period = if (searching) Period.All else filter.period
+        val range = if (all.isEmpty()) PeriodResolver.resolve(period, null, null)
+        else PeriodResolver.resolve(period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
         // filtrando una categoria principale sono incluse anche le sue sottocategorie
         val catIds = filter.categoryId?.let { CategoryTree.withChildren(it, categories.values) }
         return all.filter { x ->
-            x.bookingDate in range &&
+            (searching || x.bookingDate in range) &&
                 (filter.accountId == null || x.accountId == filter.accountId) &&
                 (catIds == null || x.categoryId in catIds) &&
                 (filter.kind == null || x.kind == filter.kind) &&
                 (filter.minAmount == null || x.amount.abs() >= filter.minAmount) &&
                 (filter.maxAmount == null || x.amount.abs() <= filter.maxAmount) &&
-                (q.isEmpty() || (x.description + " " + x.merchant + " " + x.notes + " " + (categories[x.categoryId]?.name ?: ""))
-                    .lowercase().contains(q))
+                (!searching || SearchMatcher.matches(tokens, SearchMatcher.haystack(x, x.merchant, categoryText(x.categoryId, categories), accounts[x.accountId] ?: "")))
         }
+    }
+
+    private fun categoryText(id: Long?, categories: Map<Long, Category>): String {
+        val c = id?.let { categories[it] } ?: return ""
+        return c.name + (c.parentId?.let { categories[it]?.name }?.let { " $it" } ?: "")
     }
 }

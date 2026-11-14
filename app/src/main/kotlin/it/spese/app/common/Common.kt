@@ -26,6 +26,12 @@ class FilterStore @Inject constructor() {
     val filter: StateFlow<TxFilter> = _filter.asStateFlow()
     fun update(transform: (TxFilter) -> TxFilter) { _filter.value = transform(_filter.value) }
     fun reset() { _filter.value = TxFilter(period = Period.CurrentMonth) }
+
+    /** Richiesta di aprire la ricerca in Movimenti (dalla Home). */
+    private val _searchRequested = MutableStateFlow(false)
+    val searchRequested: StateFlow<Boolean> = _searchRequested.asStateFlow()
+    fun requestSearch() { _searchRequested.value = true }
+    fun consumeSearch() { _searchRequested.value = false }
 }
 
 /** Messaggi brevi (snackbar) emessi dai ViewModel. */

@@ -25,6 +25,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.DataMenu
 import it.spese.app.common.BackHeader
+import it.spese.app.common.SearchField
+import it.spese.domain.finance.SearchMatcher
 import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
@@ -38,6 +40,7 @@ import java.math.BigDecimal
 fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
+    var q by remember { mutableStateOf("") }
     var editCat by remember { mutableStateOf<Category?>(null) }
     var editRule by remember { mutableStateOf<Rule?>(null) }
     var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
@@ -52,12 +55,13 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                 else editRule = Rule(0, "", d.categories.firstOrNull { it.active }?.id ?: 0, AmountSign.ANY, BigDecimal.ZERO, BigDecimal.ZERO, 0)
             })
         })
-        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare", 3 to "Quote"), tab, { tab = it }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
+        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare", 3 to "Quote"), tab, { tab = it; q = "" }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            if (tab in 0..2) item(key = "search-$tab") { SearchField(q, { q = it }, when (tab) { 0 -> "Cerca categoria…"; 1 -> "Cerca regola o categoria…"; else -> "Cerca esercente…" }, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
             when (tab) {
                 0 -> {
                     listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate", TxKind.TRASFERIMENTO to "Giroconti (esclusi dai totali)").forEach { (kind, title) ->
-                        val ofKind = d.categories.filter { it.kind == kind }
+                        val ofKind = d.categories.filter { it.kind == kind && SearchMatcher.matches(q, it.name) }
                         // le sottocategorie stanno sotto la loro principale
                         val list = ofKind.filter { it.parentId == null || ofKind.none { p -> p.id == it.parentId } }.flatMap { p -> listOf(p) + ofKind.filter { it.parentId == p.id } }
                         if (list.isEmpty()) return@forEach
@@ -83,7 +87,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                 }
                 1 -> {
                     item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare. Le assegnazioni manuali prevalgono sempre.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(d.rules, key = { it.id }) { r ->
+                    items(d.rules.filter { r -> SearchMatcher.matches(q, r.keyword, d.categoryName(r.categoryId)) }, key = { it.id }) { r ->
                         Row(Modifier.fillMaxWidth().clickable { editRule = r }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             CategoryAvatar(d.categoriesById[r.categoryId], size = 44)
                             Column(Modifier.weight(1f)) {
@@ -102,7 +106,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                     if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
                     else {
                         item { Text("Movimenti senza regola: finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        items(st.unclassified, key = { it.merchant }) { u ->
+                        items(st.unclassified.filter { SearchMatcher.matches(q, it.merchant, it.sampleDescription) }, key = { it.merchant }) { u ->
                             Row(Modifier.fillMaxWidth().clickable { assign = u }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Column(Modifier.weight(1f)) { Text(u.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1); Text("${u.count} movimenti", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                 MoneyText(u.total, decimals = false, style = MaterialTheme.typography.titleMedium)

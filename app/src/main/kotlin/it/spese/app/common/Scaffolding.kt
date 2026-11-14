@@ -96,6 +96,7 @@ fun SubTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.(
 
 @HiltViewModel
 class RootViewModel @Inject constructor(settings: SettingsRepository, private val undo: UndoImportUseCase, val messenger: UiMessenger, private val filters: FilterStore, val incoming: IncomingFile) : ViewModel() {
+    fun requestSearch() = filters.requestSearch()
     fun showTransfers() = filters.update { it.copy(kind = TxKind.TRASFERIMENTO) }
     fun showCategory(id: Long?) = filters.update { it.copy(categoryId = id, period = it.period) }
     val undoAvailable = settings.observe().map { it.lastUndo.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

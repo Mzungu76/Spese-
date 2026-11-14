@@ -32,6 +32,9 @@ import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
 import it.spese.core.model.Category
 import it.spese.core.model.Transaction
+import it.spese.domain.finance.Period
+import it.spese.domain.finance.SearchMatcher
+import it.spese.app.common.SearchField
 import it.spese.core.model.TxKind
 import it.spese.domain.classification.merchant
 
@@ -52,6 +55,9 @@ fun TransactionsScreen(
     val selecting = st.selection.isNotEmpty()
 
     var searching by remember { mutableStateOf(false) }
+    val live by filterVm.filter.collectAsStateWithLifecycle()
+    val searchReq by vm.searchRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(searchReq) { if (searchReq) { searching = true; vm.consumeSearch() } }
     var moreMenu by remember { mutableStateOf(false) }
     var filterSheet by remember { mutableStateOf(false) }
     var splitTarget by remember { mutableStateOf<Transaction?>(null) }
@@ -71,7 +77,7 @@ fun TransactionsScreen(
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
         ) else LargeHeader("Movimenti", actions = {
             RoundIconButton(Icons.Default.Add, "Aggiungi", onAdd, Modifier.testTag("fab_add"), primary = true)
-            RoundIconButton(Icons.Default.Search, "Cerca", { searching = !searching }, badge = st.filter.query.isNotBlank())
+            RoundIconButton(Icons.Default.Search, "Cerca", { searching = !searching }, badge = live.query.isNotBlank())
             RoundIconButton(Icons.Default.Tune, "Filtri", { filterSheet = true }, badge = st.filter.activeCount > 0)
             Box {
                 RoundIconButton(Icons.Default.MoreHoriz, "Altre azioni", { moreMenu = true })
@@ -85,9 +91,11 @@ fun TransactionsScreen(
                 }
             }
         })
-        if (searching || st.filter.query.isNotEmpty()) OutlinedTextField(st.filter.query, vm::setQuery, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), singleLine = true, placeholder = { Text("Cerca esercente, nota, categoria…") },
-            leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (st.filter.query.isNotEmpty()) IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, "Cancella ricerca") } },
-            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+        if (searching || live.query.isNotEmpty()) Column(Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
+            SearchField(live.query, vm::setQuery, "Cerca esercente, nota, categoria, importo…", autoFocus = searching && live.query.isEmpty())
+            if (live.query.isNotBlank()) Text(if (live.period != Period.All) "Risultati su tutto lo storico, non solo sul periodo scelto" else "Risultati su tutto lo storico",
+                Modifier.padding(start = 4.dp, top = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Spacer(Modifier.height(10.dp))
         FilterPills()
         if (!selecting) PillSegmented(listOf(false to "Tutti", true to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica"), st.reviewMode, vm::setReviewMode, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
@@ -159,11 +167,15 @@ fun TransactionsScreen(
 
 @Composable
 fun CategoryPickerDialog(categories: List<Category>, onDismiss: () -> Unit, onPick: (Category) -> Unit) {
+    var q by remember { mutableStateOf("") }
+    val list = remember(q, categories) { categories.filter { it.active && SearchMatcher.matches(q, it.name, it.kind.label) } }
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Scegli la categoria") }, confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } },
         text = {
-            androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                items(categories.filter { it.active }, key = { it.id }) { c ->
-                    ListRow(c.name, subtitle = c.kind.label, leading = { CategoryAvatar(c, size = 32) }, onClick = { onPick(c) })
+            Column {
+                SearchField(q, { q = it }, "Cerca categoria…", Modifier.padding(bottom = 8.dp), debounceMs = 0)
+                androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max = 380.dp)) {
+                    if (list.isEmpty()) item { Text("Nessuna categoria trovata.", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(list, key = { it.id }) { c -> ListRow(c.name, subtitle = c.kind.label, leading = { CategoryAvatar(c, size = 32) }, onClick = { onPick(c) }) }
                 }
             }
         })
