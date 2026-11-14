@@ -36,6 +36,7 @@ import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.capture.CaptureScreen
+import it.spese.feature.trends.TrendsScreen
 import it.spese.feature.categories.CategoriesScreen
 import it.spese.feature.categories.CategoryDetailScreen
 import it.spese.feature.categories.CategoryDetailViewModel
@@ -52,7 +53,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -135,10 +136,10 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
-                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, contentPadding = pad)
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, bottomPadding = pad) }
-            composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, bottomPadding = pad) }
+            composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, bottomPadding = pad) }
             composable(Routes.CATEGORY, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val catVm: CategoryDetailViewModel = hiltViewModel()
                 CategoryDetailScreen(onBack = { nav.popBackStack() }, onOpenTransaction = { nav.navigate(Routes.edit(it)) }, onOpenMovements = { catVm.showInMovements(); goTab(Routes.TRANSACTIONS) },
@@ -155,6 +156,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
             composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }
     }

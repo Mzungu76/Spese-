@@ -130,6 +130,10 @@ class MainFlowTest {
         compose.waitUntil(8000) { compose.onAllNodesWithText("Tutto a posto").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("da controllare", substring = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Tutti").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
+        // tendenze per categoria con proiezioni
+        compose.onNode(hasText("Tendenze") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Bilancio mensile atteso"); waitText("Effetto cumulato")
+        compose.onNodeWithContentDescription("Indietro").performClick(); waitText("Supermercato e alimentari")
         // dettaglio di una categoria: esercenti e andamento
         compose.onNodeWithText("Supermercato e alimentari").performClick(); waitText("Budget mensile")
         // simulazione "e se la riducessi?": il taglio si salva nello scenario di base del Piano

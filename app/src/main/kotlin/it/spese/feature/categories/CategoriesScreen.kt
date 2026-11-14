@@ -34,7 +34,7 @@ import java.math.BigDecimal
  * sottocategorie, budget). Modifica di categorie, regole e movimenti "Da fare" sono in Gestione.
  */
 @Composable
-fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (Int) -> Unit, bottomPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel()) {
+fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (Int) -> Unit, onOpenTrends: () -> Unit = {}, bottomPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
     val m = st.model
     var kind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
@@ -55,6 +55,7 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
             item { PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), kind, { kind = it }, Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item {
                 Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistChip(onClick = onOpenTrends, label = { Text("Tendenze") }, leadingIcon = { Icon(Icons.Default.Timeline, null, Modifier.size(18.dp)) })
                     AssistChip(onClick = { onManage(2) }, label = { Text(if (m.unclassified > 0) "Da fare · ${m.unclassified}" else "Da fare") }, leadingIcon = { Icon(Icons.Default.Checklist, null, Modifier.size(18.dp)) })
                     AssistChip(onClick = { onManage(1) }, label = { Text("Regole · ${st.data.rules.size}") }, leadingIcon = { Icon(Icons.Default.Rule, null, Modifier.size(18.dp)) })
                     AssistChip(onClick = { onManage(0) }, label = { Text("Modifica categorie") }, leadingIcon = { Icon(Icons.Default.Edit, null, Modifier.size(18.dp)) })
