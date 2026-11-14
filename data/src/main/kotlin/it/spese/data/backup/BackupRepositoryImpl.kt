@@ -71,6 +71,7 @@ class BackupRepositoryImpl @Inject constructor(
     private suspend fun currentLegacy(): LegacyState { val (s, mt, d) = loadSnapshot(); return LegacyMapper.fromDomain(s, mt, d) }
 
     private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
+    private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
 
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
@@ -80,6 +81,7 @@ class BackupRepositoryImpl @Inject constructor(
         val scenarioE = db.scenarios().getScenarios().filter { !it.isBase }
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
+            ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
             itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
             scenarios = scenarioE.map { e ->
@@ -133,6 +135,14 @@ class BackupRepositoryImpl @Inject constructor(
         db.withTransaction {
             if (mode == RestoreMode.Replace) wipeInTransaction()
             added = writeState(target, env.extras, mode == RestoreMode.Replace, extraFiles)
+        }
+        // notifiche da ignorare (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle mancanti
+        env.extras?.let { x ->
+            if (x.ignoreRules.isNotEmpty() || mode == RestoreMode.Replace) captureConfig.update { c ->
+                val incoming = x.ignoreRules.map { r -> it.spese.domain.capture.IgnoreRule(r.source, r.phrase, r.createdMs, r.enabled) }
+                val base = if (mode == RestoreMode.Replace) emptyList() else c.ignoreRules
+                c.copy(ignoreRules = base + incoming.filter { n -> base.none { it.source == n.source && it.phrase == n.phrase } })
+            }
         }
         // memoria delle voci di scontrino (DataStore, fuori dal database): le categorie si ritrovano per nome
         env.extras?.itemMemory?.takeIf { it.isNotEmpty() }?.let { items ->

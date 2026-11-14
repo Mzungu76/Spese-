@@ -21,7 +21,10 @@ data class DashboardState(
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
-class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger) : ViewModel() {
+class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger,
+    captureConfig: it.spese.domain.repository.CaptureConfigRepository) : ViewModel() {
+    /** Notifiche non riconosciute accumulate (0 se sono poche: il promemoria compare solo oltre la soglia). */
+    val pendingNotifications: StateFlow<Int> = captureConfig.observe().map { if (it.needsReview) it.unrecognized.size else 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     private val selected = MutableStateFlow<Set<Long>>(emptySet())
     private val compareMode = MutableStateFlow(false)
 

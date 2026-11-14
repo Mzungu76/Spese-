@@ -23,6 +23,14 @@ class CaptureViewModel @Inject constructor(private val repo: CaptureConfigReposi
     fun setNotify(on: Boolean) { viewModelScope.launch { repo.update { it.copy(notifyOnAdd = on) } } }
     fun clearUnrecognized() { viewModelScope.launch { repo.update { it.copy(unrecognized = emptyList()) } } }
     fun removeUnrecognized(atMs: Long) { viewModelScope.launch { repo.update { c -> c.copy(unrecognized = c.unrecognized.filter { it.atMs != atMs }) } } }
+    /** Quante notifiche già in elenco la regola scarterebbe. */
+    fun wouldRemove(rule: IgnoreRule): Int = config.value.unrecognized.count { IgnoreFilter.matches(listOf(rule), IgnoreFilter.sourceIdOf(it.source), "", it.text) }
+    fun addIgnoreRule(rule: IgnoreRule) { viewModelScope.launch { repo.update { c ->
+        c.copy(ignoreRules = c.ignoreRules + rule, unrecognized = c.unrecognized.filterNot { IgnoreFilter.matches(listOf(rule), IgnoreFilter.sourceIdOf(it.source), "", it.text) })
+    } } }
+    fun toggleIgnoreRule(createdMs: Long, on: Boolean) { viewModelScope.launch { repo.update { c -> c.copy(ignoreRules = c.ignoreRules.map { if (it.createdMs == createdMs) it.copy(enabled = on) else it }) } } }
+    fun removeIgnoreRule(createdMs: Long) { viewModelScope.launch { repo.update { c -> c.copy(ignoreRules = c.ignoreRules.filter { it.createdMs != createdMs }) } } }
+    fun removeUnrecognized(items: List<UnrecognizedNotification>) { val ids = items.map { it.atMs }.toSet(); viewModelScope.launch { repo.update { c -> c.copy(unrecognized = c.unrecognized.filter { it.atMs !in ids }) } } }
     fun startLearning() = learning.start()
     fun stopLearning() = learning.stop()
     /** Usa un'app rilevata come fonte: aggiunge il pacchetto e accende la fonte. */

@@ -56,6 +56,8 @@ class CaptureListenerService : NotificationListenerService() {
             val cfg = if (loaded) current else config.get()
             val source = CaptureRouting.route(cfg, sbn.packageName, title) ?: return@launch
             val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()
+            // notifiche che l'utente ha chiesto di ignorare (mai se contengono un importo)
+            if (IgnoreFilter.matches(cfg.ignoreRules, source.id, title, text)) return@launch
             val raw = RawNotification(sbn.packageName, title, text, sbn.postTime)
             when (val r = capture(source, cfg.of(source).accountId, raw)) {
                 is CaptureResult.Added -> if (cfg.notifyOnAdd) notifier.added(r.txId, r.description, r.amount)

@@ -1,6 +1,7 @@
 package it.spese.data
 
 import it.spese.core.model.TxOrigin
+import it.spese.domain.backup.LegacyBackupCodec
 import it.spese.domain.capture.*
 import it.spese.domain.repository.ClassificationUpdate
 import it.spese.domain.usecase.*
@@ -80,5 +81,16 @@ class CaptureDbTest {
         assertFalse(c.of(CaptureSource.REVOLUT).enabled)
         assertEquals(30, c.unrecognized.size); assertEquals(40L, c.unrecognized.first().atMs)
         assertEquals("testo 40 extra", c.unrecognized.first().text)
+    }
+
+    @Test fun `le regole di notifiche ignorate si salvano, si rileggono e viaggiano nel backup`() = runBlocking {
+        env.captureConfig.update { c -> c.copy(ignoreRules = listOf(IgnoreRule("revolut", "il tuo codice di verifica e", 5L, false))) }
+        assertEquals(listOf(IgnoreRule("revolut", "il tuo codice di verifica e", 5L, false)), env.captureConfig.get().ignoreRules)
+        val json = env.backup.buildBackupJson()
+        assertTrue(json.contains("\"ignore\""))
+        env.captureConfig.update { it.copy(ignoreRules = emptyList()) }
+        env.restore(LegacyBackupCodec.parse(json), it.spese.domain.repository.RestoreMode.Replace)
+        assertEquals(1, env.captureConfig.get().ignoreRules.size)
+        assertFalse(env.captureConfig.get().ignoreRules[0].enabled)
     }
 }

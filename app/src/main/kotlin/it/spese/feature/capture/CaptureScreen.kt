@@ -59,6 +59,8 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(until) { while (System.currentTimeMillis() < until) { now = System.currentTimeMillis(); delay(1000) }; now = System.currentTimeMillis() }
     val learning = now < until
+    var ignoring by remember { mutableStateOf<UnrecognizedNotification?>(null) }
+    ignoring?.let { u -> IgnoreDialog(u, vm, { ignoring = null }) }
 
     Scaffold(topBar = { SubTopBar("Movimenti da notifiche", onBack) }, contentWindowInsets = WindowInsets.safeDrawing) { pad ->
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -93,18 +95,46 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
                 }
             }
             item { TryParser() }
+            if (cfg.needsReview) item {
+                SectionCard(title = "Hai ${cfg.unrecognized.size} notifiche da controllare") {
+                    Text("Si sono accumulate notifiche che l'app non sa leggere. Per ognuna scegli: «Ignora simili» se non riguarda soldi (promozioni, codici, avvisi), oppure copiala e provala in «Prova un testo» se è un pagamento.", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
             item {
                 SectionCard(title = "Non riconosciute (${cfg.unrecognized.size})", action = { if (cfg.unrecognized.isNotEmpty()) TextButton(onClick = vm::clearUnrecognized) { Text("Svuota") } }) {
-                    Text("Notifiche delle fonti attive da cui non si è riusciti a ricavare un importo e una direzione certi. Restano solo qui, sul telefono. Copia il testo e provalo in «Prova un testo».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Notifiche delle fonti attive da cui non si è riusciti a ricavare un importo e una direzione certi, raggruppate se uguali. Restano solo qui, sul telefono.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (cfg.unrecognized.isEmpty()) Text("Nessuna.", style = MaterialTheme.typography.bodyMedium)
                 }
             }
-            items(cfg.unrecognized, key = { "u-${it.atMs}" }) { u ->
+            items(IgnoreFilter.group(cfg.unrecognized), key = { "u-${it.key}" }) { g ->
+                val u = g.sample
                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                     Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("${u.source} · ${TIME.format(Instant.ofEpochMilli(u.atMs).atZone(ZoneId.systemDefault()))}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${u.source} · ${TIME.format(Instant.ofEpochMilli(u.atMs).atZone(ZoneId.systemDefault()))}" + if (g.count > 1) " · ${g.count} notifiche uguali" else "", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(u.text, style = MaterialTheme.typography.bodyMedium)
-                        Row { TextButton(onClick = { clipboard.setText(AnnotatedString(u.text)) }) { Text("Copia") }; TextButton(onClick = { vm.removeUnrecognized(u.atMs) }) { Text("Elimina") } }
+                        if (IgnoreFilter.hasAmount(u.text)) Text("Contiene un importo: non può essere ignorata in automatico (potrebbe essere un pagamento).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row {
+                            if (!IgnoreFilter.hasAmount(u.text)) TextButton(onClick = { ignoring = u }) { Text("Ignora simili") }
+                            TextButton(onClick = { clipboard.setText(AnnotatedString(u.text)) }) { Text("Copia") }
+                            TextButton(onClick = { vm.removeUnrecognized(g.items) }) { Text(if (g.count > 1) "Elimina tutte" else "Elimina") }
+                        }
+                    }
+                }
+            }
+            if (cfg.ignoreRules.isNotEmpty()) {
+                item { SectionCard(title = "Notifiche ignorate (${cfg.ignoreRules.size})") {
+                    Text("Le notifiche che contengono queste frasi vengono scartate senza leggerle, tranne se riportano un importo in euro.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } }
+                items(cfg.ignoreRules, key = { "ig-${it.createdMs}" }) { r ->
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                        Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text("“${r.phrase}”", style = MaterialTheme.typography.bodyMedium)
+                                Text(CaptureSource.entries.firstOrNull { it.id == r.source }?.label ?: "Qualsiasi fonte", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(r.enabled, { vm.toggleIgnoreRule(r.createdMs, it) })
+                            IconButton(onClick = { vm.removeIgnoreRule(r.createdMs) }) { Icon(Icons.Default.Delete, "Elimina la regola") }
+                        }
                     }
                 }
             }
@@ -182,4 +212,21 @@ private fun openListenerSettings(ctx: android.content.Context) {
 /** Info dell'app: da qui, con ⋮, si consentono le "impostazioni con restrizioni". */
 private fun openAppInfo(ctx: android.content.Context) {
     runCatching { ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + ctx.packageName)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+}
+
+/** Conferma di una regola "ignora simili": la frase proposta si può correggere e si vede quante notifiche in elenco scarterebbe. */
+@Composable
+private fun IgnoreDialog(u: UnrecognizedNotification, vm: CaptureViewModel, onDismiss: () -> Unit) {
+    var phrase by remember { mutableStateOf(IgnoreFilter.suggest(u.text)) }
+    val rule = IgnoreRule(IgnoreFilter.sourceIdOf(u.source), IgnoreFilter.normalize(phrase), System.currentTimeMillis())
+    val ok = rule.phrase.length >= IgnoreFilter.MIN_PHRASE
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Ignora notifiche come questa") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Da ora scarterò in silenzio le notifiche di ${u.source} che contengono questa frase (anche con numeri diversi). Non vale mai per notifiche con un importo in euro.", style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(phrase, { phrase = it }, label = { Text("Frase da ignorare") }, supportingText = { Text(if (ok) "Toglierà ${vm.wouldRemove(rule)} notifiche dall'elenco." else "Scrivi almeno ${IgnoreFilter.MIN_PHRASE} lettere, per non ignorare troppo.") }, modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = { TextButton(onClick = { vm.addIgnoreRule(rule); onDismiss() }, enabled = ok) { Text("Ignora") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

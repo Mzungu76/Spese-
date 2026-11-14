@@ -45,7 +45,10 @@ data class CaptureConfig(
     val sources: Map<String, SourceConfig> = emptyMap(), val unrecognized: List<UnrecognizedNotification> = emptyList(),
     /** Avvisa (con "Annulla") ogni volta che un movimento viene aggiunto da una notifica. */
     val notifyOnAdd: Boolean = true,
+    val ignoreRules: List<IgnoreRule> = emptyList(),
 ) {
+    /** Troppe notifiche non riconosciute accumulate: chiedi all'utente di controllarle. */
+    val needsReview: Boolean get() = unrecognized.size >= IgnoreFilter.REVIEW_THRESHOLD
     fun of(s: CaptureSource): SourceConfig = sources[s.id] ?: SourceConfig()
     val anyEnabled: Boolean get() = CaptureSource.entries.any { of(it).enabled }
 }

@@ -69,6 +69,7 @@ data class NativeRecurring(
 )
 /** Voce di scontrino ricordata e categoria (per nome). */
 data class NativeItemMemory(val key: String, val category: String)
+data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
     val splits: List<NativeSplit> = emptyList(), val quotas: List<NativeQuota> = emptyList(),
@@ -76,6 +77,7 @@ data class NativeExtras(
     val reviewed: List<String> = emptyList(),
     val recurring: List<NativeRecurring> = emptyList(),
     val itemMemory: List<NativeItemMemory> = emptyList(),
+    val ignoreRules: List<NativeIgnoreRule> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -177,6 +179,7 @@ object LegacyBackupCodec {
             NativeRecurring(r["name"].str() ?: return@let null, r["kind"].str() ?: "entrata", r["amt"].dec() ?: return@let null, r["acc"].str()?.takeIf { it.isNotBlank() }, r["cat"].str()?.takeIf { it.isNotBlank() },
                 r["every"].dec()?.toInt() ?: 1, r["day"].dec()?.toInt() ?: 1, Dates.parseIso(r["start"].str()) ?: return@let null, Dates.parseIso(r["end"].str()), r["on"]?.let { flag(it) } ?: true, flag(r["auto"]), Dates.parseIso(r["last"].str())) } } ?: emptyList(),
         itemMemory = o["items"].arr()?.mapNotNull { e -> e.obj()?.let { m -> NativeItemMemory(m["k"].str()?.takeIf { it.isNotBlank() } ?: return@let null, m["cat"].str()?.takeIf { it.isNotBlank() } ?: return@let null) } } ?: emptyList(),
+        ignoreRules = o["ignore"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIgnoreRule(r["src"].str() ?: "", r["p"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["t"].dec()?.toLong() ?: 0L, r["on"]?.let { flag(it) } ?: true) } } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -248,6 +251,7 @@ object LegacyBackupCodec {
                     put("name", r.name); put("kind", r.kind); put("amt", jnum(r.amount)); r.account?.let { put("acc", it) }; r.category?.let { put("cat", it) }
                     put("every", r.everyMonths); put("day", r.day); put("start", r.start.toString()); r.end?.let { put("end", it.toString()) }; put("on", if (r.enabled) 1 else 0); put("auto", if (r.autoConfirm) 1 else 0); r.last?.let { put("last", it.toString()) } }) } })
                 if (x.itemMemory.isNotEmpty()) put("items", buildJsonArray { x.itemMemory.forEach { m -> add(buildJsonObject { put("k", m.key); put("cat", m.category) }) } })
+                if (x.ignoreRules.isNotEmpty()) put("ignore", buildJsonArray { x.ignoreRules.forEach { r -> add(buildJsonObject { put("src", r.source); put("p", r.phrase); put("t", r.createdMs); put("on", if (r.enabled) 1 else 0) }) } })
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)
