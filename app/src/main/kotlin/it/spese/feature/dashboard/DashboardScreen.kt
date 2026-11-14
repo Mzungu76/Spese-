@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import it.spese.feature.categories.CategoryRankRow
+import it.spese.feature.categories.ComparisonSection
 import it.spese.feature.categories.OpportunitiesCard
 import it.spese.feature.categories.WatchCard
 import it.spese.domain.finance.SavingsOpportunities
@@ -91,13 +92,15 @@ fun DashboardScreen(
                     }
                 }
             }
-            item(key = "legend") {
-                Row(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                    LegendItem("Entrate", Money.eur0(s.income), fin.positive)
-                    LegendItem("Spese", Money.eur0(s.expense), fin.negative)
+            if (st.compare == null) {
+                item(key = "legend") {
+                    Row(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                        LegendItem("Entrate", Money.eur0(s.income), fin.positive)
+                        LegendItem("Spese", Money.eur0(s.expense), fin.negative)
+                    }
                 }
-            }
-            item(key = "chart") { GapAreaChart(points, Modifier.padding(horizontal = 24.dp, vertical = 12.dp), height = 300.dp) }
+                item(key = "chart") { GapAreaChart(points, Modifier.padding(horizontal = 24.dp, vertical = 12.dp), height = 300.dp) }
+            } else item(key = "compare") { ComparisonSection(st.compare!!, vm::toggleCategory, vm::clearSelection, Modifier.padding(top = 20.dp, bottom = 8.dp)) }
             item(key = "period") {
                 PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             }
@@ -116,7 +119,12 @@ fun DashboardScreen(
             if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             item(key = "cats-head") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
-                    Text("Dove vanno i soldi", style = MaterialTheme.typography.titleLarge)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Dove vanno i soldi", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                        if (st.compareMode) TextButton(onClick = { vm.setCompareMode(false) }) { Text("Fine") }
+                        else TextButton(onClick = { vm.setCompareMode(true) }) { Icon(Icons.Default.CompareArrows, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Confronta") }
+                    }
+                    if (st.compareMode && st.selected.isEmpty()) Text("Tocca le categorie da confrontare tra loro e con le entrate del periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
                 }
@@ -125,7 +133,9 @@ fun DashboardScreen(
             val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
             if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
-                CategoryRankRow(r, catKind, maxTotal, { onOpenCategory(r.category?.id) },
+                val rid = r.category?.id
+                CategoryRankRow(r, catKind, maxTotal, { if (st.compareMode && rid != null) vm.toggleCategory(rid) else onOpenCategory(rid) },
+                    Modifier.testTag("rank-$rid"), selectable = st.compareMode, selected = rid != null && rid in st.selected, onLongClick = { if (rid != null) vm.toggleCategory(rid) },
                     budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
             }
             if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }

@@ -144,6 +144,18 @@ class MainFlowTest {
         compose.onNodeWithContentDescription("Indietro").performClick(); compose.waitForIdle()
         goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
         goTab("Panoramica")
+        // confronto di categorie in Home: grafico e incidenza sulle entrate
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Confronta"))
+        compose.onNode(hasText("Confronta") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Fine")
+        val rankId = data.value.categories.first { it.name == "Supermercato e alimentari" }.id
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasTestTag("rank-$rankId"))
+        compose.onNodeWithTag("rank-$rankId").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        repeat(30) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(100) }   // il confronto si calcola fuori dal thread principale
+        compose.waitForIdle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Incidenza sulle entrate"))
+        waitText("Incidenza sulle entrate", substring = true)
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Azzera")); compose.onNode(hasText("Azzera") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         compose.onNode(hasContentDescription("Avvisi", substring = true)).performClick()
         waitText("Budget del mese in corso"); waitText("superato", substring = true)
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
