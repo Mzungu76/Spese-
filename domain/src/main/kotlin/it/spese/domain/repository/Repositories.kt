@@ -151,6 +151,13 @@ interface SettingsRepository {
     suspend fun update(transform: (AppSettings) -> AppSettings)
 }
 
+/** Impostazioni della cattura automatica da notifiche (fonti attive, conti, mittenti SMS, notifiche non riconosciute). */
+interface CaptureConfigRepository {
+    fun observe(): Flow<it.spese.domain.capture.CaptureConfig>
+    suspend fun get(): it.spese.domain.capture.CaptureConfig
+    suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
+}
+
 sealed interface RestoreMode { data object Merge : RestoreMode; data object Replace : RestoreMode }
 
 data class RestoreResult(val summary: List<String>, val txAdded: Int)

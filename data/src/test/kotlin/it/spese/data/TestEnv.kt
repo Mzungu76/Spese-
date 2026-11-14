@@ -29,6 +29,8 @@ class TestEnv {
     val restore = RestoreBackupUseCase(backup, reclassify)
     val commit = CommitImportUseCase(tx, accounts, cats, rules, settings)
     val undo = UndoImportUseCase(tx, backup, settings)
+    val capture = CaptureNotificationUseCase(tx, accounts, cats, rules)
+    val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     fun resource(name: String): ByteArray = TestEnv::class.java.getResourceAsStream("/$name")!!.readBytes()
     fun close() = db.close()
 }

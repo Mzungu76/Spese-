@@ -44,7 +44,8 @@ enum class SpendNature(val key: String, val label: String, val hint: String) {
     }
 }
 
-enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR }
+/** Origine di un movimento. NOTIFICATION = provvisorio, nato da una notifica o SMS: l'estratto conto lo sostituisce all'importazione. */
+enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR, NOTIFICATION }
 
 enum class AccountType(val label: String) {
     CONTO("Conto corrente"), CARTA("Carta"), CONTANTI("Contanti"), INVESTIMENTO("Investimenti"), ALTRO("Altro")

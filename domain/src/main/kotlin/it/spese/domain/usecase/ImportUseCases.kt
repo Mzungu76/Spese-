@@ -2,6 +2,7 @@ package it.spese.domain.usecase
 
 import it.spese.core.model.TxOrigin
 import it.spese.domain.backup.*
+import it.spese.domain.capture.NotificationReconciler
 import it.spese.domain.classification.Classifier
 import it.spese.domain.classification.Duplicates
 import it.spese.domain.export.Exporters
@@ -22,7 +23,7 @@ class ReadStatementUseCase @Inject constructor() {
     }
 }
 
-data class ImportOutcome(val added: Int, val duplicates: Int, val skipped: Int, val batchId: Long)
+data class ImportOutcome(val added: Int, val duplicates: Int, val skipped: Int, val batchId: Long, val reconciled: Int = 0)
 
 class PreviewImportUseCase @Inject constructor(private val tx: TransactionRepository, private val accounts: AccountRepository) {
     suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String, options: ImportOptions = ImportOptions()): ImportPreview {
@@ -45,15 +46,22 @@ class CommitImportUseCase @Inject constructor(
         val preview = ImportPlanner.preview(result, acc.id.toString(), tx.dedupKeys(acc.id))
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val fresh = preview.rows.filter { !it.duplicate }
+        // le righe dell'estratto sostituiscono i movimenti provvisori nati da notifiche (stesso importo, data vicina)
+        val provisional = tx.getAll().filter { it.accountId == acc.id && it.origin == TxOrigin.NOTIFICATION }
+        val matches = NotificationReconciler.match(provisional, fresh.mapIndexed { i, p -> NotificationReconciler.Row(i, p.row.amount, p.row.date) })
         val batch = tx.createImportBatch(table.fileName, fresh.size)
-        val items = fresh.map { p ->
-            val r = p.row; val c = classifier.classify(r.text, r.amount, null)
+        val items = fresh.mapIndexed { i, p ->
+            val r = p.row; val prov = matches[i]
+            // categoria scelta a mano e note dell'utente sul provvisorio non si perdono
+            val c = if (prov != null && prov.manualCategory) it.spese.domain.classification.Classification(prov.categoryId, prov.kind, true, null) else classifier.classify(r.text, r.amount, null)
+            val notes = prov?.notes?.takeIf { it.isNotBlank() && !it.startsWith("Da notifica") } ?: ""
             NewTransaction(Duplicates.key(name, r.date, r.valueDate, r.amount, r.text) + "#" + p.occurrence, p.key, acc.id, r.date, r.valueDate, r.text,
-                r.amount, c.kind, c.categoryId, false, c.ruleId, null, "", TxOrigin.IMPORT_FILE, null, batch)
+                r.amount, c.kind, c.categoryId, c.manual, c.ruleId, prov?.merchantOverride, notes, TxOrigin.IMPORT_FILE, null, batch)
         }
+        if (matches.isNotEmpty()) tx.delete(matches.values.map { it.id })
         val added = tx.insertAll(items)
         settings.update { it.copy(lastUndo = "batch:$batch") }
-        return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch)
+        return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch, matches.size)
     }
 }
 
