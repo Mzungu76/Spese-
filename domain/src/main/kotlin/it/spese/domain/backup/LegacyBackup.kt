@@ -78,6 +78,8 @@ data class NativeExtras(
     val recurring: List<NativeRecurring> = emptyList(),
     val itemMemory: List<NativeItemMemory> = emptyList(),
     val ignoreRules: List<NativeIgnoreRule> = emptyList(),
+    /** Esercenti che l'utente non vuole vedere come abbonamenti o rate. */
+    val subIgnored: List<String> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -180,6 +182,7 @@ object LegacyBackupCodec {
                 r["every"].dec()?.toInt() ?: 1, r["day"].dec()?.toInt() ?: 1, Dates.parseIso(r["start"].str()) ?: return@let null, Dates.parseIso(r["end"].str()), r["on"]?.let { flag(it) } ?: true, flag(r["auto"]), Dates.parseIso(r["last"].str())) } } ?: emptyList(),
         itemMemory = o["items"].arr()?.mapNotNull { e -> e.obj()?.let { m -> NativeItemMemory(m["k"].str()?.takeIf { it.isNotBlank() } ?: return@let null, m["cat"].str()?.takeIf { it.isNotBlank() } ?: return@let null) } } ?: emptyList(),
         ignoreRules = o["ignore"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIgnoreRule(r["src"].str() ?: "", r["p"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["t"].dec()?.toLong() ?: 0L, r["on"]?.let { flag(it) } ?: true) } } ?: emptyList(),
+        subIgnored = o["subIgnored"].arr()?.mapNotNull { it.str() } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -252,6 +255,7 @@ object LegacyBackupCodec {
                     put("every", r.everyMonths); put("day", r.day); put("start", r.start.toString()); r.end?.let { put("end", it.toString()) }; put("on", if (r.enabled) 1 else 0); put("auto", if (r.autoConfirm) 1 else 0); r.last?.let { put("last", it.toString()) } }) } })
                 if (x.itemMemory.isNotEmpty()) put("items", buildJsonArray { x.itemMemory.forEach { m -> add(buildJsonObject { put("k", m.key); put("cat", m.category) }) } })
                 if (x.ignoreRules.isNotEmpty()) put("ignore", buildJsonArray { x.ignoreRules.forEach { r -> add(buildJsonObject { put("src", r.source); put("p", r.phrase); put("t", r.createdMs); put("on", if (r.enabled) 1 else 0) }) } })
+                if (x.subIgnored.isNotEmpty()) putJsonArray("subIgnored") { x.subIgnored.forEach { add(JsonPrimitive(it)) } }
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)

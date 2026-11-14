@@ -37,6 +37,7 @@ import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.capture.CaptureScreen
 import it.spese.feature.recurring.RecurringScreen
+import it.spese.feature.subscriptions.SubscriptionsScreen
 import it.spese.feature.reports.ReportsScreen
 import it.spese.feature.trends.TrendsScreen
 import it.spese.feature.categories.CategoriesScreen
@@ -55,7 +56,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -137,7 +138,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
+                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
                     onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, contentPadding = pad)
@@ -153,7 +154,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 ManageScreen(initialTab = entry.arguments?.getInt("tab") ?: 0, onBack = { nav.popBackStack() })
             }
             composable(Routes.PLAN) { PlanScreen(menu, bottomPadding = pad) }
-            composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }) }
+            composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }) }
             composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = 0L })) { TransactionEditScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.IMPORT) { ImportScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
@@ -161,6 +162,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
             composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.RECURRING) { RecurringScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SUBSCRIPTIONS) { SubscriptionsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }

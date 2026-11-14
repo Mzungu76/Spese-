@@ -22,7 +22,12 @@ data class DashboardState(
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger,
-    captureConfig: it.spese.domain.repository.CaptureConfigRepository) : ViewModel() {
+    captureConfig: it.spese.domain.repository.CaptureConfigRepository,
+    review: it.spese.domain.finance.SubscriptionReviewRepository) : ViewModel() {
+    /** Costo mensile di abbonamenti e rate riconosciuti e quante novità (aumenti, addebiti mancanti) ci sono. */
+    val subscriptions: StateFlow<it.spese.domain.finance.SubscriptionSummary?> = combine(data, review.observeIgnored()) { d, ign ->
+        if (!d.loaded) null else it.spese.domain.finance.SubscriptionDetector.detect(d.transactions, it.spese.domain.finance.SubscriptionDetector.excludedCategories(d.categories)).filter { p -> p.key !in ign }.let { l -> it.spese.domain.finance.SubscriptionDetector.summary(l) }
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Notifiche non riconosciute accumulate (0 se sono poche: il promemoria compare solo oltre la soglia). */
     val pendingNotifications: StateFlow<Int> = captureConfig.observe().map { if (it.needsReview) it.unrecognized.size else 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     private val selected = MutableStateFlow<Set<Long>>(emptySet())

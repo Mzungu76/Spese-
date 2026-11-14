@@ -48,11 +48,12 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
     val pendingNotifs by vm.pendingNotifications.collectAsStateWithLifecycle()
+    val subs by vm.subscriptions.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -130,6 +131,19 @@ fun DashboardScreen(
                         Text("Indica quali ignorare e quali sono pagamenti", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            subs?.takeIf { it.count > 0 }?.let { sub ->
+                item(key = "subs") {
+                    Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenSubscriptions).padding(horizontal = 18.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Icon(Icons.Default.Autorenew, null, tint = if (sub.news > 0) fin.warning else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(Modifier.weight(1f)) {
+                            Text("Abbonamenti e rate: ${Money.eur0(sub.monthly)}/mese", style = MaterialTheme.typography.titleMedium)
+                            Text(if (sub.news > 0) "${sub.news} ${if (sub.news == 1) "novità" else "novità"}: aumenti di prezzo o addebiti mancanti" else "${sub.count} voci · ${Money.eur0(sub.annual)} all'anno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             val watch = SavingsOpportunities.surging(m.categories)

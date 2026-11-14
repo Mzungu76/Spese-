@@ -72,6 +72,7 @@ class BackupRepositoryImpl @Inject constructor(
 
     private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
     private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
+    private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
 
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
@@ -81,6 +82,7 @@ class BackupRepositoryImpl @Inject constructor(
         val scenarioE = db.scenarios().getScenarios().filter { !it.isBase }
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
+            subIgnored = subReview.getIgnored().toList(),
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
             itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
@@ -135,6 +137,9 @@ class BackupRepositoryImpl @Inject constructor(
         db.withTransaction {
             if (mode == RestoreMode.Replace) wipeInTransaction()
             added = writeState(target, env.extras, mode == RestoreMode.Replace, extraFiles)
+        }
+        env.extras?.let { x ->
+            if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
         }
         // notifiche da ignorare (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle mancanti
         env.extras?.let { x ->

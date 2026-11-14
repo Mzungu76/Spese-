@@ -93,4 +93,16 @@ class CaptureDbTest {
         assertEquals(1, env.captureConfig.get().ignoreRules.size)
         assertFalse(env.captureConfig.get().ignoreRules[0].enabled)
     }
+
+    @Test fun `gli esercenti ignorati tra gli abbonamenti si salvano e viaggiano nel backup`() = runBlocking {
+        val repo = it.spese.data.settings.SubscriptionReviewRepositoryImpl(env.context)
+        repo.setIgnored(emptySet()); repo.ignore("netflix com"); repo.ignore("palestra")
+        repo.restore("palestra")
+        assertEquals(setOf("netflix com"), repo.getIgnored())
+        val json = env.backup.buildBackupJson()
+        assertTrue(json.contains("subIgnored"))
+        repo.setIgnored(emptySet())
+        env.restore(LegacyBackupCodec.parse(json), it.spese.domain.repository.RestoreMode.Replace)
+        assertEquals(setOf("netflix com"), repo.getIgnored())
+    }
 }

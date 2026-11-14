@@ -49,6 +49,7 @@ abstract class RepositoryModule {
     @Binds abstract fun backup(i: BackupRepositoryImpl): BackupRepository
     @Binds abstract fun reportPresets(i: it.spese.data.settings.ReportPresetRepositoryImpl): ReportPresetRepository
     @Binds abstract fun captureConfig(i: it.spese.data.settings.CaptureConfigRepositoryImpl): CaptureConfigRepository
+    @Binds abstract fun subscriptionReview(i: it.spese.data.settings.SubscriptionReviewRepositoryImpl): it.spese.domain.finance.SubscriptionReviewRepository
     @Binds abstract fun itemMemory(i: it.spese.data.settings.ItemMemoryRepositoryImpl): it.spese.domain.ocr.ItemMemoryRepository
 }
 
