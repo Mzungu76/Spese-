@@ -12,8 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import it.spese.app.common.DataMenu
-import it.spese.app.common.TabTopBar
+import it.spese.app.common.SubTopBar
 import it.spese.core.common.Dates
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
@@ -22,12 +21,12 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 @Composable
-fun AlertsScreen(menu: DataMenu, onOpenSettings: () -> Unit, bottomPadding: PaddingValues = PaddingValues(), vm: AlertsViewModel = hiltViewModel()) {
+fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: AlertsViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
     var add by remember { mutableStateOf(false) }
-    Scaffold(topBar = { TabTopBar("Avvisi e ricorrenti", menu) }, contentWindowInsets = WindowInsets(0),
-        floatingActionButton = { ExtendedFloatingActionButton(onClick = { add = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Scadenza") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding())) }) { pad ->
-        LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = bottomPadding.calculateBottomPadding() + 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Scaffold(topBar = { SubTopBar("Avvisi e scadenze", onBack) }, contentWindowInsets = WindowInsets.safeDrawing,
+        floatingActionButton = { ExtendedFloatingActionButton(onClick = { add = true }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Scadenza") }) }) { pad ->
+        LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             item {
                 SectionCard(title = "Avvisi") {
                     if (st.alerts.isEmpty()) Text("Nessun avviso. Imposta dei budget nel Piano per ricevere avvisi di superamento.", color = MaterialTheme.colorScheme.onSurfaceVariant)

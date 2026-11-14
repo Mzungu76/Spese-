@@ -3,6 +3,7 @@ package it.spese.app.common
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
@@ -32,29 +33,46 @@ data class DataMenu(
     val onSettings: () -> Unit, val undoAvailable: Boolean, val onUndo: () -> Unit,
 )
 
+@Composable
+fun OverflowMenu(menu: DataMenu) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Menu dati") }
+        DropdownMenu(open, { open = false }) {
+            DropdownMenuItem({ Text("Analisi e grafici") }, { open = false; menu.onAnalytics() }, leadingIcon = { Icon(Icons.Default.Insights, null) })
+            DropdownMenuItem({ Text("Conti") }, { open = false; menu.onAccounts() }, leadingIcon = { Icon(Icons.Default.AccountBalance, null) })
+            if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla ultima importazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) })
+            HorizontalDivider()
+            DropdownMenuItem({ Text("Backup e impostazioni") }, { open = false; menu.onSettings() }, leadingIcon = { Icon(Icons.Default.Settings, null) })
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TabTopBar(title: String, menu: DataMenu, actions: @Composable RowScope.() -> Unit = {}) {
-    var open by remember { mutableStateOf(false) }
-    TopAppBar(
-        title = { Text(title) },
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-        actions = {
-            actions()
-            Box {
-                IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Menu dati") }
-                DropdownMenu(open, { open = false }) {
-                    DropdownMenuItem({ Text("Importa estratto conto") }, { open = false; menu.onImport() }, leadingIcon = { Icon(Icons.Default.UploadFile, null) })
-                    DropdownMenuItem({ Text("Scansiona documento") }, { open = false; menu.onScan() }, leadingIcon = { Icon(Icons.Default.DocumentScanner, null) })
-                    DropdownMenuItem({ Text("Analisi e grafici") }, { open = false; menu.onAnalytics() }, leadingIcon = { Icon(Icons.Default.Insights, null) })
-                    DropdownMenuItem({ Text("Conti") }, { open = false; menu.onAccounts() }, leadingIcon = { Icon(Icons.Default.AccountBalance, null) })
-                    if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla ultima importazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.Default.Undo, null) })
-                    HorizontalDivider()
-                    DropdownMenuItem({ Text("Backup e impostazioni") }, { open = false; menu.onSettings() }, leadingIcon = { Icon(Icons.Default.Settings, null) })
-                }
-            }
-        },
-    )
+    TopAppBar(title = { Text(title) }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background), actions = { actions(); OverflowMenu(menu) })
+}
+
+/** Titolo grande a sinistra e azioni tonde a destra: l'intestazione delle schermate principali. */
+@Composable
+fun LargeHeader(title: String, modifier: Modifier = Modifier, menu: DataMenu? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(modifier.fillMaxWidth().statusBarsPadding().padding(start = 24.dp, end = 12.dp, top = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.headlineMedium, maxLines = 1)
+        actions()
+        if (menu != null) OverflowMenu(menu)
+    }
+}
+
+/** Pulsante tondo grigio scuro con icona (cerca, filtri, campanella…). */
+@Composable
+fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false) {
+    Box(modifier.padding(horizontal = 4.dp)) {
+        FilledIconButton(onClick = onClick, Modifier.size(44.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
+            Icon(icon, description, Modifier.size(22.dp))
+        }
+        if (badge) Box(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 8.dp, end = 8.dp).size(11.dp).background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape))
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

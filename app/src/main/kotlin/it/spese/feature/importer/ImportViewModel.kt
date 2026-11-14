@@ -7,47 +7,55 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import it.spese.app.common.UiMessenger
 import it.spese.domain.importing.*
-import it.spese.domain.repository.AccountRepository
 import it.spese.domain.repository.AppData
 import it.spese.domain.usecase.*
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+enum class ImportStep { PICK, COLUMNS, REVIEW, DONE }
+
 data class ImportState(
-    val queue: List<List<StatementTable>> = emptyList(),   // tabelle per file
+    val queue: List<List<StatementTable>> = emptyList(),
     val names: List<String> = emptyList(),
     val index: Int = 0,
     val sheet: Int = 0,
+    val step: ImportStep = ImportStep.PICK,
+    /** Riga delle intestazioni (-1 = nessuna); i dati iniziano nella riga successiva. */
     val headerRow: Int = 0,
-    val mapping: ColumnMapping = ColumnMapping(),
-    val autoDetected: Boolean = false,
+    val roles: List<ColumnRole> = emptyList(),
+    val options: ImportOptions = ImportOptions(),
+    val analysis: TableAnalysis? = null,
+    /** Nome del formato ricordato applicato automaticamente (null = riconosciuto dall'analisi). */
+    val profileName: String? = null,
     val accountName: String = "",
     val preview: ImportPreview? = null,
+    val remember: Boolean = true,
+    val rememberName: String = "",
     val log: List<String> = emptyList(),
     val busy: Boolean = false,
-    val finished: Boolean = false,
     val error: String? = null,
 ) {
     val table: StatementTable? get() = queue.getOrNull(index)?.getOrNull(sheet)
     val fileName: String get() = names.getOrNull(index) ?: ""
-    val columns: Int get() = table?.rows?.take(60)?.maxOfOrNull { it.size } ?: 0
-    fun columnTitle(i: Int): String {
-        val h = table?.rows?.getOrNull(headerRow)?.getOrNull(i)?.toString()?.trim().orEmpty()
-        return "${('A' + (i % 26))}${if (i >= 26) i / 26 else ""} · ${h.ifEmpty { "(vuota)" }}"
-    }
+    val mapping: ColumnMapping get() = ColumnMapping.fromRoles(roles)
+    val firstDataRow: Int get() = headerRow + 1
 }
 
 @HiltViewModel
 class ImportViewModel @Inject constructor(
     private val app: Application, val data: StateFlow<AppData>, private val read: ReadStatementUseCase, private val previewUc: PreviewImportUseCase,
-    private val commit: CommitImportUseCase, private val messenger: UiMessenger,
+    private val commit: CommitImportUseCase, private val profiles: ImportProfilesUseCase, private val messenger: UiMessenger,
 ) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
     private var lastAccount = ""
+    private var job: Job? = null
+
+    private fun upd(t: (ImportState) -> ImportState) { _state.value = t(_state.value) }
 
     fun pick(uris: List<Uri>) = viewModelScope.launch {
         _state.value = ImportState(busy = true)
@@ -60,63 +68,85 @@ class ImportViewModel @Inject constructor(
                 if (t.isEmpty()) log.add("$name: nessun dato trovato") else { tables.add(t); names.add(name) }
             } catch (e: UnsupportedFormatException) { log.add("$name: ${e.message}") } catch (e: Exception) { log.add("$name: file non leggibile") }
         }
-        _state.value = ImportState(queue = tables, names = names, log = log, finished = tables.isEmpty())
-        if (tables.isNotEmpty()) startFile(0)
+        if (tables.isEmpty()) _state.value = ImportState(log = log, step = ImportStep.DONE)
+        else { _state.value = ImportState(queue = tables, names = names, log = log); startFile(0) }
     }
 
     private fun queryName(u: Uri): String =
         app.contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "file"
 
-    private fun startFile(i: Int) {
-        val tables = _state.value.queue[i]; val t = tables[0]
-        val det = t.detected
-        val defaultAcc = lastAccount.ifBlank { data.value.accounts.firstOrNull { !it.archived }?.name ?: "Conto principale" }
-        _state.value = _state.value.copy(index = i, sheet = 0, headerRow = det?.headerRow ?: 0, mapping = det?.mapping ?: ColumnMapping(), autoDetected = det != null,
-            accountName = defaultAcc, preview = null, error = null, busy = false)
+    private suspend fun startFile(i: Int, sheet: Int = 0) {
+        val s = _state.value
+        val table = s.queue[i][sheet]
+        val a = table.analysis
+        val prof = profiles.match(table)
+        val acc = lastAccount.ifBlank { data.value.accounts.firstOrNull { !it.archived }?.name ?: "Conto principale" }
+        _state.value = s.copy(index = i, sheet = sheet, step = ImportStep.COLUMNS, analysis = a, profileName = prof?.name,
+            headerRow = prof?.headerRow ?: a.headerRow, roles = prof?.roles ?: a.roles, options = prof?.options ?: a.options,
+            accountName = acc, rememberName = prof?.name ?: suggestName(names = s.names[i]), remember = prof == null, preview = null, error = null, busy = false)
         refresh()
     }
 
-    fun selectSheet(i: Int) {
-        val t = _state.value.queue[_state.value.index][i]
-        _state.value = _state.value.copy(sheet = i, headerRow = t.detected?.headerRow ?: 0, mapping = t.detected?.mapping ?: ColumnMapping(), autoDetected = t.detected != null)
+    private fun suggestName(names: String) = names.substringBeforeLast('.').replace(Regex("[_\\-]+"), " ").replace(Regex("\\d{2,}"), "").trim().ifBlank { "Il mio estratto conto" }
+
+    fun selectSheet(i: Int) = viewModelScope.launch { startFile(_state.value.index, i) }
+
+    fun reanalyze() { val t = _state.value.table ?: return; val a = t.analysis
+        upd { it.copy(headerRow = a.headerRow, roles = a.roles, options = a.options, profileName = null) }; refresh() }
+
+    /** Assegna un ruolo a una colonna; i ruoli "unici" (data, importo…) passano da una colonna all'altra. */
+    fun setRole(col: Int, role: ColumnRole) {
+        val single = setOf(ColumnRole.DATE, ColumnRole.VALUE_DATE, ColumnRole.DESCRIPTION, ColumnRole.AMOUNT, ColumnRole.DEBIT, ColumnRole.CREDIT, ColumnRole.SIGN)
+        upd { s ->
+            val r = s.roles.toMutableList()
+            if (role in single) for (i in r.indices) if (r[i] == role) r[i] = ColumnRole.IGNORE
+            r[col] = role
+            // se si sceglie un importo unico, dare/avere non hanno più senso (e viceversa)
+            if (role == ColumnRole.AMOUNT) for (i in r.indices) if (r[i] == ColumnRole.DEBIT || r[i] == ColumnRole.CREDIT) r[i] = ColumnRole.IGNORE
+            if (role == ColumnRole.DEBIT || role == ColumnRole.CREDIT) for (i in r.indices) if (r[i] == ColumnRole.AMOUNT) r[i] = ColumnRole.IGNORE
+            s.copy(roles = r, profileName = null)
+        }
         refresh()
     }
-    fun setHeaderRow(r: Int) {
-        val t = _state.value.table ?: return
-        val g = HeaderDetector.guess(t.rows.getOrNull(r)?.map { it?.toString() ?: "" } ?: emptyList())
-        _state.value = _state.value.copy(headerRow = r, mapping = g, autoDetected = false); refresh()
-    }
-    fun setMapping(m: ColumnMapping) { _state.value = _state.value.copy(mapping = m, autoDetected = false); refresh() }
-    fun setAccount(n: String) { _state.value = _state.value.copy(accountName = n); refresh() }
 
-    private var job: kotlinx.coroutines.Job? = null
+    fun setFirstDataRow(row: Int) { val max = (_state.value.table?.rows?.size ?: 1) - 1; upd { it.copy(headerRow = (row - 1).coerceIn(-1, max)) }; refresh() }
+    fun setOptions(o: ImportOptions) { upd { it.copy(options = o) }; refresh() }
+    fun setAccount(n: String) { upd { it.copy(accountName = n) }; refresh() }
+    fun setRemember(b: Boolean) = upd { it.copy(remember = b) }
+    fun setRememberName(n: String) = upd { it.copy(rememberName = n) }
+    fun toReview() = upd { it.copy(step = ImportStep.REVIEW) }
+    fun toColumns() = upd { it.copy(step = ImportStep.COLUMNS) }
+
     private fun refresh() {
         job?.cancel()
         job = viewModelScope.launch {
             val s = _state.value; val t = s.table ?: return@launch
-            if (!s.mapping.isUsable) { _state.value = s.copy(preview = null, error = "Associa almeno data, descrizione e importo (oppure dare/avere)."); return@launch }
+            if (!s.mapping.isUsable) { upd { it.copy(preview = null, error = null) }; return@launch }
             try {
-                val p = withContext(Dispatchers.Default) { previewUc(t, s.headerRow, s.mapping, s.accountName.ifBlank { "Conto principale" }) }
-                _state.value = _state.value.copy(preview = p, error = if (p.rows.isEmpty()) "Nessuna riga valida con questa associazione di colonne." else null)
-            } catch (e: Exception) { _state.value = _state.value.copy(preview = null, error = "Anteprima non disponibile: ${e.message}") }
+                val p = withContext(Dispatchers.Default) { previewUc(t, s.headerRow, s.mapping, s.accountName.ifBlank { "Conto principale" }, s.options) }
+                upd { it.copy(preview = p, error = if (p.rows.isEmpty()) "Con queste colonne non trovo nessun movimento valido." else null) }
+            } catch (e: Exception) { upd { it.copy(preview = null, error = "Anteprima non disponibile: ${e.message}") } }
         }
     }
 
     fun confirm() = viewModelScope.launch {
         val s = _state.value; val t = s.table ?: return@launch
-        _state.value = s.copy(busy = true)
+        upd { it.copy(busy = true) }
         try {
-            val o = commit(t, s.headerRow, s.mapping, s.accountName)
+            val o = commit(t, s.headerRow, s.mapping, s.accountName, s.options)
             lastAccount = s.accountName.trim()
+            if (s.remember && s.rememberName.isNotBlank()) profiles.remember(s.rememberName.trim(), t, s.roles, s.options, s.headerRow)
             val line = "${s.fileName} → ${s.accountName.trim()}: ${o.added} importati" + (if (o.duplicates > 0) ", ${o.duplicates} già presenti" else "") + (if (o.skipped > 0) ", ${o.skipped} righe scartate" else "")
             val log = s.log + line
-            if (s.index + 1 < s.queue.size) { _state.value = _state.value.copy(log = log); startFile(s.index + 1) }
-            else { _state.value = _state.value.copy(log = log, finished = true, busy = false); messenger.show("Importazione completata") }
-        } catch (e: Exception) { _state.value = _state.value.copy(busy = false, error = e.message ?: "Importazione non riuscita") }
+            if (s.index + 1 < s.queue.size) { upd { it.copy(log = log) }; startFile(s.index + 1) }
+            else { upd { it.copy(log = log, step = ImportStep.DONE, busy = false) }; messenger.show("Importazione completata") }
+        } catch (e: Exception) { upd { it.copy(busy = false, error = e.message ?: "Importazione non riuscita") } }
     }
 
-    fun skipFile() { val s = _state.value; val log = s.log + "${s.fileName}: saltato"
-        if (s.index + 1 < s.queue.size) { _state.value = s.copy(log = log); startFile(s.index + 1) } else _state.value = s.copy(log = log, finished = true) }
+    fun skipFile() = viewModelScope.launch {
+        val s = _state.value; val log = s.log + "${s.fileName}: saltato"
+        if (s.index + 1 < s.queue.size) { upd { it.copy(log = log) }; startFile(s.index + 1) } else upd { it.copy(log = log, step = ImportStep.DONE) }
+    }
 
     fun reset() { _state.value = ImportState() }
 }

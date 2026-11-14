@@ -129,3 +129,54 @@ class FinanceGoldenTest {
         assertTrue(a.any { it.kind == AlertKind.SAVINGS_BELOW_GOAL })
     }
 }
+
+class DashboardExtrasTest {
+    private val snap = Fixtures.snapshotA
+    private val data = it.spese.domain.repository.AppData(snap.transactions, snap.categories, snap.accounts, snap.rules, snap.dues,
+        listOf(it.spese.core.model.Scenario(1, "Piano", snap.goal, snap.cuts, isBase = true)), true)
+
+    @Test fun `confronto con il periodo precedente solo se il periodo non e Tutto`() {
+        val all = it.spese.domain.finance.DashboardCalculator.compute(data, TxFilter(), LocalDate.of(2026, 11, 13))
+        assertTrue(all.previous == null && all.expenseChange == null)
+        val m3 = it.spese.domain.finance.DashboardCalculator.compute(data, TxFilter(period = Period.Last3Months), LocalDate.of(2026, 11, 13))
+        assertTrue(m3.previous != null)
+        assertTrue(m3.previous!!.expense.signum() > 0)
+        assertTrue(m3.topChanges.size <= 3)
+    }
+
+    @Test fun `ritmo del mese, scadenze, budget e obiettivo`() {
+        val d = it.spese.domain.finance.DashboardCalculator.compute(data, TxFilter(), LocalDate.of(2026, 11, 13))
+        assertEquals(LocalDate.of(2024, 10, 27), d.today)           // dati vecchi: si usa l'ultimo movimento
+        val p = d.monthPace!!
+        assertEquals(java.time.YearMonth.of(2024, 10), p.month)
+        assertMoney("speso ottobre", BigDecimal("1018.53").let { p.spent }, p.spent)
+        assertTrue(p.projected >= p.spent)
+        assertTrue(d.upcoming.any { it.name == "Affitto" } && d.upcoming30.signum() > 0)
+        assertTrue(d.budgets.isNotEmpty() && d.budgets.first().percent >= d.budgets.last().percent)
+        assertEquals(BigDecimal("3600").divide(BigDecimal(12)).setScale(0), d.goalMonthly.setScale(0))
+        assertTrue(d.goalProgress >= 0f)
+    }
+}
+
+class TrendBucketsTest {
+    private val snap = Fixtures.snapshotA
+
+    @Test fun `periodo lungo - un punto per mese, somme identiche alle statistiche`() {
+        val b = it.spese.domain.finance.TrendBuckets.compute(snap.transactions)
+        val s = StatsEngine.compute(snap.transactions)
+        assertEquals(10, b.size); assertTrue(b.none { it.weekly })
+        assertMoney("entrate", s.income, b.fold(BigDecimal.ZERO) { a, x -> a + x.income })
+        assertMoney("spese", s.expense, b.fold(BigDecimal.ZERO) { a, x -> a + x.expense })
+        assertEquals("gen", b.first().label); assertEquals("ottobre 2024", b.last().title)
+    }
+
+    @Test fun `periodo breve - settimane da lunedi senza buchi`() {
+        val oct = FilterEngine.apply(snap.transactions, TxFilter(period = Period.CurrentMonth), snap.categories.associateBy { it.id })
+        val w = it.spese.domain.finance.TrendBuckets.compute(oct)
+        assertTrue(w.all { it.weekly && it.start.dayOfWeek == java.time.DayOfWeek.MONDAY })
+        assertTrue(w.zipWithNext().all { (a, b) -> a.start.plusWeeks(1) == b.start })
+        assertMoney("spese", StatsEngine.compute(oct).expense, w.fold(BigDecimal.ZERO) { a, x -> a + x.expense })
+    }
+
+    @Test fun `senza movimenti nessun punto`() = assertTrue(it.spese.domain.finance.TrendBuckets.compute(emptyList()).isEmpty())
+}

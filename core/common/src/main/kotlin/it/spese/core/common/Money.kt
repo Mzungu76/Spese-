@@ -62,7 +62,18 @@ object Money {
 }
 
 /** Parsing tollerante di numeri scritti dall'utente o presenti in estratti conto. */
+/** Separatore decimale: AUTO ricava il formato dal testo; COMMA = 1.234,56; DOT = 1,234.56. */
+enum class DecimalStyle { AUTO, COMMA, DOT }
+
 object NumberParser {
+    /** Come [parse] ma con il formato imposto dall'utente (utile quando l'automatico è ambiguo, es. "1.234"). */
+    fun parse(raw: String?, style: DecimalStyle): BigDecimal? {
+        if (style == DecimalStyle.AUTO || raw == null) return parse(raw)
+        val cleaned = raw.trim().replace("€", "").replace(Regex("(?i)eur(o)?"), "").replace(Regex("[\\s\u00A0']"), "")
+        val normalized = if (style == DecimalStyle.COMMA) cleaned.replace(".", "") else cleaned.replace(",", "")
+        return parse(if (style == DecimalStyle.COMMA) normalized.replace(',', '.') else normalized)
+    }
+
     /**
      * Gestisce formati italiani ed europei (1.234,56), anglosassoni (1,234.56), simboli di valuta,
      * segni finali ("123,45-"), parentesi contabili "(123,45)" e il segno meno tipografico.

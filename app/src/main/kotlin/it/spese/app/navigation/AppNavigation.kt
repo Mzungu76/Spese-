@@ -2,7 +2,16 @@ package it.spese.app.navigation
 
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -11,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -43,13 +53,60 @@ object Routes {
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector, val selected: ImageVector)
 
+/** Quattro sezioni nella barra (il + sta al centro); gli Avvisi si aprono dalla campanella della Home. */
 private val TABS = listOf(
-    Tab(Routes.DASHBOARD, "Panoramica", Icons.Outlined.Dashboard, Icons.Filled.Dashboard),
+    Tab(Routes.DASHBOARD, "Home", Icons.Outlined.Home, Icons.Filled.Home),
     Tab(Routes.TRANSACTIONS, "Movimenti", Icons.Outlined.ReceiptLong, Icons.Filled.ReceiptLong),
-    Tab(Routes.CATEGORIES, "Categorie", Icons.Outlined.Category, Icons.Filled.Category),
     Tab(Routes.PLAN, "Piano", Icons.Outlined.Flag, Icons.Filled.Flag),
-    Tab(Routes.ALERTS, "Avvisi", Icons.Outlined.Notifications, Icons.Filled.Notifications),
+    Tab(Routes.CATEGORIES, "Categorie", Icons.Outlined.Category, Icons.Filled.Category),
 )
+
+@Composable
+private fun SpeseBottomBar(route: String?, onTab: (String) -> Unit, onAdd: () -> Unit) {
+    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
+        Column {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().navigationBarsPadding().height(76.dp)) {
+                @Composable
+                fun item(t: Tab) {
+                    val on = route == t.route
+                    Column(Modifier.weight(1f).fillMaxHeight().clickable { onTab(t.route) }.testTag("tab_${t.route}"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                        Icon(if (on) t.selected else t.icon, null, Modifier.size(26.dp), tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.height(4.dp))
+                        Text(t.label, fontSize = 12.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.SemiBold, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                item(TABS[0]); item(TABS[1]); Spacer(Modifier.weight(1f)); item(TABS[2]); item(TABS[3])
+            }
+        }
+        FloatingActionButton(onClick = onAdd, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-20).dp).size(68.dp).testTag("fab_add").semantics { contentDescription = "Aggiungi" },
+            shape = CircleShape, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
+            Icon(Icons.Filled.Add, null, Modifier.size(32.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onRestore: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
+            Text("Cosa vuoi aggiungere?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
+            @Composable
+            fun opt(icon: ImageVector, title: String, sub: String, tint: Color, bg: Color, tag: String, onClick: () -> Unit) {
+                Row(Modifier.fillMaxWidth().clickable { onDismiss(); onClick() }.testTag(tag).padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Box(Modifier.size(48.dp).background(bg, CircleShape), contentAlignment = Alignment.Center) { Icon(icon, null, tint = tint) }
+                    Column(Modifier.weight(1f)) { Text(title, style = MaterialTheme.typography.titleMedium); Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    Icon(Icons.Filled.ChevronRight, null, tint = MaterialTheme.colorScheme.outline)
+                }
+            }
+            opt(Icons.Filled.Add, "Movimento a mano", "Importo, descrizione e categoria", Color(0xFF9FC0FF), Color(0xFF16315F), "add_manual", onManual)
+            opt(Icons.Filled.DocumentScanner, "Scansiona uno scontrino", "Riconosco importo, data ed esercente", Color(0xFF34D399), Color(0xFF12332A), "add_scan", onScan)
+            opt(Icons.Filled.UploadFile, "Importa estratto conto", "Excel, CSV o TXT dalla tua banca", Color(0xFFFFB020), Color(0xFF3A2A08), "add_import", onImport)
+            opt(Icons.Filled.Restore, "Ripristina un backup", "Dalla versione web o da un altro telefono", Color(0xFFC792F0), Color(0xFF2A1E3D), "add_restore", onRestore)
+        }
+    }
+}
 
 @Composable
 fun AppRoot(vm: RootViewModel = hiltViewModel()) {
@@ -59,6 +116,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     val undoAvailable by vm.undoAvailable.collectAsStateWithLifecycle()
     val incoming by vm.incoming.uri.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    var addOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
 
@@ -70,21 +128,18 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
-        bottomBar = {
-            if (isTab) NavigationBar {
-                TABS.forEach { t -> NavigationBarItem(route == t.route, { goTab(t.route) }, { Icon(if (route == t.route) t.selected else t.icon, t.label) }, label = { Text(t.label, maxLines = 1) }, modifier = Modifier.testTag("tab_${t.route}")) }
-            }
-        },
+        bottomBar = { if (isTab) SpeseBottomBar(route, ::goTab) { addOpen = true } },
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(menu, onOpenAlerts = { goTab(Routes.ALERTS) }, onOpenCategory = { id -> vm.showCategory(id); goTab(Routes.TRANSACTIONS) },
-                    onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) }, contentPadding = pad)
+                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> vm.showCategory(id); goTab(Routes.TRANSACTIONS) },
+                    onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
+                    onAdd = { nav.navigate(Routes.edit(0)) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, onOpenPlan = { goTab(Routes.PLAN) }, contentPadding = pad)
             }
-            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { nav.navigate(Routes.edit(0)) }, bottomPadding = pad) }
+            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { nav.navigate(Routes.edit(0)) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, bottomPadding = pad) }
             composable(Routes.PLAN) { PlanScreen(menu, bottomPadding = pad) }
-            composable(Routes.ALERTS) { AlertsScreen(menu, onOpenSettings = { nav.navigate(Routes.SETTINGS) }, bottomPadding = pad) }
+            composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = 0L })) { TransactionEditScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.IMPORT) { ImportScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
@@ -93,4 +148,5 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }
     }
+    if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) })
 }

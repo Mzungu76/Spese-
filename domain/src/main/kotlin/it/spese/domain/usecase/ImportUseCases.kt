@@ -10,7 +10,7 @@ import it.spese.domain.repository.*
 import javax.inject.Inject
 
 /** Un foglio/tabella pronto per la mappatura delle colonne. */
-data class StatementTable(val fileName: String, val sheetName: String, val rows: List<RawRow>, val detected: DetectedTable?)
+data class StatementTable(val fileName: String, val sheetName: String, val rows: List<RawRow>, val detected: DetectedTable?, val analysis: TableAnalysis = TableAnalyzer.analyze(rows))
 
 /** Legge un file (XLSX/CSV/TXT) e riconosce intestazioni e colonne. */
 class ReadStatementUseCase @Inject constructor() {
@@ -25,8 +25,8 @@ class ReadStatementUseCase @Inject constructor() {
 data class ImportOutcome(val added: Int, val duplicates: Int, val skipped: Int, val batchId: Long)
 
 class PreviewImportUseCase @Inject constructor(private val tx: TransactionRepository, private val accounts: AccountRepository) {
-    suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String): ImportPreview {
-        val result = ImportParser.parse(table.rows, headerRow, mapping)
+    suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String, options: ImportOptions = ImportOptions()): ImportPreview {
+        val result = ImportParser.parse(table.rows, headerRow, mapping, options)
         val acc = accounts.getAll().firstOrNull { it.name.equals(accountName.trim(), true) }
         val existing = acc?.let { tx.dedupKeys(it.id) } ?: emptyList()
         return ImportPlanner.preview(result, acc?.id?.toString() ?: "new", existing)
@@ -38,10 +38,10 @@ class CommitImportUseCase @Inject constructor(
     private val categories: CategoryRepository, private val rules: RuleRepository, private val settings: SettingsRepository,
 ) {
     /** Importa solo le righe nuove (le duplicate sono scartate); registra il lotto per poterlo annullare. */
-    suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String): ImportOutcome {
+    suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String, options: ImportOptions = ImportOptions()): ImportOutcome {
         val name = accountName.trim().ifBlank { "Conto principale" }
         val acc = accounts.getOrCreate(name)
-        val result = ImportParser.parse(table.rows, headerRow, mapping)
+        val result = ImportParser.parse(table.rows, headerRow, mapping, options)
         val preview = ImportPlanner.preview(result, acc.id.toString(), tx.dedupKeys(acc.id))
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val fresh = preview.rows.filter { !it.duplicate }
@@ -96,4 +96,15 @@ class ExportTransactionsUseCase @Inject constructor() {
 
     fun xlsx(data: AppData, list: List<it.spese.core.model.Transaction>): ByteArray =
         Exporters.xlsx(list, data.accounts.associate { it.id to it.name }, data.categoriesById)
+}
+
+/** Cerca un formato già ricordato per questo file e permette di ricordarne di nuovi. */
+class ImportProfilesUseCase @Inject constructor(private val repo: ImportProfileRepository) {
+    suspend fun match(table: StatementTable): ImportProfile? {
+        val sig = table.analysis.signature(table.rows)
+        return repo.all().firstOrNull { it.signature == sig && it.roles.size == table.analysis.columns.size }
+    }
+
+    suspend fun remember(name: String, table: StatementTable, roles: List<ColumnRole>, options: ImportOptions, headerRow: Int) =
+        repo.save(ImportProfile(name.ifBlank { "Formato personalizzato" }, TableAnalyzer.signature(table.rows, headerRow, roles.size), roles, options, headerRow))
 }

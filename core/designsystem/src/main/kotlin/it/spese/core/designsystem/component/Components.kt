@@ -59,10 +59,10 @@ fun MoneyText(
 @Composable
 fun SectionCard(modifier: Modifier = Modifier, title: String? = null, action: (@Composable () -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     Card(
-        modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
+        modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (title != null) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 action?.invoke()
@@ -74,8 +74,8 @@ fun SectionCard(modifier: Modifier = Modifier, title: String? = null, action: (@
 
 @Composable
 fun KpiCard(label: String, modifier: Modifier = Modifier, valueColor: Color = MaterialTheme.colorScheme.onSurface, hint: String? = null, value: @Composable () -> Unit = {}) {
-    Card(modifier, shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Card(modifier, shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
             value()
             if (hint != null) Text(hint, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -215,5 +215,56 @@ fun UsageBar(fraction: Float, modifier: Modifier = Modifier, over: Boolean = fal
 fun <T> ChipChoice(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         options.forEach { (v, label) -> FilterChip(selected == v, { onSelect(v) }, { Text(label) }) }
+    }
+}
+
+
+/** Etichetta "sopra-titolo": piccola, grigia: serve a creare gerarchia rispetto al numero che la segue. */
+@Composable
+fun Eyebrow(text: String, modifier: Modifier = Modifier) =
+    Text(text, modifier, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+
+/** Intestazione di sezione fuori dalle carte (stile elenco di una banca digitale). */
+@Composable
+fun SectionHeader(title: String, modifier: Modifier = Modifier, action: String? = null, onAction: (() -> Unit)? = null) {
+    Row(modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        if (action != null && onAction != null) TextButton(onClick = onAction) { Text(action) }
+    }
+}
+
+/** Pulsante d'azione rapida tondo con etichetta sotto (Aggiungi, Scansiona…). */
+@Composable
+fun QuickAction(icon: ImageVector, label: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier.clickable(onClick = onClick).padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(Modifier.size(56.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+            Icon(icon, null, tint = MaterialTheme.colorScheme.onSurface)
+        }
+        Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, color = MaterialTheme.colorScheme.onSurface)
+    }
+}
+
+/** Variazione percentuale con freccia e colore (verde = bene). `upIsGood` false per le spese. */
+@Composable
+fun DeltaBadge(percent: BigDecimal?, upIsGood: Boolean, modifier: Modifier = Modifier) {
+    if (percent == null) return
+    val fin = SpeseTheme.finance
+    val up = percent.signum() > 0
+    val good = if (percent.signum() == 0) null else (up == upIsGood)
+    val color = when (good) { true -> fin.positive; false -> fin.negative; null -> fin.neutral }
+    Text((if (up) "▲ " else if (percent.signum() < 0) "▼ " else "") + percent.abs().setScale(0, java.math.RoundingMode.HALF_UP).toPlainString() + "%",
+        modifier, style = MaterialTheme.typography.labelMedium, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1)
+}
+
+/** Selettore a pillola (stile app bancarie): una sola riga, voci sempre intere. */
+@Composable
+fun <T> PillSegmented(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        options.forEach { (v, label) ->
+            val on = v == selected
+            Box(Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp)).background(if (on) MaterialTheme.colorScheme.primary else Color.Transparent).clickable { onSelect(v) }, contentAlignment = Alignment.Center) {
+                Text(label, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = if (on) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
     }
 }

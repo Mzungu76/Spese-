@@ -19,6 +19,11 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.*
@@ -31,8 +36,8 @@ import it.spese.domain.classification.merchant
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TransactionsScreen(
-    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, bottomPadding: PaddingValues = PaddingValues(),
-    vm: TransactionsViewModel = hiltViewModel(),
+    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, onOpenClassify: () -> Unit, bottomPadding: PaddingValues = PaddingValues(),
+    vm: TransactionsViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
@@ -44,89 +49,93 @@ fun TransactionsScreen(
     var exportMenu by remember { mutableStateOf(false) }
     val selecting = st.selection.isNotEmpty()
 
-    Scaffold(
-        topBar = {
-            if (selecting) TopAppBar(
-                title = { Text("${st.selection.size} selezionati") },
-                navigationIcon = { IconButton(onClick = vm::clearSelection) { Icon(Icons.Default.Close, "Chiudi selezione") } },
-                actions = {
-                    IconButton(onClick = vm::selectAll) { Icon(Icons.Default.SelectAll, "Seleziona tutti") }
-                    IconButton(onClick = { pickCategory = { vm.assignToSelection(it) } }) { Icon(Icons.AutoMirrored.Filled.Label, "Cambia categoria") }
-                    IconButton(onClick = vm::duplicateSelection) { Icon(Icons.Default.ContentCopy, "Duplica") }
-                    IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Elimina") }
-                },
-            ) else TabTopBar("Movimenti", menu)
-        },
-        floatingActionButton = { if (!selecting) ExtendedFloatingActionButton(onClick = onAdd, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Movimento") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding()).semantics { contentDescription = "Aggiungi movimento" }) },
-        contentWindowInsets = WindowInsets(0),
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad)) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(st.filter.query, vm::setQuery, Modifier.weight(1f), singleLine = true, placeholder = { Text("Cerca movimenti…") },
-                    leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (st.filter.query.isNotEmpty()) IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, "Cancella ricerca") } })
-                Box {
-                    IconButton(onClick = { sortMenu = true }) { Icon(Icons.AutoMirrored.Filled.Sort, "Ordina") }
-                    DropdownMenu(sortMenu, { sortMenu = false }) {
-                        SortKey.entries.forEach { k ->
-                            DropdownMenuItem({ Text(k.label + if (st.sort == k) (if (st.descending) "  ▼" else "  ▲") else "") }, { vm.setSort(k); sortMenu = false })
-                        }
-                    }
+    var searching by remember { mutableStateOf(false) }
+    var moreMenu by remember { mutableStateOf(false) }
+    var filterSheet by remember { mutableStateOf(false) }
+    val unclassified = remember(st.data.transactions) { st.data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO } }
+
+    Column(Modifier.fillMaxSize()) {
+        if (selecting) TopAppBar(
+            title = { Text("${st.selection.size} selezionati") },
+            navigationIcon = { IconButton(onClick = vm::clearSelection) { Icon(Icons.Default.Close, "Chiudi selezione") } },
+            actions = {
+                IconButton(onClick = vm::selectAll) { Icon(Icons.Default.SelectAll, "Seleziona tutti") }
+                IconButton(onClick = { pickCategory = { vm.assignToSelection(it) } }) { Icon(Icons.AutoMirrored.Filled.Label, "Cambia categoria") }
+                IconButton(onClick = vm::duplicateSelection) { Icon(Icons.Default.ContentCopy, "Duplica") }
+                IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Elimina") }
+            },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+        ) else LargeHeader("Movimenti", actions = {
+            RoundIconButton(Icons.Default.Search, "Cerca", { searching = !searching }, badge = st.filter.query.isNotBlank())
+            RoundIconButton(Icons.Default.Tune, "Filtri", { filterSheet = true }, badge = st.filter.activeCount > 0)
+            Box {
+                RoundIconButton(Icons.Default.MoreHoriz, "Altre azioni", { moreMenu = true })
+                DropdownMenu(moreMenu, { moreMenu = false }) {
+                    DropdownMenuItem({ Text("Assegna categoria a tutti i filtrati") }, { moreMenu = false; bulkAll = true; pickCategory = { confirmBulk = it } }, enabled = st.items.isNotEmpty())
+                    DropdownMenuItem({ Text("Esporta CSV") }, { moreMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.csv", "text/csv", vm.csvBytes(), "Esporta CSV") }, enabled = st.items.isNotEmpty())
+                    DropdownMenuItem({ Text("Esporta Excel") }, { moreMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", vm.xlsxBytes(), "Esporta Excel") }, enabled = st.items.isNotEmpty())
+                    HorizontalDivider()
+                    DropdownMenuItem({ Text("Analisi e grafici") }, { moreMenu = false; menu.onAnalytics() })
+                    DropdownMenuItem({ Text("Backup e impostazioni") }, { moreMenu = false; menu.onSettings() })
                 }
             }
-            FilterHeader(Modifier.padding(bottom = 4.dp))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("${st.items.size} movimenti", fontWeight = FontWeight.Medium)
-                MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyMedium)
-                MoneyText(st.expense, decimals = false, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.weight(1f))
-                if (st.items.isNotEmpty()) {
-                    TextButton(onClick = { bulkAll = true; pickCategory = { confirmBulk = it } }) { Text("Assegna a tutti") }
-                    Box {
-                        IconButton(onClick = { exportMenu = true }) { Icon(Icons.Default.Share, "Esporta") }
-                        DropdownMenu(exportMenu, { exportMenu = false }) {
-                            DropdownMenuItem({ Text("Esporta CSV") }, { exportMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.csv", "text/csv", vm.csvBytes(), "Esporta CSV") })
-                            DropdownMenuItem({ Text("Esporta Excel") }, { exportMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", vm.xlsxBytes(), "Esporta Excel") })
-                        }
-                    }
-                }
-            }
-            if (st.items.isEmpty()) {
-                EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Aggiungi un movimento o importa un estratto conto." else "Nessun movimento con questi filtri.")
-            } else {
-                LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 88.dp)) {
-                    val byDay = st.sort == SortKey.DATE
-                    var lastDay: java.time.LocalDate? = null
-                    st.items.forEach { x ->
-                        if (byDay && x.bookingDate != lastDay) {
-                            lastDay = x.bookingDate
-                            val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate && it.kind != TxKind.TRASFERIMENTO }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
-                            stickyHeader(key = "d${x.bookingDate}") {
-                                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                    Text(x.bookingDate.dayLabel(st.today).replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-                                    if (dayTotal.signum() != 0) MoneyText(dayTotal, style = MaterialTheme.typography.labelMedium)
-                                }
+        })
+        if (searching || st.filter.query.isNotEmpty()) OutlinedTextField(st.filter.query, vm::setQuery, Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), singleLine = true, placeholder = { Text("Cerca esercente, nota, categoria…") },
+            leadingIcon = { Icon(Icons.Default.Search, null) }, trailingIcon = { if (st.filter.query.isNotEmpty()) IconButton(onClick = { vm.setQuery("") }) { Icon(Icons.Default.Clear, "Cancella ricerca") } },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+        Spacer(Modifier.height(10.dp))
+        FilterPills()
+        Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyLarge)
+            MoneyText(st.expense, decimals = false, colored = false, style = MaterialTheme.typography.bodyLarge)
+        }
+        if (unclassified > 0 && !selecting) Row(Modifier.padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onOpenClassify).padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) { Text("$unclassified", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
+            Text("Da classificare", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Icon(Icons.Default.ChevronRight, null)
+        }
+        if (st.items.isEmpty()) {
+            EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else "Nessun movimento con questi filtri.")
+        } else {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
+                val byDay = st.sort == SortKey.DATE
+                var lastDay: java.time.LocalDate? = null
+                st.items.forEach { x ->
+                    if (byDay && x.bookingDate != lastDay) {
+                        lastDay = x.bookingDate
+                        val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate && it.kind != TxKind.TRASFERIMENTO }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
+                        stickyHeader(key = "d${x.bookingDate}") {
+                            Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp)) {
+                                Text(x.bookingDate.dayLabel(st.today).uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                                if (dayTotal.signum() != 0) MoneyText(dayTotal, style = MaterialTheme.typography.labelMedium, colored = false)
                             }
                         }
-                        item(key = x.id) {
-                            val cat = st.data.categoriesById[x.categoryId]
-                            ListRow(
-                                title = x.merchant, selected = x.id in st.selection,
-                                subtitle = buildString {
+                    }
+                    item(key = x.id) {
+                        val cat = st.data.categoriesById[x.categoryId]
+                        val picked = x.id in st.selection
+                        Row(Modifier.fillMaxWidth().background(if (picked) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else androidx.compose.ui.graphics.Color.Transparent)
+                            .combinedClickable(onClick = { if (selecting) vm.toggle(x.id) else onOpen(x.id) }, onLongClick = { vm.toggle(x.id) })
+                            .padding(horizontal = 24.dp).heightIn(min = 76.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if (picked) Icon(Icons.Default.CheckCircle, "Selezionato", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp)) else CategoryAvatar(cat?.name ?: "?", cat?.color?.toColor() ?: Color.Gray, size = 48)
+                            Column(Modifier.weight(1f)) {
+                                Text(x.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Text(buildString {
                                     append(cat?.name ?: "Senza categoria"); if (x.manualCategory) append(" · ✎")
                                     if (st.data.accounts.size > 1) append(" · ").append(st.data.accountName(x.accountId))
                                     if (!byDay) append(" · ").append(it.spese.core.common.Dates.fmt(x.bookingDate))
                                     if (x.documentId != null) append(" · 📎")
-                                },
-                                leading = { if (x.id in st.selection) Icon(Icons.Default.CheckCircle, "Selezionato", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp)) else CategoryAvatar(cat?.name ?: "?", cat?.color?.toColor() ?: Color.Gray) },
-                                trailing = { MoneyText(x.amount, signed = true, muted = x.kind == TxKind.TRASFERIMENTO) },
-                                onClick = { if (selecting) vm.toggle(x.id) else onOpen(x.id) }, onLongClick = { vm.toggle(x.id) },
-                            )
+                                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
+                            MoneyText(x.amount, signed = true, colored = x.amount.signum() > 0 && x.kind == TxKind.ENTRATA, muted = x.kind == TxKind.TRASFERIMENTO, style = MaterialTheme.typography.titleMedium)
                         }
                     }
                 }
             }
         }
     }
+    if (filterSheet) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filterSheet = false }
 
     pickCategory?.let { cb ->
         CategoryPickerDialog(st.data.categories, onDismiss = { pickCategory = null; bulkAll = false }) { cb(it.id); pickCategory = null }

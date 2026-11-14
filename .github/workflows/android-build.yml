@@ -28,6 +28,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Cache Robolectric (android-all)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: robolectric-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: robolectric-
+
       - name: Gradle (con cache)
         uses: gradle/actions/setup-gradle@v4
 
@@ -37,7 +44,10 @@ jobs:
           "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" >/dev/null
 
       - name: Test unitari e di interfaccia (JVM/Robolectric)
-        run: ./gradlew --stacktrace --no-daemon :core:common:test :domain:test :core:database:testDebugUnitTest :data:testDebugUnitTest :app:testDebugUnitTest
+        # un secondo tentativo copre i download di Robolectric da Maven, ogni tanto instabili
+        run: |
+          ./gradlew --stacktrace --no-daemon :core:common:test :domain:test :core:database:testDebugUnitTest :data:testDebugUnitTest :app:testDebugUnitTest \
+            || ./gradlew --stacktrace --no-daemon :core:common:test :domain:test :core:database:testDebugUnitTest :data:testDebugUnitTest :app:testDebugUnitTest
 
       - name: Compila l'APK debug
         run: ./gradlew --stacktrace --no-daemon :app:assembleDebug

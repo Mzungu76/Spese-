@@ -16,7 +16,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.DataMenu
 import it.spese.app.common.FilterHeader
-import it.spese.app.common.TabTopBar
+import it.spese.app.common.LargeHeader
 import it.spese.core.common.Dates
 import it.spese.core.common.Money
 import it.spese.core.designsystem.chart.*
@@ -29,7 +29,7 @@ import java.math.BigDecimal
 @Composable
 fun PlanScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValues(), vm: PlanViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
-    Scaffold(topBar = { TabTopBar("Piano e simulazioni", menu) }, contentWindowInsets = WindowInsets(0)) { pad ->
+    Scaffold(topBar = { LargeHeader("Piano", menu = menu) }, containerColor = MaterialTheme.colorScheme.background, contentWindowInsets = WindowInsets(0)) { pad ->
         val sc = st.scenario; val ctx = st.context; val r = st.result
         Column(Modifier.fillMaxSize().padding(pad)) {
             if (sc == null || ctx == null || r == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { if (!st.data.loaded) CircularProgressIndicator() else Text("Importa dei movimenti per iniziare a pianificare") }; return@Scaffold }

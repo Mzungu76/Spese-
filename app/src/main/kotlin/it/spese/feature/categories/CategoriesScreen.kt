@@ -19,10 +19,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.DataMenu
-import it.spese.app.common.TabTopBar
+import it.spese.app.common.LargeHeader
+import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
 import it.spese.core.model.*
@@ -38,54 +41,67 @@ fun CategoriesScreen(menu: DataMenu, bottomPadding: PaddingValues = PaddingValue
     var editRule by remember { mutableStateOf<Rule?>(null) }
     var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
     val d = st.data
-    Scaffold(
-        topBar = { TabTopBar("Categorie e regole", menu) },
-        floatingActionButton = {
-            if (tab < 2) ExtendedFloatingActionButton(onClick = {
+    val spendMax = remember(st.txTotal, d.categories) { d.categories.filter { it.kind == TxKind.SPESA }.maxOfOrNull { (st.txTotal[it.id] ?: BigDecimal.ZERO).abs() }?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE }
+    Column(Modifier.fillMaxSize()) {
+        LargeHeader("Categorie", actions = {
+            if (tab < 2) RoundIconButton(Icons.Default.Add, if (tab == 0) "Nuova categoria" else "Nuova regola", {
                 if (tab == 0) editCat = Category(0, "", TxKind.SPESA, true, vm.nextColor(d.categories.size), null, true, d.categories.size)
                 else editRule = Rule(0, "", d.categories.firstOrNull { it.active }?.id ?: 0, AmountSign.ANY, BigDecimal.ZERO, BigDecimal.ZERO, 0)
-            }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(if (tab == 0) "Categoria" else "Regola") }, modifier = Modifier.padding(bottom = bottomPadding.calculateBottomPadding()))
-        },
-        contentWindowInsets = WindowInsets(0),
-    ) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad)) {
-            TabRow(tab) {
-                Tab(tab == 0, { tab = 0 }, text = { Text("Categorie") })
-                Tab(tab == 1, { tab = 1 }, text = { Text("Regole (${d.rules.size})") })
-                Tab(tab == 2, { tab = 2 }, text = { BadgedBox(badge = { if (st.unclassified.isNotEmpty()) Badge { Text("${st.unclassified.size}") } }) { Text("Da classificare") } })
-            }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 96.dp)) {
-                when (tab) {
-                    0 -> {
-                        item { Text("Tipo \"trasferimento\" = giroconto tra tuoi conti: escluso da entrate e spese. \"Comprimibile\" = voce su cui il simulatore propone tagli.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
-                        items(d.categories, key = { it.id }) { c ->
-                            ListRow(c.name, subtitle = buildString {
-                                append(c.kind.label); if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata")
-                                c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)) }; append(" · ${st.txCount[c.id] ?: 0} mov.")
-                            }, leading = { CategoryAvatar(c.name, c.color.toColor()) },
-                                trailing = { MoneyText(st.txTotal[c.id] ?: BigDecimal.ZERO, decimals = false, muted = c.kind == TxKind.TRASFERIMENTO) }, onClick = { editCat = c })
+            })
+        })
+        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare"), tab, { tab = it }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
+            when (tab) {
+                0 -> {
+                    listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate", TxKind.TRASFERIMENTO to "Giroconti (esclusi dai totali)").forEach { (kind, title) ->
+                        val list = d.categories.filter { it.kind == kind }
+                        if (list.isEmpty()) return@forEach
+                        item(key = "h$kind") { Text(title.uppercase(), Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        items(list, key = { it.id }) { c ->
+                            val total = st.txTotal[c.id] ?: BigDecimal.ZERO
+                            Row(Modifier.fillMaxWidth().clickable { editCat = c }.padding(horizontal = 24.dp).heightIn(min = 80.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                CategoryAvatar(c.name, c.color.toColor(), size = 48)
+                                Column(Modifier.weight(1f)) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(c.name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                        MoneyText(total, decimals = false, colored = c.kind == TxKind.ENTRATA, muted = c.kind == TxKind.TRASFERIMENTO, style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    if (c.kind == TxKind.SPESA) Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                                        Box(Modifier.fillMaxWidth((total.abs().toFloat() / spendMax.toFloat()).coerceIn(0.02f, 1f)).height(4.dp).background(c.color.toColor()))
+                                    }
+                                    Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
+                                        Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
+                            }
                         }
                     }
-                    1 -> {
-                        item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare (es. re:coop|conad). Le assegnazioni manuali prevalgono sempre.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
-                        items(d.rules, key = { it.id }) { r ->
-                            ListRow(
-                                title = if (r.keyword.isBlank()) "Qualsiasi descrizione" else "“${r.keyword}”",
-                                subtitle = buildString {
+                }
+                1 -> {
+                    item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare. Le assegnazioni manuali prevalgono sempre.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    items(d.rules, key = { it.id }) { r ->
+                        Row(Modifier.fillMaxWidth().clickable { editRule = r }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            CategoryAvatar(d.categoryName(r.categoryId), d.categoriesById[r.categoryId]?.color?.toColor() ?: Color.Gray, size = 44)
+                            Column(Modifier.weight(1f)) {
+                                Text(if (r.keyword.isBlank()) "Qualsiasi descrizione" else "“${r.keyword}”", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                Text(buildString {
                                     append("→ ").append(d.categoryName(r.categoryId))
                                     if (r.sign != AmountSign.ANY) append(if (r.sign == AmountSign.NEGATIVE) " · solo uscite" else " · solo entrate")
                                     if (r.min.signum() != 0) append(" · ≥ ").append(Money.eur0(r.min)); if (r.max.signum() != 0) append(" · ≤ ").append(Money.eur0(r.max))
                                     append(" · ${st.ruleHits[r.id] ?: 0} mov.")
-                                },
-                                leading = { CategoryAvatar(d.categoryName(r.categoryId), d.categoriesById[r.categoryId]?.color?.toColor() ?: Color.Gray, size = 32) },
-                                trailing = { Icon(Icons.Default.ChevronRight, null) }, onClick = { editRule = r })
+                                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            }
                         }
                     }
-                    else -> {
-                        if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
-                        else {
-                            item { Text("Movimenti che finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp)) }
-                            items(st.unclassified, key = { it.merchant }) { u -> ListRow(u.merchant, subtitle = "${u.count} movimenti", trailing = { MoneyText(u.total, decimals = false) }, onClick = { assign = u }) }
+                }
+                else -> {
+                    if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
+                    else {
+                        item { Text("Movimenti senza regola: finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        items(st.unclassified, key = { it.merchant }) { u ->
+                            Row(Modifier.fillMaxWidth().clickable { assign = u }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Column(Modifier.weight(1f)) { Text(u.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1); Text("${u.count} movimenti", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                MoneyText(u.total, decimals = false, style = MaterialTheme.typography.titleMedium)
+                            }
                         }
                     }
                 }

@@ -28,7 +28,7 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
     }
 
     private fun Preferences.toSettings() = AppSettings(
-        runCatching { ThemeMode.valueOf(this[K.theme] ?: "SYSTEM") }.getOrDefault(ThemeMode.SYSTEM),
+        runCatching { ThemeMode.valueOf(this[K.theme] ?: "DARK") }.getOrDefault(ThemeMode.DARK),
         this[K.notif] ?: false, this[K.nBud] ?: true, this[K.nDue] ?: true, this[K.nRec] ?: true, this[K.nUnx] ?: true, this[K.hour] ?: 9,
         this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0,
     )

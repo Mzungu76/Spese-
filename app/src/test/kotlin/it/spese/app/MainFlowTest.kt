@@ -45,7 +45,7 @@ class MainFlowTest {
 
     private fun waitText(text: String, substring: Boolean = false, ms: Long = 8000) {
         try { compose.waitUntil(ms) { compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() } }
-        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("Testo \"$text\" non trovato. Schermata:\n" + compose.onRoot(useUnmergedTree = true).printToString(60), e) }
+        catch (e: androidx.compose.ui.test.ComposeTimeoutException) { throw AssertionError("Testo \"$text\" non trovato. Schermata:\n" + compose.onAllNodes(isRoot(), useUnmergedTree = true).onLast().printToString(60), e) }
     }
 
     private fun AndroidComposeTestRule<*, *>.tab(label: String) { onNode(hasText(label) and hasClickAnyAncestor()).performClick(); waitForIdle() }
@@ -60,12 +60,11 @@ class MainFlowTest {
 
     @Test fun le_cinque_sezioni_principali_sono_raggiungibili() {
         compose.waitForIdle()
-        listOf("Movimenti", "Categorie", "Piano", "Avvisi", "Panoramica").forEach { label ->
-            compose.onAllNodesWithText(label).filterToOne(hasAnyAncestor(hasText("Panoramica").not().or(isRoot())).and(hasClickAction().or(hasAnyAncestor(hasClickAction())))).performClick()
-            compose.waitForIdle()
+        listOf("transactions", "categories", "plan", "dashboard").forEach { route ->
+            compose.onNodeWithTag("tab_$route").performClick(); compose.waitForIdle()
         }
+        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
         // la sezione Categorie mostra le categorie predefinite
-        compose.onAllNodesWithText("Categorie").onFirst().performClick()
         compose.waitUntil(5000) { compose.onAllNodesWithText("Supermercato e alimentari").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Supermercato e alimentari").assertExists()
     }
@@ -73,7 +72,8 @@ class MainFlowTest {
     @Test fun aggiunta_di_un_movimento_manuale_classificato_dalle_regole() {
         compose.onAllNodesWithText("Movimenti").filterToOne(hasClickAction().or(hasAnyAncestor(hasClickAction()))).performClick()
         waitText("Nessun movimento")
-        compose.onNodeWithContentDescription("Aggiungi movimento").performClick()
+        compose.onNodeWithTag("fab_add").performClick()
+        compose.onNodeWithTag("add_manual").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         waitText("Nuovo movimento"); waitText("Importo")
         compose.onNodeWithText("Importo").performTextInput("23,45")
         compose.onNodeWithText("Descrizione").performTextInput("Pagamento POS COOP ALLEANZA")
@@ -90,16 +90,15 @@ class MainFlowTest {
         val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
         runBlocking { restore(env, RestoreMode.Replace) }
         compose.waitUntil(10000) { data.value.transactions.size == 223 }
-        compose.waitUntil(10000) { compose.onAllNodesWithText("Saldo (entrate − spese)").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Saldo (entrate − spese)").assertExists()
-        compose.onNodeWithText("Spese per categoria").assertExists()
-        // avvisi di budget calcolati sui dati importati (come nell'HTML)
-        compose.waitUntil(5000) { compose.onAllNodesWithText("superato", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        waitText("Hai ", substring = true, ms = 10000)   // "Hai messo da parte" oppure "Hai speso in più…"
+        waitText("Entrate"); waitText("Spese")
+        // avvisi calcolati sui dati importati (budget superati, scadenze…)
+        waitText("da guardare", substring = true)
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
     }
 
     private fun goTab(label: String) {
-        val route = mapOf("Movimenti" to "transactions", "Categorie" to "categories", "Piano" to "plan", "Avvisi" to "alerts", "Panoramica" to "dashboard").getValue(label)
+        val route = mapOf("Movimenti" to "transactions", "Categorie" to "categories", "Piano" to "plan", "Panoramica" to "dashboard").getValue(label)
         compose.onNodeWithTag("tab_$route").performClick()
         compose.waitForIdle()
     }
@@ -117,14 +116,17 @@ class MainFlowTest {
 
         goTab("Movimenti"); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
-        compose.onNodeWithText("Regole (32)").performClick(); waitText("Vince la prima regola", substring = true)
-        compose.onNodeWithText("Da classificare").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Regole · 32").performClick(); waitText("Vince la prima regola", substring = true)
+        compose.onNodeWithText("Da fare", substring = true).performClick(); compose.waitForIdle()
         goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
-        goTab("Avvisi"); waitText("Budget del mese in corso"); waitText("superato", substring = true)
+        goTab("Panoramica")
+        compose.onNode(hasContentDescription("Avvisi", substring = true)).performClick()
+        waitText("Budget del mese in corso"); waitText("superato", substring = true)
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
 
         // analisi: tutti i tipi di grafico
         goTab("Panoramica")
-        openMenu("Analisi e grafici"); waitText("Analisi e grafici")
+        openMenu("Analisi e grafici"); waitText("Ciambella")
         listOf("Ciambella", "Barre", "Impilate", "Linee", "Cumulato", "Periodi", "Categorie", "Tendenze", "Distribuzione", "Previsioni").forEach { t ->
             compose.onAllNodesWithText(t).onFirst().performScrollTo().performClick(); compose.waitForIdle()
         }
@@ -136,5 +138,12 @@ class MainFlowTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
+    }
+
+    @Test fun il_pulsante_piu_apre_le_quattro_azioni() {
+        compose.waitForIdle()
+        compose.onNodeWithTag("fab_add").performClick()
+        listOf("add_manual", "add_scan", "add_import", "add_restore").forEach { compose.onNodeWithTag(it).assertExists() }
+        waitText("Cosa vuoi aggiungere?")
     }
 }
