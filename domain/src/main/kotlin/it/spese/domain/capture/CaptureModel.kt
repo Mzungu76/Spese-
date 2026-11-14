@@ -66,18 +66,18 @@ object CaptureRouting {
     }
 }
 
-/** Abbina le righe di un estratto conto ai movimenti provvisori nati da notifiche (stesso importo, data entro `maxDays` giorni). */
+/** Abbina le righe di un estratto conto ai movimenti provvisori (da notifiche: data entro `maxDays` giorni; ricorrenti: entro `recurringDays`) con lo stesso importo. */
 object NotificationReconciler {
     data class Row(val index: Int, val amount: BigDecimal, val date: LocalDate)
 
     /** index della riga → movimento provvisorio da sostituire. Ogni provvisorio è usato una sola volta, scegliendo il più vicino nel tempo. */
-    fun match(provisional: List<Transaction>, rows: List<Row>, maxDays: Int = 3): Map<Int, Transaction> {
-        val free = provisional.filter { it.origin == TxOrigin.NOTIFICATION }.toMutableList()
+    fun match(provisional: List<Transaction>, rows: List<Row>, maxDays: Int = 3, recurringDays: Int = 5): Map<Int, Transaction> {
+        val free = provisional.filter { it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING }.toMutableList()
         val out = LinkedHashMap<Int, Transaction>()
         for (r in rows.sortedBy { it.date }) {
             val best = free.filter { it.amount.compareTo(r.amount) == 0 }
                 .map { it to abs(ChronoUnit.DAYS.between(it.bookingDate, r.date)).toInt() }
-                .filter { it.second <= maxDays }.minByOrNull { it.second } ?: continue
+                .filter { it.second <= (if (it.first.origin == TxOrigin.RECURRING) recurringDays else maxDays) }.minByOrNull { it.second } ?: continue
             out[r.index] = best.first; free.remove(best.first)
         }
         return out

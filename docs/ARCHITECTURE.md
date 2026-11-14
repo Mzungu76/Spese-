@@ -74,6 +74,10 @@ Un movimento resta una riga sola (importo intero, coerente con l'estratto); le s
 
 `ReportBuilder` (dominio) trasforma dati e scelte (`ReportSpec`: periodo, conto, categorie, sezioni ordinate, opzioni) in un `ReportDocument` di blocchi (titoli, indicatori, tabelle, barre, colonne) riusando gli stessi motori della Panoramica, delle Tendenze e della Verifica. `ReportLayout` (dominio, puro) impagina i blocchi in pagine A4 come operazioni di disegno (testo, rettangoli, linee) con intestazione, piè di pagina numerato e righe di tabella ripetute: si prova con JUnit e si può disegnare su immagine. `PdfReportRenderer` (app) esegue le operazioni con `PdfDocument` di Android: PDF vettoriale, senza librerie esterne. I modelli personalizzati sono salvati in DataStore (`ReportSpecCodec`).
 
+## Movimenti ricorrenti
+
+`RecurringRule` (tabella `recurring_rules`, schema 7) descrive un'entrata o spesa che si ripete: ogni N mesi, giorno del mese (l'ultimo giorno se il mese è più corto), inizio e fine, conto e categoria opzionali. `RecurringEngine` calcola le date dovute; `GenerateRecurringUseCase` (all'avvio, a ogni ripresa e dopo il salvataggio) crea i movimenti con origine `RECURRING` e identificativo `rec|regola|data`, e la regola ricorda l'ultima data creata (ciò che l'utente elimina non viene ricreato). I movimenti passano da Verifica, salvo «registra senza verifica»; `NotificationReconciler` li sostituisce con la riga dell'estratto (stesso importo, fino a 5 giorni di distanza).
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

@@ -90,6 +90,11 @@ class BackupRepositoryImpl @Inject constructor(
             },
             quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled, q.mode, Money.fromCents(q.toleranceCents), q.everyMonths, q.dayFrom, q.dayTo) } },
             reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
+            recurring = run {
+                val accName = db.accounts().getAll().associate { it.id to it.name }
+                db.recurring().getAll().map { r -> NativeRecurring(r.name, r.kind, Money.fromCents(r.amountCents), r.accountId?.let { accName[it] }, r.categoryId?.let { catName[it] }, r.everyMonths, r.dayOfMonth,
+                    java.time.LocalDate.ofEpochDay(r.startDate), r.endDate?.let { java.time.LocalDate.ofEpochDay(it) }, r.enabled, r.autoConfirm, r.lastGenerated?.let { java.time.LocalDate.ofEpochDay(it) }) }
+            },
         )
         return BackupEnvelope(Instant.now().toString(), Build.MODEL ?: "Android", legacy, extras)
     }
@@ -129,7 +134,7 @@ class BackupRepositoryImpl @Inject constructor(
     }
 
     private suspend fun wipeInTransaction() {
-        db.transactions().deleteAll(); db.importBatches().deleteAll(); db.dues().deleteAll(); db.scenarios().deleteAll()
+        db.recurring().deleteAll(); db.transactions().deleteAll(); db.importBatches().deleteAll(); db.dues().deleteAll(); db.scenarios().deleteAll()
         db.rules().deleteAll(); db.categories().deleteAll(); db.documents().deleteAll(); db.accounts().deleteAll()
     }
 
@@ -259,6 +264,13 @@ class BackupRepositoryImpl @Inject constructor(
                 val t = td.findByExternalId(ext) ?: return@forEach
                 if (t.id in haveSplits) return@forEach
                 db.splits().insertAll(parts.sortedBy { it.position }.mapIndexed { i, p -> SplitEntity(0, t.id, p.category?.let { cd.findByName(it)?.id }, Money.toCents(p.amount), i, p.auto, p.quota?.let { quotaIds[it] }) })
+            }
+            val haveRec = db.recurring().getAll().map { it.name to it.amountCents }.toHashSet()
+            extras.recurring.forEach { r ->
+                if ((r.name to Money.toCents(r.amount)) in haveRec) return@forEach
+                db.recurring().insert(RecurringEntity(name = r.name, kind = r.kind, amountCents = Money.toCents(r.amount), accountId = r.account?.let { ad.findByName(it)?.id },
+                    categoryId = r.category?.let { cd.findByName(it)?.id }, everyMonths = r.everyMonths, dayOfMonth = r.day, startDate = r.start.toEpochDay(), endDate = r.end?.toEpochDay(),
+                    enabled = r.enabled, autoConfirm = r.autoConfirm, lastGenerated = r.last?.toEpochDay()))
             }
             val reviewedIds = extras.reviewed.mapNotNull { td.findByExternalId(it)?.id }
             if (reviewedIds.isNotEmpty()) reviewedIds.chunked(500).forEach { td.setReviewed(it, true) }

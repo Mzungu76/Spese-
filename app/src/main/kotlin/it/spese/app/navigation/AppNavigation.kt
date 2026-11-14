@@ -36,6 +36,7 @@ import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.capture.CaptureScreen
+import it.spese.feature.recurring.RecurringScreen
 import it.spese.feature.reports.ReportsScreen
 import it.spese.feature.trends.TrendsScreen
 import it.spese.feature.categories.CategoriesScreen
@@ -54,7 +55,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -90,7 +91,7 @@ private fun SpeseBottomBar(route: String?, onTab: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onRestore: () -> Unit) {
+private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onRestore: () -> Unit, onRecurring: () -> Unit = {}) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
             Text("Cosa vuoi aggiungere?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
@@ -103,6 +104,7 @@ private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> 
                 }
             }
             opt(Icons.Filled.Add, "Movimento a mano", "Importo, descrizione e categoria", Color(0xFF9FC0FF), Color(0xFF16315F), "add_manual", onManual)
+            opt(Icons.Filled.Autorenew, "Entrata o spesa ricorrente", "Stipendio, affitto incassato, abbonamenti: si creano da soli", Color(0xFF9FC0FF), Color(0xFF16315F), "add_recurring", onRecurring)
             opt(Icons.Filled.DocumentScanner, "Scansiona uno scontrino", "Riconosco importo, data ed esercente", Color(0xFF34D399), Color(0xFF12332A), "add_scan", onScan)
             opt(Icons.Filled.UploadFile, "Importa estratto conto", "Excel, CSV o TXT dalla tua banca", Color(0xFFFFB020), Color(0xFF3A2A08), "add_import", onImport)
             opt(Icons.Filled.Restore, "Ripristina un backup", "Dalla versione web o da un altro telefono", Color(0xFFC792F0), Color(0xFF2A1E3D), "add_restore", onRestore)
@@ -119,12 +121,13 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     val incoming by vm.incoming.uri.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var addOpen by remember { mutableStateOf(false) }
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.generateRecurring() }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
 
     val menu = DataMenu(
         onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) },
-        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast, onReports = { nav.navigate(Routes.REPORTS) },
+        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast, onReports = { nav.navigate(Routes.REPORTS) }, onRecurring = { nav.navigate(Routes.RECURRING) },
     )
     fun goTab(r: String) = nav.navigate(r) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true }
 
@@ -157,10 +160,11 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
             composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.RECURRING) { RecurringScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }
     }
-    if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) })
+    if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) }, { nav.navigate(Routes.RECURRING) })
 }

@@ -32,6 +32,7 @@ class TestEnv {
     val setSplits = SetSplitsUseCase(tx)
     val commit = CommitImportUseCase(tx, accounts, cats, rules, settings, applyQuotas)
     val undo = UndoImportUseCase(tx, backup, settings)
+    val recurring = RecurringRepositoryImpl(db)
     val capture = CaptureNotificationUseCase(tx, accounts, cats, rules, applyQuotas)
     val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     fun resource(name: String): ByteArray = TestEnv::class.java.getResourceAsStream("/$name")!!.readBytes()

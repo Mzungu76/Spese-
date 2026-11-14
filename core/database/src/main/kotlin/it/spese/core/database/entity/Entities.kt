@@ -196,3 +196,25 @@ data class ScenarioCutEntity(val scenarioId: Long, val categoryId: Long, val per
     foreignKeys = [ForeignKey(ScenarioEntity::class, ["id"], ["scenarioId"], onDelete = ForeignKey.CASCADE)],
 )
 data class ScenarioRemovedEntity(val scenarioId: Long, @ColumnInfo(name = "itemKey") val itemKey: String)
+
+/** Entrate e spese ricorrenti: generano movimenti alla data giusta. Schema 7. */
+@Entity(
+    tableName = "recurring_rules",
+    foreignKeys = [ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.SET_NULL)],
+    indices = [Index("categoryId")],
+)
+data class RecurringEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kind: String,
+    val amountCents: Long,
+    val accountId: Long? = null,
+    val categoryId: Long? = null,
+    val everyMonths: Int = 1,
+    val dayOfMonth: Int = 1,
+    val startDate: Long,
+    val endDate: Long? = null,
+    val enabled: Boolean = true,
+    val autoConfirm: Boolean = false,
+    val lastGenerated: Long? = null,
+)

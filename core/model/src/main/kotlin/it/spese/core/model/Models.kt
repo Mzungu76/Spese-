@@ -44,8 +44,8 @@ enum class SpendNature(val key: String, val label: String, val hint: String) {
     }
 }
 
-/** Origine di un movimento. NOTIFICATION = provvisorio, nato da una notifica o SMS: l'estratto conto lo sostituisce all'importazione. */
-enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR, NOTIFICATION }
+/** Origine di un movimento. NOTIFICATION e RECURRING = provvisori (da notifica o SMS, o da un movimento ricorrente): l'estratto conto li sostituisce all'importazione. */
+enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR, NOTIFICATION, RECURRING }
 
 enum class AccountType(val label: String) {
     CONTO("Conto corrente"), CARTA("Carta"), CONTANTI("Contanti"), INVESTIMENTO("Investimenti"), ALTRO("Altro")
@@ -169,6 +169,29 @@ data class CashQuota(
     val everyMonths: Int = 1,
     /** Finestra di giorni del mese in cui cercare il prelievo (0 = nessun limite). */
     val dayFrom: Int = 0, val dayTo: Int = 0,
+)
+
+/**
+ * Entrata o spesa che si ripete (stipendio, affitto incassato, abbonamento…): l'app crea da sola il movimento alla data giusta,
+ * come provvisorio da controllare in Verifica (oppure già confermato, se `autoConfirm`).
+ */
+data class RecurringRule(
+    val id: Long, val name: String, val kind: TxKind, val amount: BigDecimal,
+    /** Conto su cui registrare (null = il primo conto). */
+    val accountId: Long? = null,
+    /** Categoria fissa (null = la scelgono le regole di classificazione). */
+    val categoryId: Long? = null,
+    /** 1 = ogni mese, 2, 3, 6, 12 = ogni anno. */
+    val everyMonths: Int = 1,
+    /** Giorno del mese (se il mese è più corto, l'ultimo giorno). */
+    val dayOfMonth: Int = 1,
+    val startDate: LocalDate = LocalDate.now(),
+    val endDate: LocalDate? = null,
+    val enabled: Boolean = true,
+    /** true = il movimento nasce già controllato (non passa da Verifica). */
+    val autoConfirm: Boolean = false,
+    /** Ultima data per cui è stato creato un movimento (null = nessuno ancora). */
+    val lastGenerated: LocalDate? = null,
 )
 
 data class Due(

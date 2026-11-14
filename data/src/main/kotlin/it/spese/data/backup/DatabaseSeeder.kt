@@ -43,7 +43,7 @@ class DatabaseSeeder @Inject constructor(private val db: AppDatabase) {
 
     /** Ripristina lo stato iniziale (dopo "Azzera"): cancella tutto e reinserisce i dati predefiniti. */
     suspend fun wipeAndSeed() = db.withTransaction {
-        db.transactions().deleteAll(); db.importBatches().deleteAll(); db.documents().deleteAll(); db.dues().deleteAll()
+        db.recurring().deleteAll(); db.transactions().deleteAll(); db.importBatches().deleteAll(); db.documents().deleteAll(); db.dues().deleteAll()
         db.scenarios().deleteAll(); db.rules().deleteAll(); db.categories().deleteAll(); db.accounts().deleteAll()
         seed(); insertBaseScenario()
     }

@@ -41,6 +41,7 @@ class MainFlowTest {
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
+    @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
 
     @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
 
@@ -201,7 +202,21 @@ class MainFlowTest {
     @Test fun il_pulsante_piu_apre_le_quattro_azioni() {
         compose.waitForIdle()
         compose.onNodeWithTag("fab_add").performClick()
-        listOf("add_manual", "add_scan", "add_import", "add_restore").forEach { compose.onNodeWithTag(it).assertExists() }
+        listOf("add_manual", "add_scan", "add_import", "add_recurring", "add_restore").forEach { compose.onNodeWithTag(it).assertExists() }
         waitText("Cosa vuoi aggiungere?")
+    }
+
+    @Test fun entrata_ricorrente_in_elenco_e_movimento_generato_alla_ripresa() {
+        // (la finestra di modifica con i campi di testo non si può aprire nei test Robolectric: va in ciclo di layout; la logica è provata in :data)
+        val today = java.time.LocalDate.now()
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), null, null, 1, today.dayOfMonth, today)) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("fab_add").performClick()
+        compose.onNodeWithTag("add_recurring").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Stipendio ACME"); waitText("ogni mese", substring = true)
+        compose.onNodeWithTag("recurring_add").assertExists()
+        // il movimento di oggi viene creato come provvisorio (all'avvio o alla ripresa dell'app)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.ledger.any { t -> t.description == "Stipendio ACME" && t.origin == it.spese.core.model.TxOrigin.RECURRING } }
     }
 }

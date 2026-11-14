@@ -10,7 +10,7 @@ import it.spese.core.model.TxOrigin
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-enum class ReviewReason { AUTO_SPLIT, PROVISIONAL, THRESHOLD_RULE, UNUSUAL }
+enum class ReviewReason { AUTO_SPLIT, PROVISIONAL, RECURRING, THRESHOLD_RULE, UNUSUAL }
 
 data class ReviewNote(val reason: ReviewReason, val text: String)
 data class ReviewItem(val tx: Transaction, val notes: List<ReviewNote>, val splits: List<TransactionSplit>)
@@ -39,6 +39,7 @@ object ReviewEngine {
             val notes = ArrayList<ReviewNote>()
             val parts = splits[t.id].orEmpty().sortedBy { it.position }
             if (parts.any { it.auto }) notes.add(ReviewNote(ReviewReason.AUTO_SPLIT, "Diviso automaticamente: " + parts.joinToString(" + ") { (names[it.categoryId] ?: "Senza categoria") + " " + Money.eur0(it.amount.abs()) }))
+            if (t.origin == TxOrigin.RECURRING) notes.add(ReviewNote(ReviewReason.RECURRING, "Ricorrente: creato in automatico, confermalo quando arriva davvero (l'estratto conto lo sostituisce)"))
             if (t.origin == TxOrigin.NOTIFICATION) notes.add(ReviewNote(ReviewReason.PROVISIONAL, "Da notifica: sarà sostituito dall'estratto conto"))
             if (!t.manualCategory && parts.isEmpty() && t.bookingDate >= recentFrom) {
                 val rule = t.ruleId?.let { rulesById[it] }

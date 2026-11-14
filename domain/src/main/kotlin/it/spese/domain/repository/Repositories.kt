@@ -172,6 +172,16 @@ interface CaptureConfigRepository {
     suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
 }
 
+/** Entrate e spese ricorrenti. */
+interface RecurringRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.RecurringRule>>
+    suspend fun getAll(): List<it.spese.core.model.RecurringRule>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(r: it.spese.core.model.RecurringRule): Long
+    suspend fun delete(id: Long)
+    suspend fun markGenerated(id: Long, day: java.time.LocalDate)
+}
+
 /** Modelli di report personalizzati salvati dall'utente (solo sul telefono). */
 interface ReportPresetRepository {
     fun observe(): Flow<List<it.spese.domain.report.SavedReport>>

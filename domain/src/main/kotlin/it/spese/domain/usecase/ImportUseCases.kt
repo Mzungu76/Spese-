@@ -48,14 +48,14 @@ class CommitImportUseCase @Inject constructor(
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val fresh = preview.rows.filter { !it.duplicate }
         // le righe dell'estratto sostituiscono i movimenti provvisori nati da notifiche (stesso importo, data vicina)
-        val provisional = tx.getAll().filter { it.accountId == acc.id && it.origin == TxOrigin.NOTIFICATION }
+        val provisional = tx.getAll().filter { it.accountId == acc.id && (it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING) }
         val matches = NotificationReconciler.match(provisional, fresh.mapIndexed { i, p -> NotificationReconciler.Row(i, p.row.amount, p.row.date) })
         val batch = tx.createImportBatch(table.fileName, fresh.size)
         val items = fresh.mapIndexed { i, p ->
             val r = p.row; val prov = matches[i]
             // categoria scelta a mano e note dell'utente sul provvisorio non si perdono
             val c = if (prov != null && prov.manualCategory) it.spese.domain.classification.Classification(prov.categoryId, prov.kind, true, null) else classifier.classify(r.text, r.amount, null)
-            val notes = prov?.notes?.takeIf { it.isNotBlank() && !it.startsWith("Da notifica") } ?: ""
+            val notes = prov?.notes?.takeIf { it.isNotBlank() && !it.startsWith("Da notifica") && !it.startsWith("Ricorrente") } ?: ""
             NewTransaction(Duplicates.key(name, r.date, r.valueDate, r.amount, r.text) + "#" + p.occurrence, p.key, acc.id, r.date, r.valueDate, r.text,
                 r.amount, c.kind, c.categoryId, c.manual, c.ruleId, prov?.merchantOverride, notes, TxOrigin.IMPORT_FILE, null, batch)
         }

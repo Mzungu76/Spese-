@@ -12,7 +12,7 @@ import it.spese.core.database.entity.*
     entities = [
         AccountEntity::class, CategoryEntity::class, RuleEntity::class, TransactionEntity::class, ImportBatchEntity::class,
         DocumentEntity::class, DueEntity::class, ScenarioEntity::class, ScenarioCutEntity::class, ScenarioRemovedEntity::class,
-        SplitEntity::class, CashQuotaEntity::class,
+        SplitEntity::class, CashQuotaEntity::class, RecurringEntity::class,
     ],
     version = AppDatabase.VERSION,
     exportSchema = true,
@@ -28,12 +28,18 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scenarios(): ScenarioDao
     abstract fun splits(): SplitDao
     abstract fun quotas(): CashQuotaDao
+    abstract fun recurring(): RecurringDao
 
     companion object {
-        const val VERSION = 6
+        const val VERSION = 7
         const val NAME = "gestione-spese.db"
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
+        /** 6 → 7: entrate e spese ricorrenti. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { SCHEMA_6_7_SQL.forEach { db.execSQL(it) } }
+        }
+
         /** 5 → 6: quote in contanti più flessibili (modalità, tolleranza, frequenza, finestra di giorni). */
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
@@ -77,7 +83,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
@@ -93,4 +99,10 @@ private val SCHEMA_4_5_SQL: List<String> = listOf(
     "CREATE INDEX IF NOT EXISTS `index_transaction_splits_categoryId` ON `transaction_splits` (`categoryId`)",
     "CREATE TABLE IF NOT EXISTS `cash_quotas` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `categoryId` INTEGER NOT NULL, `amountCents` INTEGER NOT NULL, `enabled` INTEGER NOT NULL, FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
     "CREATE INDEX IF NOT EXISTS `index_cash_quotas_categoryId` ON `cash_quotas` (`categoryId`)",
+)
+
+/** Creazione della tabella dello schema 7 (identica a quella esportata in schemas/7.json). */
+private val SCHEMA_6_7_SQL: List<String> = listOf(
+    "CREATE TABLE IF NOT EXISTS `recurring_rules` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `accountId` INTEGER, `categoryId` INTEGER, `everyMonths` INTEGER NOT NULL, `dayOfMonth` INTEGER NOT NULL, `startDate` INTEGER NOT NULL, `endDate` INTEGER, `enabled` INTEGER NOT NULL, `autoConfirm` INTEGER NOT NULL, `lastGenerated` INTEGER, FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+    "CREATE INDEX IF NOT EXISTS `index_recurring_rules_categoryId` ON `recurring_rules` (`categoryId`)",
 )

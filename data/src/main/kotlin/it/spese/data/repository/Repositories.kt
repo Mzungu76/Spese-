@@ -66,6 +66,20 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
 }
 
 @Singleton
+class RecurringRepositoryImpl @Inject constructor(private val db: AppDatabase) : RecurringRepository {
+    private val dao = db.recurring()
+    override fun observeAll() = dao.observeAll().map { l -> l.map { it.toDomain() } }.flowOn(Dispatchers.Default)
+    override suspend fun getAll() = dao.getAll().map { it.toDomain() }
+    override suspend fun save(r: RecurringRule): Long {
+        val e = RecurringEntity(r.id, r.name.trim(), r.kind.key, Money.toCents(r.amount), r.accountId, r.categoryId, r.everyMonths.coerceIn(1, 12), r.dayOfMonth.coerceIn(1, 31),
+            r.startDate.toEpochDay(), r.endDate?.toEpochDay(), r.enabled, r.autoConfirm, r.lastGenerated?.toEpochDay())
+        return if (r.id == 0L) dao.insert(e) else { dao.update(e); r.id }
+    }
+    override suspend fun delete(id: Long) = dao.delete(id)
+    override suspend fun markGenerated(id: Long, day: java.time.LocalDate) = dao.setLastGenerated(id, day.toEpochDay())
+}
+
+@Singleton
 class CashQuotaRepositoryImpl @Inject constructor(private val db: AppDatabase) : CashQuotaRepository {
     private val dao = db.quotas()
     override fun observeAll() = dao.observeAll().map { l -> l.map { it.toDomain() } }.flowOn(Dispatchers.Default)

@@ -1,5 +1,6 @@
 package it.spese.domain.backup
 
+import it.spese.core.common.Dates
 import it.spese.core.common.Money
 import it.spese.core.common.NumberParser
 import it.spese.core.model.AmountSign
@@ -61,11 +62,17 @@ data class NativeQuota(
     val name: String, val category: String, val amount: BigDecimal, val enabled: Boolean,
     val mode: String = "c", val tolerance: BigDecimal = BigDecimal.ZERO, val everyMonths: Int = 1, val dayFrom: Int = 0, val dayTo: Int = 0,
 )
+/** Entrata o spesa ricorrente (conto e categoria per nome). */
+data class NativeRecurring(
+    val name: String, val kind: String, val amount: BigDecimal, val account: String?, val category: String?, val everyMonths: Int, val day: Int,
+    val start: java.time.LocalDate, val end: java.time.LocalDate?, val enabled: Boolean, val autoConfirm: Boolean, val last: java.time.LocalDate?,
+)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
     val splits: List<NativeSplit> = emptyList(), val quotas: List<NativeQuota> = emptyList(),
     /** Identificativi dei movimenti già controllati (esclusi dalla sezione Verifica). */
     val reviewed: List<String> = emptyList(),
+    val recurring: List<NativeRecurring> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -163,6 +170,9 @@ object LegacyBackupCodec {
             NativeQuota(q["name"].str() ?: return@let null, q["cat"].str() ?: return@let null, q["amt"].dec() ?: return@let null, q["on"]?.let { flag(it) } ?: true,
                 q["mode"].str() ?: "c", q["tol"].dec() ?: BigDecimal.ZERO, q["every"].dec()?.toInt() ?: 1, q["from"].dec()?.toInt() ?: 0, q["to"].dec()?.toInt() ?: 0) } } ?: emptyList(),
         reviewed = o["reviewed"].arr()?.mapNotNull { it.str() } ?: emptyList(),
+        recurring = o["recurring"].arr()?.mapNotNull { e -> e.obj()?.let { r ->
+            NativeRecurring(r["name"].str() ?: return@let null, r["kind"].str() ?: "entrata", r["amt"].dec() ?: return@let null, r["acc"].str()?.takeIf { it.isNotBlank() }, r["cat"].str()?.takeIf { it.isNotBlank() },
+                r["every"].dec()?.toInt() ?: 1, r["day"].dec()?.toInt() ?: 1, Dates.parseIso(r["start"].str()) ?: return@let null, Dates.parseIso(r["end"].str()), r["on"]?.let { flag(it) } ?: true, flag(r["auto"]), Dates.parseIso(r["last"].str())) } } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -230,6 +240,9 @@ object LegacyBackupCodec {
                     put("name", q.name); put("cat", q.category); put("amt", jnum(q.amount)); put("on", if (q.enabled) 1 else 0)
                     put("mode", q.mode); put("tol", jnum(q.tolerance)); put("every", q.everyMonths); put("from", q.dayFrom); put("to", q.dayTo) }) } })
                 if (x.reviewed.isNotEmpty()) putJsonArray("reviewed") { x.reviewed.forEach { add(JsonPrimitive(it)) } }
+                if (x.recurring.isNotEmpty()) put("recurring", buildJsonArray { x.recurring.forEach { r -> add(buildJsonObject {
+                    put("name", r.name); put("kind", r.kind); put("amt", jnum(r.amount)); r.account?.let { put("acc", it) }; r.category?.let { put("cat", it) }
+                    put("every", r.everyMonths); put("day", r.day); put("start", r.start.toString()); r.end?.let { put("end", it.toString()) }; put("on", if (r.enabled) 1 else 0); put("auto", if (r.autoConfirm) 1 else 0); r.last?.let { put("last", it.toString()) } }) } })
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)

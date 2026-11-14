@@ -31,7 +31,7 @@ import kotlinx.coroutines.withContext
 /** Voci del menu "Dati" disponibili in ogni schermata principale. */
 data class DataMenu(
     val onImport: () -> Unit, val onScan: () -> Unit, val onAnalytics: () -> Unit, val onAccounts: () -> Unit,
-    val onSettings: () -> Unit, val undoAvailable: Boolean, val onUndo: () -> Unit, val onReports: () -> Unit = {},
+    val onSettings: () -> Unit, val undoAvailable: Boolean, val onUndo: () -> Unit, val onReports: () -> Unit = {}, val onRecurring: () -> Unit = {},
 )
 
 @Composable
@@ -41,6 +41,7 @@ fun OverflowMenu(menu: DataMenu) {
         IconButton(onClick = { open = true }) { Icon(Icons.Default.MoreVert, "Menu dati") }
         DropdownMenu(open, { open = false }) {
             DropdownMenuItem({ Text("Analisi e grafici") }, { open = false; menu.onAnalytics() }, leadingIcon = { Icon(Icons.Default.Insights, null) })
+            DropdownMenuItem({ Text("Entrate e spese ricorrenti") }, { open = false; menu.onRecurring() }, leadingIcon = { Icon(Icons.Default.Autorenew, null) })
             DropdownMenuItem({ Text("Report PDF") }, { open = false; menu.onReports() }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) })
             DropdownMenuItem({ Text("Conti") }, { open = false; menu.onAccounts() }, leadingIcon = { Icon(Icons.Default.AccountBalance, null) })
             if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla ultima importazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) })
@@ -96,7 +97,9 @@ fun SubTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.(
 }
 
 @HiltViewModel
-class RootViewModel @Inject constructor(settings: SettingsRepository, private val undo: UndoImportUseCase, val messenger: UiMessenger, private val filters: FilterStore, val incoming: IncomingFile) : ViewModel() {
+class RootViewModel @Inject constructor(settings: SettingsRepository, private val undo: UndoImportUseCase, private val generateRecurring: it.spese.domain.usecase.GenerateRecurringUseCase, val messenger: UiMessenger, private val filters: FilterStore, val incoming: IncomingFile) : ViewModel() {
+    /** Crea i movimenti dovuti dalle entrate e spese ricorrenti (all'avvio e a ogni ritorno nell'app). */
+    fun generateRecurring() { viewModelScope.launch { try { val n = generateRecurring.invoke(); if (n > 0) messenger.show(if (n == 1) "Creato 1 movimento ricorrente: controllalo in Verifica" else "Creati $n movimenti ricorrenti: controllali in Verifica") } catch (_: Exception) { } } }
     fun requestSearch() = filters.requestSearch()
     fun showTransfers() = filters.update { it.copy(kind = TxKind.TRASFERIMENTO) }
     fun showCategory(id: Long?) = filters.update { it.copy(categoryId = id, period = it.period) }

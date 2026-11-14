@@ -41,6 +41,7 @@ abstract class RepositoryModule {
     @Binds abstract fun due(i: DueRepositoryImpl): DueRepository
     @Binds abstract fun scen(i: ScenarioRepositoryImpl): ScenarioRepository
     @Binds abstract fun quotas(i: CashQuotaRepositoryImpl): CashQuotaRepository
+    @Binds abstract fun recurring(i: RecurringRepositoryImpl): RecurringRepository
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore
     @Binds abstract fun settings(i: SettingsRepositoryImpl): SettingsRepository

@@ -23,6 +23,9 @@ fun TransactionEntity.toDomain() = Transaction(
 )
 
 fun SplitEntity.toDomain() = TransactionSplit(id, txId, categoryId, Money.fromCents(amountCents), position, auto, quotaId)
+fun RecurringEntity.toDomain() = RecurringRule(id, name, TxKind.fromKey(kind) ?: TxKind.ENTRATA, Money.fromCents(amountCents), accountId, categoryId, everyMonths, dayOfMonth,
+    LocalDate.ofEpochDay(startDate), endDate?.let { LocalDate.ofEpochDay(it) }, enabled, autoConfirm, lastGenerated?.let { LocalDate.ofEpochDay(it) })
+
 fun CashQuotaEntity.toDomain() = CashQuota(id, name, categoryId, Money.fromCents(amountCents), enabled, QuotaMode.fromKey(mode), Money.fromCents(toleranceCents), everyMonths, dayFrom, dayTo)
 
 fun NewTransaction.toEntity(now: Long) = TransactionEntity(

@@ -137,3 +137,14 @@ interface CashQuotaDao {
     @Update suspend fun update(q: CashQuotaEntity)
     @Query("DELETE FROM cash_quotas WHERE id = :id") suspend fun delete(id: Long)
 }
+
+@Dao
+interface RecurringDao {
+    @Query("SELECT * FROM recurring_rules ORDER BY id") fun observeAll(): Flow<List<RecurringEntity>>
+    @Query("SELECT * FROM recurring_rules ORDER BY id") suspend fun getAll(): List<RecurringEntity>
+    @Insert suspend fun insert(r: RecurringEntity): Long
+    @Update suspend fun update(r: RecurringEntity)
+    @Query("DELETE FROM recurring_rules WHERE id = :id") suspend fun delete(id: Long)
+    @Query("UPDATE recurring_rules SET lastGenerated = :day WHERE id = :id") suspend fun setLastGenerated(id: Long, day: Long)
+    @Query("DELETE FROM recurring_rules") suspend fun deleteAll()
+}

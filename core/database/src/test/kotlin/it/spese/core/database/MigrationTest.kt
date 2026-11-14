@@ -140,4 +140,16 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test fun `la migrazione 6-7 aggiunge le regole ricorrenti senza toccare i dati`() {
+        helper.createDatabase("test-recurring", 6).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Stipendio', 'entrata', 0, 4286611584, 1, 0, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-recurring", 7, true, AppDatabase.MIGRATION_6_7)
+        db.execSQL("INSERT INTO recurring_rules (name, kind, amountCents, accountId, categoryId, everyMonths, dayOfMonth, startDate, endDate, enabled, autoConfirm, lastGenerated) VALUES ('Stipendio', 'entrata', 200000, NULL, 1, 1, 27, 20000, NULL, 1, 0, NULL)")
+        db.query("SELECT name, amountCents, everyMonths FROM recurring_rules").use { c -> assertTrue(c.moveToFirst()); assertEquals("Stipendio", c.getString(0)); assertEquals(200000L, c.getLong(1)); assertEquals(1, c.getInt(2)) }
+        db.query("SELECT COUNT(*) FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+        db.close()
+    }
 }
