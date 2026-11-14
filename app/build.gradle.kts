@@ -24,12 +24,22 @@ android {
         applicationId = "it.spese.gestione"
         minSdk = 26
         targetSdk = 35
-        versionCode = (System.getenv("VERSION_CODE")?.toIntOrNull()) ?: 1
-        versionName = System.getenv("VERSION_NAME") ?: "1.0.0"
+        // Android aggiorna un'app già installata solo se il versionCode AUMENTA e la firma è la stessa.
+        // Su GitHub Actions il numero progressivo dell'esecuzione (GITHUB_RUN_NUMBER) cresce a ogni build; in locale resta 1.
+        val ciRun = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+        versionCode = (System.getenv("VERSION_CODE")?.toIntOrNull()) ?: ciRun ?: 1
+        versionName = System.getenv("VERSION_NAME") ?: "1.0.${ciRun ?: 0}"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
+        // Chiave di debug CONDIVISA e versionata (app/debug.keystore): tutte le build debug, anche su runner diversi, hanno la stessa firma
+        // e quindi si installano una sopra l'altra. (Quella generata da Android è diversa a ogni runner: gli aggiornamenti venivano rifiutati.)
+        // Non è una chiave di rilascio: serve solo per l'APK di debug, che ha un suo applicationId (.debug).
+        getByName("debug") {
+            storeFile = rootProject.file("app/debug.keystore")
+            storePassword = "android"; keyAlias = "androiddebugkey"; keyPassword = "android"
+        }
         if (releaseStoreFile != null) {
             create("release") {
                 storeFile = file(releaseStoreFile)
