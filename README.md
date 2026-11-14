@@ -7,7 +7,8 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 
 - **Panoramica** – entrate, spese, saldo, risparmio, media mensile, giroconti esclusi, grafici interattivi (ciambella, barre, impilate, cumulato, esercenti), avvisi.
 - **Movimenti** – inserimento, modifica, duplicazione, ricerca, filtri, selezione multipla, ordinamento, esportazione CSV/Excel.
-- **Categorie e regole** – regole testuali/regex con segno e soglie, priorità, assegnazione manuale che prevale, budget per categoria, conti multipli.
+- **Categorie** – classifica per peso con icone, variazioni sul periodo precedente, dettaglio per categoria (andamento, esercenti, sottocategorie), natura della spesa (fissa/necessaria/discrezionale), budget suggerito, "dove puoi risparmiare" e simulazione "e se la riducessi?" collegata al Piano.
+- **Gestione** – regole testuali/regex con segno e soglie, priorità, assegnazione manuale che prevale, movimenti "Da fare", conti multipli.
 - **Piano e simulazioni** – obiettivi, tagli per categoria, "e se…", scadenze future, scenari salvati e confrontabili, proiezioni a 6/12 mesi.
 - **Avvisi e ricorrenti** – budget, scadenze, ricorrenze rilevate, spese non previste, notifiche locali configurabili.
 - **Importazione** – xlsx/csv/txt con anteprima e correzione delle colonne; backup JSON della versione web (unisci o sostituisci).

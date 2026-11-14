@@ -36,6 +36,9 @@ import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.categories.CategoriesScreen
+import it.spese.feature.categories.CategoryDetailScreen
+import it.spese.feature.categories.CategoryDetailViewModel
+import it.spese.feature.categories.ManageScreen
 import it.spese.feature.dashboard.DashboardScreen
 import it.spese.feature.importer.ImportScreen
 import it.spese.feature.ocr.ScanScreen
@@ -48,12 +51,15 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"
     fun edit(id: Long) = "edit/$id"
+    fun category(id: Long) = "category/$id"
+    fun manage(tab: Int) = "manage/$tab"
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector, val selected: ImageVector)
 
-/** Quattro sezioni nella barra (il + sta al centro); gli Avvisi si aprono dalla campanella della Home. */
+/** Quattro sezioni nella barra, equidistanti; il + sta nelle intestazioni di Home e Movimenti, gli Avvisi si aprono dalla campanella della Home. */
 private val TABS = listOf(
     Tab(Routes.DASHBOARD, "Home", Icons.Outlined.Home, Icons.Filled.Home),
     Tab(Routes.TRANSACTIONS, "Movimenti", Icons.Outlined.ReceiptLong, Icons.Filled.ReceiptLong),
@@ -62,26 +68,19 @@ private val TABS = listOf(
 )
 
 @Composable
-private fun SpeseBottomBar(route: String?, onTab: (String) -> Unit, onAdd: () -> Unit) {
-    Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
-        Column {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.fillMaxWidth().navigationBarsPadding().height(76.dp)) {
-                @Composable
-                fun item(t: Tab) {
-                    val on = route == t.route
-                    Column(Modifier.weight(1f).fillMaxHeight().clickable { onTab(t.route) }.testTag("tab_${t.route}"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                        Icon(if (on) t.selected else t.icon, null, Modifier.size(26.dp), tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(4.dp))
-                        Text(t.label, fontSize = 12.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.SemiBold, color = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+private fun SpeseBottomBar(route: String?, onTab: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Row(Modifier.fillMaxWidth().navigationBarsPadding().height(68.dp)) {
+            TABS.forEach { t ->
+                val on = route == t.route
+                val tint = if (on) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                Column(Modifier.weight(1f).fillMaxHeight().clickable { onTab(t.route) }.testTag("tab_${t.route}"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                    Icon(if (on) t.selected else t.icon, null, Modifier.size(26.dp), tint = tint)
+                    Spacer(Modifier.height(4.dp))
+                    Text(t.label, fontSize = 12.sp, maxLines = 1, softWrap = false, fontWeight = FontWeight.SemiBold, color = tint)
                 }
-                item(TABS[0]); item(TABS[1]); Spacer(Modifier.weight(1f)); item(TABS[2]); item(TABS[3])
             }
-        }
-        FloatingActionButton(onClick = onAdd, modifier = Modifier.align(Alignment.TopCenter).offset(y = (-20).dp).size(68.dp).testTag("fab_add").semantics { contentDescription = "Aggiungi" },
-            shape = CircleShape, containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary) {
-            Icon(Icons.Filled.Add, null, Modifier.size(32.dp))
         }
     }
 }
@@ -128,16 +127,25 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
-        bottomBar = { if (isTab) SpeseBottomBar(route, ::goTab) { addOpen = true } },
+        bottomBar = { if (isTab) SpeseBottomBar(route, ::goTab) },
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> vm.showCategory(id); goTab(Routes.TRANSACTIONS) },
+                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
-                    onAdd = { nav.navigate(Routes.edit(0)) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, onOpenPlan = { goTab(Routes.PLAN) }, contentPadding = pad)
+                    onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, contentPadding = pad)
             }
-            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { nav.navigate(Routes.edit(0)) }, onOpenClassify = { goTab(Routes.CATEGORIES) }, bottomPadding = pad) }
-            composable(Routes.CATEGORIES) { CategoriesScreen(menu, bottomPadding = pad) }
+            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, bottomPadding = pad) }
+            composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, bottomPadding = pad) }
+            composable(Routes.CATEGORY, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
+                val catVm: CategoryDetailViewModel = hiltViewModel()
+                CategoryDetailScreen(onBack = { nav.popBackStack() }, onOpenTransaction = { nav.navigate(Routes.edit(it)) }, onOpenMovements = { catVm.showInMovements(); goTab(Routes.TRANSACTIONS) },
+                    onOpenCategory = { nav.navigate(Routes.category(it)) }, onOpenPlan = { goTab(Routes.PLAN) }, vm = catVm)
+            }
+            composable(Routes.MANAGE, arguments = listOf(navArgument("tab") { type = NavType.IntType; defaultValue = 0 })) { entry ->
+                ManageScreen(initialTab = entry.arguments?.getInt("tab") ?: 0, onBack = { nav.popBackStack() })
+            }
             composable(Routes.PLAN) { PlanScreen(menu, bottomPadding = pad) }
             composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = 0L })) { TransactionEditScreen(onBack = { nav.popBackStack() }) }

@@ -59,4 +59,54 @@ class MigrationTest {
         assertTrue("RESTRICT deve impedire l'eliminazione", failed)
         db.close()
     }
+
+    @Test fun `la migrazione 1-2 aggiunge l'icona (NULL) senza toccare le categorie esistenti`() {
+        helper.createDatabase("test-icon", 1).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Bar', 'spesa', 1, 4286611584, 1, 3, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-icon", 2, true, AppDatabase.MIGRATION_1_2)
+        db.query("SELECT name, sortOrder, icon FROM categories").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Bar", c.getString(0)); assertEquals(3, c.getInt(1)); assertTrue(c.isNull(2))
+        }
+        db.execSQL("UPDATE categories SET icon = 'coffee' WHERE name = 'Bar'")
+        db.query("SELECT icon FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals("coffee", c.getString(0)) }
+        db.close()
+    }
+
+    @Test fun `la migrazione 2-3 aggiunge il padre (NULL) e conserva icone e budget`() {
+        helper.createDatabase("test-parent", 2).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, budgetCents, active, sortOrder, updatedAt, budgetUpdatedAt, icon) VALUES ('Casa', 'spesa', 0, 4286611584, 30000, 1, 0, 0, 0, 'home')")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-parent", 3, true, AppDatabase.MIGRATION_2_3)
+        db.query("SELECT name, budgetCents, icon, parentId FROM categories").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Casa", c.getString(0)); assertEquals(30000L, c.getLong(1)); assertEquals("home", c.getString(2)); assertTrue(c.isNull(3))
+        }
+        db.close()
+    }
+
+    @Test fun `tutte le migrazioni in sequenza dal primo schema fino all'ultimo`() {
+        helper.createDatabase("test-chain", 1).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Bar', 'spesa', 1, 4286611584, 1, 0, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-chain", AppDatabase.VERSION, true, *AppDatabase.MIGRATIONS)
+        db.query("SELECT COUNT(*) FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+        db.close()
+    }
+
+    @Test fun `la migrazione 3-4 aggiunge la natura (NULL) e conserva sottocategorie e icone`() {
+        helper.createDatabase("test-nature", 3).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt, icon, parentId) VALUES ('Casa', 'spesa', 0, 4286611584, 1, 0, 0, 0, 'home', NULL)")
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt, icon, parentId) VALUES ('Bollette', 'spesa', 0, 4286611584, 1, 1, 0, 0, NULL, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-nature", 4, true, AppDatabase.MIGRATION_3_4)
+        db.query("SELECT name, parentId, nature FROM categories ORDER BY id").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Casa", c.getString(0)); assertTrue(c.isNull(2))
+            assertTrue(c.moveToNext()); assertEquals(1L, c.getLong(1)); assertTrue(c.isNull(2))
+        }
+        db.close()
+    }
 }

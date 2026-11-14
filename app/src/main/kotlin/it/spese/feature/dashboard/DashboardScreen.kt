@@ -5,13 +5,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import it.spese.feature.categories.CategoryRankRow
+import it.spese.feature.categories.OpportunitiesCard
+import it.spese.feature.categories.WatchCard
+import it.spese.domain.finance.SavingsOpportunities
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -22,6 +29,7 @@ import it.spese.app.common.FilterViewModel
 import it.spese.app.common.LargeHeader
 import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Money
+import it.spese.core.model.TxKind
 import it.spese.core.designsystem.chart.GapAreaChart
 import it.spese.core.designsystem.chart.GapPoint
 import it.spese.core.designsystem.component.*
@@ -37,6 +45,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -45,6 +54,7 @@ fun DashboardScreen(
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
     Column(Modifier.fillMaxSize()) {
         LargeHeader("Panoramica", menu = menu, actions = {
+            RoundIconButton(Icons.Default.Add, "Aggiungi", onAdd, Modifier.testTag("fab_add"), primary = true)
             RoundIconButton(Icons.Default.Notifications, if (alertCount > 0) "Avvisi: $alertCount da vedere" else "Avvisi", onOpenAlerts, badge = alertCount > 0)
             RoundIconButton(Icons.Default.Tune, "Filtri", { filters = true }, badge = st.filter.activeCount > 0)
         })
@@ -65,6 +75,7 @@ fun DashboardScreen(
         val points = remember(st.buckets) { st.buckets.map { GapPoint(it.label, it.income, it.expense, it.title) } }
         val period = st.filter.period
         val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
+        var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
@@ -96,6 +107,32 @@ fun DashboardScreen(
                     Box(Modifier.size(11.dp).background(dot, androidx.compose.foundation.shape.CircleShape))
                     Text(if (alertCount > 0) (if (alertCount == 1) "1 cosa da guardare" else "$alertCount cose da guardare") else "Tutto sotto controllo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            val watch = SavingsOpportunities.surging(m.categories)
+            val opps = SavingsOpportunities.compute(m.categories, 20)
+            if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            item(key = "cats-head") {
+                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
+                    Text("Dove vanno i soldi", style = MaterialTheme.typography.titleLarge)
+                    if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
+                }
+            }
+            val rows = if (catKind == TxKind.SPESA) m.categories else m.incomeCategories
+            val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
+            if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
+                CategoryRankRow(r, catKind, maxTotal, { onOpenCategory(r.category?.id) },
+                    budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
+            }
+            if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }
+            if (s.transfers.signum() != 0) item(key = "cats-transfers") {
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpenTransfers).padding(horizontal = 4.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Giroconti esclusi dai totali", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MoneyText(s.transfers.abs(), decimals = false, muted = true)
                 }
             }
         }

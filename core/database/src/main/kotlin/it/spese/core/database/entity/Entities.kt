@@ -33,6 +33,12 @@ data class CategoryEntity(
     val systemKey: String? = null,
     val updatedAt: Long = 0,
     val budgetUpdatedAt: Long = 0,
+    /** Chiave icona scelta dall'utente (null = default dal nome). Aggiunta nello schema 2. */
+    val icon: String? = null,
+    /** Categoria padre (nessuna chiave esterna: all'eliminazione le figlie tornano principali). Schema 3. */
+    val parentId: Long? = null,
+    /** Natura della spesa: 'f' / 'e' / 'd' oppure null. Schema 4. */
+    val nature: String? = null,
 )
 
 @Entity(

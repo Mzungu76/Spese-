@@ -134,9 +134,14 @@ class BackupRepositoryImpl @Inject constructor(
         s.cats.distinctBy { it.n }.forEachIndexed { i, c ->
             val old = cd.findByName(c.n)
             val mt = s.mt["cat:${c.n}"] ?: 0
-            if (old != null) cd.update(old.copy(kind = c.k.key, flexible = c.f, color = LegacyMapper.parseColor(c.c), active = c.active, updatedAt = mt))
+            if (old != null) cd.update(old.copy(kind = c.k.key, flexible = c.f, color = LegacyMapper.parseColor(c.c), active = c.active, updatedAt = mt, icon = c.icon ?: old.icon, nature = c.nature ?: old.nature))
             else cd.insert(CategoryEntity(name = c.n, kind = c.k.key, flexible = c.f, color = LegacyMapper.parseColor(c.c), active = c.active,
-                sortOrder = if (replace) i else order++, updatedAt = mt))
+                sortOrder = if (replace) i else order++, updatedAt = mt, icon = c.icon, nature = c.nature))
+        }
+        // sottocategorie (il backup indica il padre per nome)
+        s.cats.filter { it.parent != null }.forEach { c ->
+            val child = cd.findByName(c.n); val par = cd.findByName(c.parent!!)
+            if (child != null && par != null && child.id != par.id && par.parentId == null && par.kind == child.kind) cd.setParent(child.id, par.id)
         }
         suspend fun ensure(name: String, kind: TxKind, key: String) {
             val all = cd.getAll()

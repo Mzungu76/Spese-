@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import it.spese.core.common.Dates
+import it.spese.domain.finance.Period
 import it.spese.domain.finance.TxFilter
 import java.io.File
 import java.time.LocalDate
@@ -20,10 +21,11 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Filtri condivisi da Panoramica, Movimenti, Piano e Analisi (periodo, conto, categoria, tipo, testo, importo). */
 @Singleton
 class FilterStore @Inject constructor() {
-    private val _filter = MutableStateFlow(TxFilter())
+    /** Di partenza: il mese corrente (l'ultimo con movimenti), confrontato con il precedente. */
+    private val _filter = MutableStateFlow(TxFilter(period = Period.CurrentMonth))
     val filter: StateFlow<TxFilter> = _filter.asStateFlow()
     fun update(transform: (TxFilter) -> TxFilter) { _filter.value = transform(_filter.value) }
-    fun reset() { _filter.value = TxFilter() }
+    fun reset() { _filter.value = TxFilter(period = Period.CurrentMonth) }
 }
 
 /** Messaggi brevi (snackbar) emessi dai ViewModel. */

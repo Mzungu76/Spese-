@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import it.spese.core.model.TxKind
 import it.spese.domain.repository.SettingsRepository
 import it.spese.domain.usecase.UndoImportUseCase
 import javax.inject.Inject
@@ -64,11 +65,22 @@ fun LargeHeader(title: String, modifier: Modifier = Modifier, menu: DataMenu? = 
     }
 }
 
+/** Intestazione di una schermata secondaria: freccia indietro, titolo grande e azioni. */
+@Composable
+fun BackHeader(title: String, onBack: () -> Unit, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
+    Row(modifier.fillMaxWidth().statusBarsPadding().padding(start = 12.dp, end = 12.dp, top = 12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        RoundIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Indietro", onBack)
+        Text(title, Modifier.weight(1f).padding(start = 8.dp), style = MaterialTheme.typography.headlineMedium, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        actions()
+    }
+}
+
 /** Pulsante tondo grigio scuro con icona (cerca, filtri, campanella…). */
 @Composable
-fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false) {
+fun RoundIconButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, onClick: () -> Unit, modifier: Modifier = Modifier, badge: Boolean = false, primary: Boolean = false) {
     Box(modifier.padding(horizontal = 4.dp)) {
-        FilledIconButton(onClick = onClick, Modifier.size(44.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
+        FilledIconButton(onClick = onClick, Modifier.size(44.dp), colors = if (primary) IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
+        else IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh, contentColor = MaterialTheme.colorScheme.onSurface)) {
             Icon(icon, description, Modifier.size(22.dp))
         }
         if (badge) Box(Modifier.align(androidx.compose.ui.Alignment.TopEnd).padding(top = 8.dp, end = 8.dp).size(11.dp).background(MaterialTheme.colorScheme.error, androidx.compose.foundation.shape.CircleShape))
@@ -84,6 +96,7 @@ fun SubTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.(
 
 @HiltViewModel
 class RootViewModel @Inject constructor(settings: SettingsRepository, private val undo: UndoImportUseCase, val messenger: UiMessenger, private val filters: FilterStore, val incoming: IncomingFile) : ViewModel() {
+    fun showTransfers() = filters.update { it.copy(kind = TxKind.TRASFERIMENTO) }
     fun showCategory(id: Long?) = filters.update { it.copy(categoryId = id, period = it.period) }
     val undoAvailable = settings.observe().map { it.lastUndo.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val onboardingDone = settings.observe().map { it.onboardingDone }

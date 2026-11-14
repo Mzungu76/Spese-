@@ -63,10 +63,12 @@ object FilterEngine {
         val range = if (all.isEmpty()) PeriodResolver.resolve(filter.period, null, null)
         else PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
         val q = filter.query.trim().lowercase()
+        // filtrando una categoria principale sono incluse anche le sue sottocategorie
+        val catIds = filter.categoryId?.let { CategoryTree.withChildren(it, categories.values) }
         return all.filter { x ->
             x.bookingDate in range &&
                 (filter.accountId == null || x.accountId == filter.accountId) &&
-                (filter.categoryId == null || x.categoryId == filter.categoryId) &&
+                (catIds == null || x.categoryId in catIds) &&
                 (filter.kind == null || x.kind == filter.kind) &&
                 (filter.minAmount == null || x.amount.abs() >= filter.minAmount) &&
                 (filter.maxAmount == null || x.amount.abs() <= filter.maxAmount) &&

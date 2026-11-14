@@ -12,7 +12,7 @@ fun AccountEntity.toDomain() = Account(id, name, enumOr(type, AccountType.CONTO)
 fun Account.toEntity() = AccountEntity(id, name.trim(), type.name, Money.toCents(openingBalance), archived)
 
 fun CategoryEntity.toDomain() = Category(
-    id, name, TxKind.fromKey(kind) ?: TxKind.SPESA, flexible, color, budgetCents?.let { Money.fromCents(it) }, active, sortOrder, systemKey,
+    id, name, TxKind.fromKey(kind) ?: TxKind.SPESA, flexible, color, budgetCents?.let { Money.fromCents(it) }, active, sortOrder, systemKey, icon, parentId, SpendNature.fromKey(nature),
 )
 
 fun RuleEntity.toDomain() = Rule(id, keyword, categoryId, AmountSign.fromKey(sign), Money.fromCents(minCents), Money.fromCents(maxCents), priority, active)

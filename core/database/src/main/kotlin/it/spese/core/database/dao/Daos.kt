@@ -29,6 +29,8 @@ interface CategoryDao {
     @Insert suspend fun insert(c: CategoryEntity): Long
     @Update suspend fun update(c: CategoryEntity)
     @Query("DELETE FROM categories WHERE id = :id") suspend fun delete(id: Long)
+    @Query("UPDATE categories SET parentId = NULL WHERE parentId = :id") suspend fun detachChildren(id: Long)
+    @Query("UPDATE categories SET parentId = :parentId WHERE id = :id") suspend fun setParent(id: Long, parentId: Long?)
     @Query("UPDATE categories SET sortOrder = :order WHERE id = :id") suspend fun setOrder(id: Long, order: Int)
     @Query("UPDATE categories SET budgetCents = :cents, budgetUpdatedAt = :now WHERE id = :id") suspend fun setBudget(id: Long, cents: Long?, now: Long)
     @Query("UPDATE categories SET budgetCents = NULL, budgetUpdatedAt = :now WHERE budgetCents IS NOT NULL") suspend fun clearBudgets(now: Long)

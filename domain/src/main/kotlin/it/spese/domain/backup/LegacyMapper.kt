@@ -6,6 +6,7 @@ import it.spese.core.model.Category
 import it.spese.core.model.Due
 import it.spese.core.model.Rule
 import it.spese.core.model.SavingsGoal
+import it.spese.core.model.SpendNature
 import it.spese.core.model.Transaction
 import it.spese.core.model.TxKind
 import it.spese.core.model.TxOrigin
@@ -44,7 +45,7 @@ object LegacyMapper {
         val cats = ArrayList<Category>()
         var nextId = 1L
         s.cats.distinctBy { it.n }.forEachIndexed { i, c ->
-            cats.add(Category(nextId++, c.n, c.k, c.f, parseColor(c.c), s.budget[c.n]?.takeIf { it.signum() > 0 }, c.active, i, null))
+            cats.add(Category(nextId++, c.n, c.k, c.f, parseColor(c.c), s.budget[c.n]?.takeIf { it.signum() > 0 }, c.active, i, null, c.icon, null, SpendNature.fromKey(c.nature)))
         }
         fun ensure(name: String, kind: TxKind, key: String) {
             val existing = cats.indexOfFirst { it.name == name && it.kind == kind }
@@ -53,6 +54,13 @@ object LegacyMapper {
         }
         ensure(DefaultData.FALLBACK_EXPENSE_NAME, TxKind.SPESA, Category.FALLBACK_EXPENSE)
         ensure(DefaultData.FALLBACK_INCOME_NAME, TxKind.ENTRATA, Category.FALLBACK_INCOME)
+        // sottocategorie: il backup indica il padre per nome (un solo livello, stesso tipo)
+        val parentOf = s.cats.distinctBy { it.n }.mapNotNull { c -> c.parent?.let { c.n to it } }.toMap()
+        for (i in cats.indices) {
+            val pn = parentOf[cats[i].name] ?: continue
+            val par = cats.firstOrNull { it.name == pn } ?: continue
+            if (par.id != cats[i].id && par.kind == cats[i].kind && parentOf[par.name] == null) cats[i] = cats[i].copy(parentId = par.id)
+        }
         val catByName = cats.associateBy { it.name }
 
         val accNames = s.tx.map { it.acc }.distinct()
@@ -84,7 +92,7 @@ object LegacyMapper {
             LegacyTx(it.externalId, it.bookingDate, it.valueDate, it.amount, it.description, acc[it.accountId] ?: "Conto principale",
                 it.notes, it.merchantOverride, it.origin.name, it.documentId?.let { id -> docNames[id] })
         }
-        val cats = d.categories.sortedBy { it.sortOrder }.map { LegacyCat(it.name, it.kind, it.flexible, colorHex(it.color), it.active) }
+        val cats = d.categories.sortedBy { it.sortOrder }.map { LegacyCat(it.name, it.kind, it.flexible, colorHex(it.color), it.active, it.icon, it.parentId?.let { pid -> d.categories.firstOrNull { p -> p.id == pid }?.name }, it.nature?.key) }
         val rules = d.rules.sortedBy { it.priority }.mapNotNull { r ->
             cat[r.categoryId]?.let { LegacyRule(r.id, r.keyword, it, r.sign, r.min, r.max) }
         }

@@ -142,6 +142,13 @@ class SaveCategoryUseCase @Inject constructor(private val categories: CategoryRe
         require(c.name.isNotBlank()) { "Inserisci un nome." }
         val all = categories.getAll()
         require(all.none { it.id != c.id && it.name.equals(c.name.trim(), ignoreCase = true) }) { "Esiste già una categoria con questo nome." }
+        c.parentId?.let { pid ->
+            val parent = all.firstOrNull { it.id == pid }
+            require(parent != null && pid != c.id) { "Categoria principale non valida." }
+            require(parent.parentId == null) { "Una sottocategoria non può avere altre sottocategorie." }
+            require(parent.kind == c.kind) { "La sottocategoria deve essere dello stesso tipo della principale." }
+            require(all.none { it.parentId == c.id }) { "Questa categoria ha già delle sottocategorie: non può diventarne una." }
+        }
         val id = if (c.id == 0L) categories.insert(c.copy(name = c.name.trim(), sortOrder = all.size)) else { categories.update(c.copy(name = c.name.trim())); c.id }
         reclassify()
         return id
