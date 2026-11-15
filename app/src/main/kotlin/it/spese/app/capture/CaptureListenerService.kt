@@ -55,7 +55,12 @@ class CaptureListenerService : NotificationListenerService() {
         scope.launch {
             val cfg = if (loaded) current else config.get()
             val source = CaptureRouting.route(cfg, sbn.packageName, title) ?: return@launch
-            val text = (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString().orEmpty()
+            // testo completo: grande se c'è, altrimenti normale; più le righe e il sottotesto (alcune app mettono lì l'importo)
+            val text = listOfNotNull(
+                (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString(),
+                extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.joinToString(" ") { it.toString() },
+                extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
+            ).filter { it.isNotBlank() }.distinct().joinToString(" · ")
             // notifiche che l'utente ha chiesto di ignorare (mai se contengono un importo)
             if (IgnoreFilter.matches(cfg.ignoreRules, source.id, title, text)) return@launch
             val raw = RawNotification(sbn.packageName, title, text, sbn.postTime)

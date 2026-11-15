@@ -20,6 +20,10 @@ enum class CaptureSource(val id: String, val label: String, val kind: SourceKind
     HYPE("hype", "Hype", SourceKind.BANK_APP, emptySet(), 2),
     SMS("sms", "SMS della banca", SourceKind.SMS, setOf("com.google.android.apps.messaging", "com.samsung.android.messaging", "com.android.mms", "com.android.messaging"), 2);
 
+    /** Prefissi di pacchetto: le app di Poste cambiano nome tra versioni e varianti (Postepay, BancoPosta, Poste Italiane…). */
+    val packagePrefixes: Set<String> get() = if (this == POSTE) setOf("posteitaliane.") else emptySet()
+    fun matchesPackage(pkg: String): Boolean = pkg in defaultPackages || packagePrefixes.any { pkg.startsWith(it) }
+
     companion object {
         fun byId(id: String?): CaptureSource? = entries.firstOrNull { it.id == id }
     }
@@ -59,7 +63,7 @@ object CaptureRouting {
         for (s in CaptureSource.entries) {
             val c = config.of(s)
             if (!c.enabled) continue
-            if (packageName !in s.defaultPackages && packageName !in c.extraPackages) continue
+            if (!s.matchesPackage(packageName) && packageName !in c.extraPackages) continue
             if (s.kind == SourceKind.SMS) {
                 if (c.smsSenders.isEmpty() || c.smsSenders.none { title.contains(it.trim(), ignoreCase = true) && it.isNotBlank() }) continue
             }

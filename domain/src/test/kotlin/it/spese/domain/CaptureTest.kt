@@ -83,6 +83,16 @@ class CaptureTest {
     }
 }
 
+class PosteRoutingTest {
+    @org.junit.Test fun `qualunque app di Poste viene riconosciuta come fonte`() {
+        val cfg = CaptureConfig(mapOf("poste" to SourceConfig(enabled = true)))
+        for (pkg in listOf("posteitaliane.posteapp.apppostepay", "posteitaliane.posteapp.appbpol", "posteitaliane.posteapp.appposteid", "posteitaliane.nuova.app"))
+            org.junit.Assert.assertEquals(pkg, CaptureSource.POSTE, CaptureRouting.route(cfg, pkg, "Poste Italiane"))
+        org.junit.Assert.assertNull(CaptureRouting.route(cfg, "com.altra.app", "Poste Italiane"))
+        org.junit.Assert.assertNull(CaptureRouting.route(CaptureConfig(), "posteitaliane.posteapp.apppostepay", "x"))   // fonte spenta
+    }
+}
+
 class PosteNotificationTest {
     private fun p(title: String, text: String) = NotificationParser.parse(CaptureSource.POSTE, title, text)
 
