@@ -75,6 +75,7 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
                 val pending = st.data.categories.filter { it.kind == TxKind.SPESA && it.active && it.nature == null && it.systemKey == null && it.parentId == null && m.natureSuggestions.containsKey(it.id) }
                 item { NatureCard(m.natureTotals, pending.size, { autoNature = true }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             }
+            if (rows.isNotEmpty()) item(key = "chart-$kind") { CategoriesChart(rows, kind) }
             if (rows.isEmpty()) item { Text("Nessun movimento di questo tipo nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(rows, key = { "r-$kind-${it.category?.id}" }) { r ->
                 var open by rememberSaveable(r.category?.id, kind) { mutableStateOf(false) }
@@ -120,5 +121,31 @@ fun CategoriesScreen(menu: DataMenu, onOpenCategory: (Long) -> Unit, onManage: (
             },
             confirmButton = { TextButton(onClick = { vm.applyNatures(pending.associate { it.first.id to it.second.nature }); autoNature = false }) { Text("Imposta tutte") } },
             dismissButton = { TextButton(onClick = { autoNature = false }) { Text("Annulla") } })
+    }
+}
+
+
+/** Grafico del periodo: per categoria o per sottocategoria, a torta, a barre o entrambi. Le categorie piccole confluiscono in «Altre». */
+@Composable
+private fun CategoriesChart(rows: List<it.spese.domain.finance.CategoryRow>, kind: TxKind) {
+    var mode by rememberSaveable { mutableIntStateOf(0) }
+    var detail by rememberSaveable { mutableStateOf(false) }
+    val hasChildren = rows.any { it.children.isNotEmpty() }
+    val palette = it.spese.domain.classification.DefaultData.PALETTE
+    val parts: List<Pair<String, BigDecimal>> = rows.flatMap { r ->
+        val name = r.category?.name ?: "Senza categoria"
+        if (detail && r.children.isNotEmpty()) r.children.map { ch -> (if (ch.own) "$name (altro)" else "$name › ${ch.category.name}") to ch.total } else listOf(name to r.total)
+    }.sortedByDescending { it.second }
+    val top = parts.take(9); val rest = parts.drop(9).fold(BigDecimal.ZERO) { a, b -> a + b.second }
+    val shown = top + (if (rest.signum() > 0) listOf("Altre" to rest) else emptyList())
+    val slices = shown.mapIndexed { i, (n, v) -> it.spese.core.designsystem.chart.Slice(n, v, palette[i % palette.size].toColor()) }
+    val total = parts.fold(BigDecimal.ZERO) { a, b -> a + b.second }
+    SectionCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), title = if (detail) "Per sottocategoria" else "Per categoria") {
+        PillSegmented(listOf(0 to "Torta", 1 to "Barre", 2 to "Entrambi"), mode, { mode = it })
+        if (hasChildren) LabeledSwitch("Dettaglio per sottocategoria", detail, { detail = it })
+        if (mode == 0 || mode == 2) it.spese.core.designsystem.chart.DonutChart(slices, Modifier.fillMaxWidth(), centerTitle = if (kind == TxKind.SPESA) "Speso" else "Incassato")
+        if (mode == 1 || mode == 2) it.spese.core.designsystem.chart.HorizontalBars(slices.map { sl ->
+            it.spese.core.designsystem.chart.BarItem(sl.label, sl.value, sl.color, Money.percent(sl.value, total).toPlainString().replace('.', ',') + "%")
+        }, Modifier.padding(top = 12.dp))
     }
 }
