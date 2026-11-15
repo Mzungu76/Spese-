@@ -6,7 +6,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** Un frammento di testo riconosciuto con la sua posizione nella foto (centro in pixel, inclinazione e altezza della riga). */
-data class OcrLine(val text: String, val cx: Float, val cy: Float, val angleRad: Float, val height: Float, val confidence: Float = 1f)
+data class OcrLine(val text: String, val cx: Float, val cy: Float, val angleRad: Float, val height: Float, val confidence: Float = 1f, val width: Float = 0f)
 
 /** Una riga ricostruita, con la fiducia minima dei frammenti che la compongono. */
 data class OcrRow(val text: String, val confidence: Float)

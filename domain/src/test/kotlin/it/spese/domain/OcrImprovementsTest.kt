@@ -32,6 +32,13 @@ class OcrImprovementsTest {
         assertTrue(b[0] in 0..500 && b[2] in 500..1500); assertTrue(b[1] >= 100 && b[3] <= 1100)
     }
 
+    @Test fun `il ritaglio non taglia le righe larghe`() {
+        // righe lunghe (larghe 900 px) centrate a 700: il bordo sinistro reale è 250, non 700
+        val lines = (1..10).map { OcrLine("RAVIOLI RICC/SPINACI $it", 700f, 400f + it * 40f, 0f, 30f, 0.9f, 900f) }
+        val b = OcrTiles.textBounds(lines, 1500, 2000)!!
+        assertTrue("sinistra ${b[0]}", b[0] <= 250); assertTrue("destra ${b[2]}", b[2] >= 1150)
+    }
+
     @Test fun `nitidezza e contrasto`() {
         val w = 64; val h = 64
         val sharp = IntArray(w * h) { i -> if ((i % w / 4 + i / w / 4) % 2 == 0) 20 else 230 }                    // scacchiera netta

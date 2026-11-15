@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -157,25 +159,28 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
                 val chosen = f.itemCategories.getOrNull(i)?.let { data.categoriesById[it] }
                 val proposed = f.itemNew.getOrNull(i)?.takeIf { chosen == null && it in f.createNames }
                 val out = i in f.excluded
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", maxLines = 1, style = MaterialTheme.typography.bodyMedium.let { st -> if (out) st.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, color = MaterialTheme.colorScheme.onSurfaceVariant) else st })
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
-                            if (i in d.weakItems && !out) Text("⚠ controlla", style = MaterialTheme.typography.labelSmall, color = SpeseTheme.finance.warning)
-                        }
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // prima riga: descrizione a tutta larghezza e importo; seconda: categoria (si adatta allo spazio), avviso e «×»
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+                        Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", Modifier.weight(1f), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium.let { st -> if (out) st.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, color = MaterialTheme.colorScheme.onSurfaceVariant) else st })
+                        MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodyMedium)
                     }
-                    if (!out) Box {
-                        AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1) })
-                        DropdownMenu(open, { open = false }) {
-                            DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
-                            CategoryTree.ordered(data.categories).filter { cat -> cat.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.forEach { c ->
-                                DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
-                            }
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (!out) Box(Modifier.weight(1f)) {
+                            AssistChip(onClick = { open = true }, modifier = Modifier.fillMaxWidth(),
+                                label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) })
+                            DropdownMenu(open, { open = false }) {
+                                DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
+                                CategoryTree.ordered(data.categories).filter { cat -> cat.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.forEach { c ->
+                                    DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
+                                }
                         }
-                    }
-                    IconButton(onClick = { vm.edit { f0 -> f0.copy(excluded = if (out) f0.excluded - i else f0.excluded + i) } }, Modifier.size(36.dp)) {
-                        Icon(if (out) Icons.Default.Restore else Icons.Default.Close, if (out) "Rimetti la voce" else "Togli la voce: non fa parte dello scontrino", Modifier.size(18.dp))
+                        } else Spacer(Modifier.weight(1f))
+                        if (i in d.weakItems && !out) Text("⚠", color = SpeseTheme.finance.warning, modifier = Modifier.semantics { contentDescription = "Letta con poca sicurezza: controlla con la foto" })
+                        IconButton(onClick = { vm.edit { f0 -> f0.copy(excluded = if (out) f0.excluded - i else f0.excluded + i) } }, Modifier.size(36.dp)) {
+                            Icon(if (out) Icons.Default.Restore else Icons.Default.Close, if (out) "Rimetti la voce" else "Togli la voce: non fa parte dello scontrino", Modifier.size(18.dp))
+                        }
                     }
                 }
             }

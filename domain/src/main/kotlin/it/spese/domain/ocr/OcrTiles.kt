@@ -47,13 +47,16 @@ object OcrTiles {
         return kept.map { it.line }
     }
 
-    /** Riquadro che contiene tutto il testo, con un margine: toglie tavolo e sfondo, concentrando la lettura (e il contrasto) sulla carta. */
-    fun textBounds(lines: List<OcrLine>, width: Int, height: Int, marginFraction: Float = 0.04f): IntArray? {
+    /**
+     * Riquadro che contiene tutto il testo (comprese le righe più larghe: si usano gli estremi di ogni riga, non il centro), con un margine
+     * generoso: toglie tavolo e sfondo senza mai tagliare le prime lettere.
+     */
+    fun textBounds(lines: List<OcrLine>, width: Int, height: Int, marginFraction: Float = 0.06f): IntArray? {
         val usable = lines.filter { it.text.isNotBlank() }
         if (usable.size < 3) return null
         val h = usable.map { it.height }.sorted()[usable.size / 2]
-        val minX = usable.minOf { it.cx } ; val maxX = usable.maxOf { it.cx }
-        val minY = usable.minOf { it.cy }; val maxY = usable.maxOf { it.cy }
+        val minX = usable.minOf { it.cx - it.width / 2f }; val maxX = usable.maxOf { it.cx + it.width / 2f }
+        val minY = usable.minOf { it.cy - it.height / 2f }; val maxY = usable.maxOf { it.cy + it.height / 2f }
         val mx = maxOf(h * 2, width * marginFraction); val my = maxOf(h * 2, height * marginFraction)
         val l = (minX - mx).toInt().coerceAtLeast(0); val t = (minY - my).toInt().coerceAtLeast(0)
         val r = (maxX + mx).toInt().coerceAtMost(width); val b = (maxY + my).toInt().coerceAtMost(height)

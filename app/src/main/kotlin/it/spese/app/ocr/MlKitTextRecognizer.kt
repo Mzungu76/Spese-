@@ -78,7 +78,8 @@ class MlKitTextRecognizer @Inject constructor() : TextRecognizer {
                     val c = l.cornerPoints?.takeIf { it.size == 4 } ?: return@mapNotNull null
                     OcrLine(l.text, c.map { it.x }.average().toFloat(), c.map { it.y }.average().toFloat(),
                         OcrLayout.angle(c[0].x.toFloat(), c[0].y.toFloat(), c[1].x.toFloat(), c[1].y.toFloat()),
-                        kotlin.math.hypot((c[3].x - c[0].x).toFloat(), (c[3].y - c[0].y).toFloat()), l.confidence)
+                        kotlin.math.hypot((c[3].x - c[0].x).toFloat(), (c[3].y - c[0].y).toFloat()), l.confidence,
+                        kotlin.math.hypot((c[1].x - c[0].x).toFloat(), (c[1].y - c[0].y).toFloat()))
                 })
             }
             .addOnFailureListener { cont.resumeWithException(it) }
