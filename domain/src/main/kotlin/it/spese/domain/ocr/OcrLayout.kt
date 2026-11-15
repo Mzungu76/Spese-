@@ -14,21 +14,49 @@ data class OcrLine(val text: String, val cx: Float, val cy: Float, val angleRad:
  * (la tolleranza è metà dell'altezza del testo, non un numero fisso di pixel).
  */
 object OcrLayout {
+    private val NUMERIC = Regex("^[\\s\\d.,%€*+-]*\\d[\\s\\d.,%€*+-]*$")
+    private val ENDS_WITH_AMOUNT = Regex("-?\\d+[.,]\\d{2}\\s*[A-Za-z]{0,2}$")
+
+    private class P(val x: Float, val y: Float, val text: String)
+    private class Row(var y: Float, val frags: MutableList<P>) { fun text() = frags.sortedBy { it.x }.joinToString("  ") { it.text } }
+
+    private fun cluster(pts: List<P>, tol: Float): List<Row> {
+        val rows = ArrayList<Row>()
+        for (p in pts.sortedBy { it.y }) {
+            val r = rows.lastOrNull()
+            if (r != null && abs(p.y - r.y) <= tol) { r.frags.add(p); r.y = r.frags.map { it.y }.average().toFloat() } else rows.add(Row(p.y, mutableListOf(p)))
+        }
+        return rows
+    }
+
     fun rows(lines: List<OcrLine>): String {
         val usable = lines.filter { it.text.isNotBlank() }
         if (usable.isEmpty()) return ""
         val theta = median(usable.map { it.angleRad })
         val h = median(usable.map { it.height }).coerceAtLeast(6f)
         val cosT = cos(theta); val sinT = sin(theta)
-        data class P(val x: Float, val y: Float, val text: String)
-        val pts = usable.map { P(it.cx * cosT + it.cy * sinT, -it.cx * sinT + it.cy * cosT, it.text.trim()) }.sortedBy { it.y }
-        val rows = ArrayList<MutableList<P>>()
-        for (p in pts) {
-            val row = rows.lastOrNull()
-            val anchor = row?.let { r -> r.map { it.y }.average().toFloat() }
-            if (row != null && anchor != null && abs(p.y - anchor) <= h * 0.55f) row.add(p) else rows.add(mutableListOf(p))
+        val pts = usable.map { P(it.cx * cosT + it.cy * sinT, -it.cx * sinT + it.cy * cosT, it.text.trim()) }
+        val numeric = pts.filter { NUMERIC.matches(it.text) }
+        val words = pts.filter { !NUMERIC.matches(it.text) }
+        if (numeric.isEmpty() || words.isEmpty()) return cluster(pts, h * 0.55f).joinToString("\n") { it.text() }
+
+        // colonna delle descrizioni a sinistra e dei numeri (IVA, prezzo) a destra: prospettiva e curvatura della carta le fanno scivolare
+        // piano piano una rispetto all'altra (anche di più righe verso il fondo), quindi si abbinano in ordine seguendo lo scarto che cresce
+        val left = cluster(words, h * 0.45f)
+        val right = cluster(numeric, h * 0.45f).toMutableList()
+        val out = ArrayList<Pair<Float, String>>()
+        var offset = 0f
+        for (l in left) {
+            val text = l.text()
+            if (ENDS_WITH_AMOUNT.containsMatchIn(text)) { out.add(l.y to text); continue }     // già completa: prezzo sulla stessa riga
+            val best = right.minByOrNull { abs(it.y - l.y - offset) }
+            if (best != null && abs(best.y - l.y - offset) <= h * 0.8f) {
+                out.add(l.y to text + "  " + best.text()); right.remove(best)
+                offset = offset * 0.7f + (best.y - l.y) * 0.3f
+            } else out.add(l.y to text)
         }
-        return rows.joinToString("\n") { r -> r.sortedBy { it.x }.joinToString("  ") { it.text } }
+        right.forEach { out.add((it.y - offset) to it.text()) }                                    // numeri rimasti senza descrizione
+        return out.sortedBy { it.first }.joinToString("\n") { it.second }
     }
 
     /** Angolo (radianti) del bordo superiore di un riquadro dato dai primi due angoli. */

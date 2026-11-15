@@ -32,6 +32,7 @@ import it.spese.app.common.SubTopBar
 import androidx.compose.foundation.lazy.itemsIndexed
 import it.spese.core.designsystem.theme.SpeseTheme
 import it.spese.core.common.Money
+import it.spese.domain.usecase.ReceiptDedupe
 import it.spese.domain.usecase.ScanResult
 import it.spese.domain.finance.CategoryTree
 import it.spese.core.designsystem.component.*
@@ -123,7 +124,7 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, CategoryTree.ordered(data.categories), { CategoryTree.label(it, data.categoriesById) }, { c -> vm.edit { it.copy(categoryId = c.id, newParentId = null) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
         OutlinedTextField(f.notes, { v -> vm.edit { it.copy(notes = v) } }, Modifier.fillMaxWidth(), label = { Text("Note (IVA e voci riconosciute)") }, minLines = 2)
         d.vat?.let { Text("IVA riconosciuta: ${Money.eur(it)}", style = MaterialTheme.typography.bodyMedium) }
-        ReceiptChecks(s.result)
+        ReceiptChecks(s.result, f, vm)
         if (d.items.isNotEmpty()) SectionCard(title = "Voci riconosciute (${d.items.size})") {
             Text("Assegna a ogni voce la sua categoria (anche una sottocategoria): lo scontrino verrà diviso e vedrai nel dettaglio dove va la spesa. Le scelte fatte vengono ricordate e riproposte agli scontrini successivi; le voci senza scelta restano nella categoria principale.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -131,12 +132,13 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
                 var open by remember { mutableStateOf(false) }
                 val chosen = f.itemCategories.getOrNull(i)?.let { data.categoriesById[it] }
                 val proposed = f.itemNew.getOrNull(i)?.takeIf { chosen == null && it in f.createNames }
+                val out = i in f.excluded
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                        Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", maxLines = 1, style = MaterialTheme.typography.bodyMedium.let { st -> if (out) st.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, color = MaterialTheme.colorScheme.onSurfaceVariant) else st })
                         MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
                     }
-                    Box {
+                    if (!out) Box {
                         AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1) })
                         DropdownMenu(open, { open = false }) {
                             DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
@@ -144,6 +146,9 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
                                 DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
                             }
                         }
+                    }
+                    IconButton(onClick = { vm.edit { f0 -> f0.copy(excluded = if (out) f0.excluded - i else f0.excluded + i) } }, Modifier.size(36.dp)) {
+                        Icon(if (out) Icons.Default.Restore else Icons.Default.Close, if (out) "Rimetti la voce" else "Togli la voce: non fa parte dello scontrino", Modifier.size(18.dp))
                     }
                 }
             }
@@ -210,20 +215,35 @@ private fun PagesStrip(pages: List<String>, vm: ScanViewModel) {
     }
 }
 
-/** Esito dell'unione delle foto e quadratura delle voci col totale: dice subito se qualche riga manca o è doppia. */
+/** Esito dell'unione delle foto e quadratura delle voci col totale, con le correzioni a un tocco. */
 @Composable
-private fun ReceiptChecks(r: ScanResult) {
+private fun ReceiptChecks(r: ScanResult, f: ScanForm, vm: ScanViewModel) {
     val d = r.data
     val joins = r.overlaps.mapIndexed { i, n -> if (n > 0) null else "Tra la foto ${i + 1} e la ${i + 2} non ho trovato righe in comune: controlla che non manchino voci." }.filterNotNull()
-    val gap = d.itemsGap
-    if (r.pages <= 1 && gap == null) return
+    val included = d.items.filterIndexed { i, _ -> i !in f.excluded }
+    val sum = included.fold(java.math.BigDecimal.ZERO) { a, b -> a + b.amount }
+    val amount = it.spese.core.common.NumberParser.parseMoney(f.amountText)?.abs()
+    val gap = if (amount == null || included.isEmpty()) null else amount - sum
+    val repeated = remember(d) { ReceiptDedupe.repeatedBlocks(d.items) }
+    if (r.pages <= 1 && gap == null && f.note == null) return
     SectionCard(title = "Controllo della lettura") {
+        f.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
         if (r.pages > 1) Text(if (joins.isEmpty()) "${r.pages} foto unite: le righe doppie nelle sovrapposizioni sono state tolte." else "${r.pages} foto unite.", style = MaterialTheme.typography.bodyMedium)
         joins.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = SpeseTheme.finance.warning) }
         if (gap != null) {
             val ok = gap.abs() < java.math.BigDecimal("0.02")
-            Text(if (ok) "Le ${d.items.size} voci sommano ${Money.eur(d.itemsSum)}: torna con il totale." else "Le voci sommano ${Money.eur(d.itemsSum)} ma il totale è ${Money.eur(d.total!!)}: differenza ${Money.eur(gap.abs())}. Può mancare una riga (o essere stata letta male): confronta con la foto.",
-                style = MaterialTheme.typography.bodyMedium, color = if (ok) SpeseTheme.finance.positive else SpeseTheme.finance.warning)
+            if (ok) Text("Le ${included.size} voci sommano ${Money.eur(sum)}: torna con il totale.", style = MaterialTheme.typography.bodyMedium, color = SpeseTheme.finance.positive)
+            else {
+                Text("Le voci sommano ${Money.eur(sum)}, il totale è ${Money.eur(amount!!)}: differenza ${Money.eur(gap.abs())}." +
+                    if (gap.signum() < 0) " Probabile voce doppia o prezzo letto male." else " Probabile riga mancante o non letta.", style = MaterialTheme.typography.bodyMedium, color = SpeseTheme.finance.warning)
+                Text(if (gap.signum() < 0) "Puoi salvare comunque: ripartisco il totale in proporzione tra le categorie scelte. Per un risultato esatto togli le voci sbagliate (la ×) o usa i pulsanti qui sotto."
+                    else "Puoi salvare comunque: la differenza resta nella categoria principale.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val extra = repeated.filter { it !in f.excluded }
+                    if (extra.isNotEmpty()) AssistChip(onClick = { vm.edit { f0 -> f0.copy(excluded = f0.excluded + extra) } }, label = { Text("Togli ${extra.size} voci ripetute") })
+                    AssistChip(onClick = { vm.edit { f0 -> f0.copy(amountText = sum.toPlainString().replace('.', ',')) } }, label = { Text("Totale = somma voci (${Money.eur(sum)})") })
+                }
+            }
         }
     }
 }

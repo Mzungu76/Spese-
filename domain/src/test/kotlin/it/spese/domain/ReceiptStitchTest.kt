@@ -248,3 +248,19 @@ class ReceiptRobustnessTest {
 
     private fun cat(id: Long, name: String) = it.spese.core.model.Category(id, name, it.spese.core.model.TxKind.SPESA, false, 0)
 }
+
+class ReceiptDedupeTest {
+    private fun item(d: String, a: String) = it.spese.domain.ocr.ReceiptItem(d, BigDecimal(a))
+    private val dedupe = it.spese.domain.usecase.ReceiptDedupe
+
+    @org.junit.Test fun `un blocco di voci ripetuto subito dopo e una sovrapposizione non riconosciuta`() {
+        val items = listOf(item("PANE", "0.85"), item("LATTE", "1.19"), item("UOVA", "2.45"), item("BURRO", "1.85"),
+            item("LATTE", "1.19"), item("UOVA", "2.45"), item("BURRO", "1.85"), item("SUGO", "1.39"))
+        assertEquals(setOf(4, 5, 6), dedupe.repeatedBlocks(items))      // LATTE UOVA BURRO due volte di fila: la seconda è la sovrapposizione
+    }
+
+    @org.junit.Test fun `acquisti ripetuti veri non si toccano`() {
+        val items = listOf(item("PROSCIUTTO COTTO", "1.79"), item("PROSCIUTTO COTTO", "1.79"), item("PANE", "0.85"), item("LENTICCHIE", "0.49"), item("PANE", "0.85"), item("LENTICCHIE", "0.49"))
+        assertTrue(dedupe.repeatedBlocks(items).isEmpty())                // coppie, non blocchi da 3
+    }
+}

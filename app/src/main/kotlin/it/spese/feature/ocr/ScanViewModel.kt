@@ -12,6 +12,7 @@ import it.spese.domain.classification.Classifier
 import it.spese.domain.finance.CategoryTree
 import it.spese.domain.ocr.ItemSuggester
 import it.spese.domain.ocr.ParentChooser
+import it.spese.domain.usecase.ReceiptDedupe
 import it.spese.domain.usecase.*
 import java.io.File
 import java.time.LocalDate
@@ -43,6 +44,10 @@ data class ScanForm(
     val createNames: Set<String> = emptySet(),
     /** Categoria principale scelta per le nuove sottocategorie (null = quella della categoria dello scontrino). */
     val newParentId: Long? = null,
+    /** Voci escluse dall'utente (o dal controllo delle voci ripetute): non contano nel totale né nella divisione. */
+    val excluded: Set<Int> = emptySet(),
+    /** Messaggio informativo sulla lettura (es. «ho tolto 6 voci ripetute»). */
+    val note: String? = null,
 )
 
 @HiltViewModel
@@ -104,13 +109,19 @@ class ScanViewModel @Inject constructor(
             val cats = data.value.categories; val byId = data.value.categoriesById
             val auto = Classifier(cats, data.value.rules).classify(d.description, (d.total ?: java.math.BigDecimal.ONE).negate(), null).categoryId
             val parent = CategoryTree.rootId(auto, byId)?.takeIf { p -> byId[p]?.let { c -> c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null } == true }
+            // se le voci superano il totale e c'è un blocco ripetuto (sovrapposizione tra foto non riconosciuta), si toglie in automatico
+            val dup = ReceiptDedupe.repeatedBlocks(d.items)
+            val gapNow = d.itemsGap
+            val dupFixes = dup.isNotEmpty() && gapNow != null && gapNow.signum() < 0 &&
+                (d.total!! - (d.itemsSum - dup.fold(java.math.BigDecimal.ZERO) { a, i -> a + d.items[i].amount })).abs() < gapNow.abs()
             val descs = d.items.map { item -> item.description }
             // spesa fatta di cibo: la principale è «Supermercato/Alimentari», anche se le regole davano altro per il nome del negozio
             val chosenParent = ParentChooser.choose(descs, cats, parent)
             val sugg = ItemSuggester.suggest(descs, memory.get(), cats, chosenParent)
             _form.value = ScanForm(d.description, d.total?.toPlainString()?.replace('.', ',') ?: "", false, d.date ?: LocalDate.now(),
                 data.value.accounts.firstOrNull { !it.archived }?.id, chosenParent?.takeIf { it != parent }, notes, itemCategories = sugg.map { it.categoryId },
-                autoCategoryId = auto, itemNew = sugg.map { it.newName }, createNames = sugg.mapNotNull { it.newName }.toSet(), newParentId = chosenParent)
+                autoCategoryId = auto, itemNew = sugg.map { it.newName }, createNames = sugg.mapNotNull { it.newName }.toSet(), newParentId = chosenParent,
+                excluded = if (dupFixes) dup else emptySet(), note = if (dupFixes) "Ho tolto ${dup.size} voci ripetute (la sovrapposizione tra le foto non era stata riconosciuta)." else null)
             _stage.value = ScanStage.Review(r)
             clearPages()
         } catch (e: Exception) { _stage.value = ScanStage.Failed(e.message ?: "Riconoscimento non riuscito") }
@@ -148,14 +159,18 @@ class ScanViewModel @Inject constructor(
                 catch (e: Exception) { data.value.categories.firstOrNull { c -> c.name.equals(n, ignoreCase = true) }?.id ?: throw e }
                 created[n] = id
             }
-            val itemCats = r.data.items.indices.map { i -> f.itemCategories.getOrNull(i) ?: f.itemNew.getOrNull(i)?.let { created[it] } }
-            val parts = ReceiptSplitPlanner.plan(amt, r.data.items, itemCats, f.categoryId ?: f.autoCategoryId, !f.isIncome)
+            val keep = r.data.items.indices.filter { it !in f.excluded }
+            val itemCats = keep.map { i -> f.itemCategories.getOrNull(i) ?: f.itemNew.getOrNull(i)?.let { created[it] } }
+            val keptItems = keep.map { r.data.items[it] }
+            val proportional = ReceiptSplitPlanner.isProportional(amt, keptItems)
+            val parts = ReceiptSplitPlanner.plan(amt, keptItems, itemCats, f.categoryId ?: f.autoCategoryId, !f.isIncome)
             // l'app ricorda le scelte per le voci: la prossima volta le propone da sola
-            memory.learn(r.data.items.mapIndexedNotNull { i, item -> itemCats.getOrNull(i)?.let { c -> it.spese.domain.ocr.ItemMemory.key(item.description).takeIf { k -> k.isNotBlank() }?.let { k -> k to c } } }.toMap())
+            memory.learn(keptItems.mapIndexedNotNull { i, item -> itemCats.getOrNull(i)?.let { c -> it.spese.domain.ocr.ItemMemory.key(item.description).takeIf { k -> k.isNotBlank() }?.let { k -> k to c } } }.toMap())
             val existing = candidates.value.firstOrNull()?.takeIf { f.attach }
             saveReceipt(TransactionDraft(0, acc, f.date, f.date, f.description, signed, f.categoryId, null, f.notes, r.document.id, it.spese.core.model.TxOrigin.OCR), r.document.id, parts, existing?.id)
             messenger.show(when {
                 existing != null -> "Scontrino collegato al movimento già presente: nessun doppione"
+                parts.size >= 2 && proportional -> "Scontrino salvato: le voci non tornavano col totale, ho ripartito il totale in proporzione tra ${parts.size} categorie"
                 parts.size >= 2 -> "Scontrino salvato e diviso in ${parts.size} categorie; l'estratto conto lo sostituirà senza perdere i dettagli"
                 else -> "Movimento salvato con il documento allegato"
             })

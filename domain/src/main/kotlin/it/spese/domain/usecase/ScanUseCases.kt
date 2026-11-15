@@ -65,10 +65,30 @@ class DeleteDocumentUseCase @Inject constructor(
 
 /** Dalle voci dello scontrino alle parti della divisione: ogni categoria scelta per le voci diventa una parte, il resto resta alla categoria principale. */
 object ReceiptSplitPlanner {
+    /** Le voci sommano più del totale (righe doppie, prezzi letti male): non si può usare il resto, si ripartisce il totale in proporzione. */
+    fun isProportional(total: BigDecimal, items: List<ReceiptItem>): Boolean =
+        items.fold(BigDecimal.ZERO) { a, b -> a + b.amount.abs() } > total.abs() + BigDecimal("0.02")
+
     /** @param itemCategories categoria scelta per ogni voce (stesso ordine di `items`; null = resta alla categoria principale)
-     *  @return lista vuota se nessuna voce ha una categoria diversa dalla principale; altrimenti le parti (con importo col segno del movimento). */
+     *  @return lista vuota se nessuna voce ha una categoria diversa dalla principale; altrimenti le parti (con importo col segno del movimento).
+     *  Se le voci superano il totale, ogni categoria prende la sua quota percentuale del totale (le parti sommano sempre il totale). */
     fun plan(total: BigDecimal, items: List<ReceiptItem>, itemCategories: List<Long?>, mainCategoryId: Long?, expense: Boolean): List<SplitPartInput> {
-        val sign = if (expense) -1 else 1
+        val sign = BigDecimal(if (expense) -1 else 1)
+        val sum = items.fold(BigDecimal.ZERO) { a, b -> a + b.amount.abs() }
+        if (items.indices.none { i -> itemCategories.getOrNull(i).let { c -> c != null && c != mainCategoryId } }) return emptyList()
+        if (isProportional(total, items)) {
+            val byCat = LinkedHashMap<Long?, BigDecimal>()
+            items.forEachIndexed { i, it -> byCat.merge(itemCategories.getOrNull(i) ?: mainCategoryId, it.amount.abs()) { a, b -> a + b } }
+            if (byCat.size < 2) return emptyList()
+            val entries = byCat.entries.toList()
+            val parts = ArrayList<SplitPartInput>(); var used = BigDecimal.ZERO
+            entries.forEachIndexed { k, (c, v) ->
+                val share = if (k == entries.lastIndex) total.abs() - used else Money.scale(total.abs().multiply(v).divide(sum, 10, java.math.RoundingMode.HALF_UP))
+                used += share
+                if (share.signum() > 0) parts.add(SplitPartInput(c, share.multiply(sign)))
+            }
+            return parts
+        }
         val moved = LinkedHashMap<Long, BigDecimal>()
         items.forEachIndexed { i, it ->
             val c = itemCategories.getOrNull(i) ?: return@forEachIndexed
@@ -77,10 +97,26 @@ object ReceiptSplitPlanner {
         if (moved.isEmpty()) return emptyList()
         val movedSum = moved.values.fold(BigDecimal.ZERO) { a, b -> a + b }
         val rest = total.abs().subtract(movedSum)
-        require(rest.signum() >= 0) { "Le voci assegnate (${Money.eur(movedSum)}) superano il totale dello scontrino." }
-        val parts = moved.map { (c, v) -> SplitPartInput(c, Money.scale(v).multiply(BigDecimal(sign))) }.toMutableList()
-        if (rest.signum() > 0) parts.add(0, SplitPartInput(mainCategoryId, Money.scale(rest).multiply(BigDecimal(sign))))
+        val parts = moved.map { (c, v) -> SplitPartInput(c, Money.scale(v).multiply(sign)) }.toMutableList()
+        if (rest.signum() > 0) parts.add(0, SplitPartInput(mainCategoryId, Money.scale(rest).multiply(sign)))
         return parts
+    }
+}
+
+/** Voci ripetute: un blocco di almeno 3 voci uguali a quello appena prima è quasi sempre la sovrapposizione tra due foto non riconosciuta. */
+object ReceiptDedupe {
+    fun repeatedBlocks(items: List<ReceiptItem>): Set<Int> {
+        val keys = items.map { ReceiptStitcher.key(it.description) }
+        val out = HashSet<Int>()
+        var i = 0
+        while (i < items.size) {
+            var found = 0
+            for (len in minOf((items.size - i) / 2, 60) downTo 3) {
+                if ((0 until len).all { k -> keys[i + k].isNotEmpty() && keys[i + k] == keys[i + len + k] }) { found = len; break }
+            }
+            if (found > 0) { for (k in 0 until found) out.add(i + found + k); i += 2 * found } else i++
+        }
+        return out
     }
 }
 

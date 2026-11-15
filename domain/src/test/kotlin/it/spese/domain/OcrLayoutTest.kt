@@ -33,3 +33,27 @@ class OcrLayoutTest {
         assertEquals(listOf("TOTALE COMPLESSIVO €  80.85", "DI CUI IVA  7.82"), out)
     }
 }
+
+class OcrDriftTest {
+    private val a = 0f
+    /** Descrizioni a sinistra e prezzi a destra: il prezzo scivola verso il basso di [driftPerRow] pixel a ogni riga (prospettiva, carta curva). */
+    private fun drifting(n: Int, pitch: Float, driftPerRow: Float, extraRows: Set<Int> = emptySet()): Pair<List<OcrLine>, List<String>> {
+        val lines = ArrayList<OcrLine>(); val expected = ArrayList<String>()
+        var row = 0
+        for (i in 0 until n) {
+            val y = row * pitch
+            if (i in extraRows) { lines.add(OcrLine("ARTICOLI $i", 120f, 100f + y, a, pitch * 0.8f)); expected.add("ARTICOLI $i"); row++; continue }
+            val d = "PRODOTTO ${"ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i % 26]}$i"; val p = "10% $i.49"
+            lines.add(OcrLine(d, 120f, 100f + y, a, pitch * 0.8f)); lines.add(OcrLine(p, 900f, 100f + y + driftPerRow * row, a, pitch * 0.8f))
+            expected.add("$d  $p"); row++
+        }
+        return lines to expected
+    }
+
+    @Test fun `i prezzi che scivolano di piu di una riga restano abbinati alla loro descrizione`() {
+        // 1,3 px di scarto a riga su 24 px di passo: dopo 40 righe il prezzo è un'intera riga più in basso
+        val (lines, expected) = drifting(50, 24f, 1.3f, extraRows = setOf(10, 30))
+        val out = OcrLayout.rows(lines.shuffled(java.util.Random(3))).lines()
+        assertEquals(expected, out)
+    }
+}

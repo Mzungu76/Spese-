@@ -81,8 +81,12 @@ class ReceiptDbTest {
         assertEquals(0, BigDecimal("-1.50").compareTo(p[0].amount)); assertEquals(0, BigDecimal("-9.50").compareTo(p[1].amount))
         assertTrue(ReceiptSplitPlanner.plan(BigDecimal("11.00"), items, listOf(null, null, null), 1L, true).isEmpty())
         assertTrue(ReceiptSplitPlanner.plan(BigDecimal("11.00"), items, listOf(1L, 1L, 1L), 1L, true).isEmpty())
-        // le voci assegnate superano il totale
-        assertThrows(IllegalArgumentException::class.java) { ReceiptSplitPlanner.plan(BigDecimal("5.00"), items, listOf(7L, 7L, 7L), 1L, true) }
+        // le voci (11,00) superano il totale (5,00): si ripartisce in proporzione e le parti sommano comunque il totale
+        val prop = ReceiptSplitPlanner.plan(BigDecimal("5.00"), items, listOf(7L, null, 8L), 1L, true)
+        assertEquals(3, prop.size); assertEquals(0, BigDecimal("-5.00").compareTo(prop.sumOf { it.amount }))
+        assertTrue(ReceiptSplitPlanner.isProportional(BigDecimal("5.00"), items)); assertFalse(ReceiptSplitPlanner.isProportional(BigDecimal("11.00"), items))
+        // tutte nella stessa categoria: nessuna divisione
+        assertTrue(ReceiptSplitPlanner.plan(BigDecimal("5.00"), items, listOf(7L, 7L, 7L), 1L, true).isEmpty())
     }
 
     @Test fun `la memoria delle voci viaggia nel backup e si ritrova per nome di categoria`() = runBlocking {
