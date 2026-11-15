@@ -16,15 +16,15 @@ object ReceiptStitcher {
     private const val MIN_MATCHES = 3
     private const val MAX_LINES = 160
 
-    fun key(line: String): String = line.lowercase().filter { it.isLetterOrDigit() }
+    /** Chiave di confronto: solo le lettere (prezzi, IVA e simboli cambiano da una foto all'altra per piccoli errori dell'OCR). */
+    fun key(line: String): String = line.lowercase().filter { it.isLetter() }
 
     private fun similar(a: String, b: String): Boolean {
         val x = key(a); val y = key(b)
-        if (x.length < 3 || y.length < 3) return false
+        if (x.length < 4 || y.length < 4) return false
         if (x == y) return true
         val longer = maxOf(x.length, y.length)
-        if (longer < 6) return false
-        return distance(x, y) <= longer * 0.2
+        return distance(x, y) <= longer * 0.25
     }
 
     private fun distance(a: String, b: String): Int {
@@ -73,9 +73,9 @@ object ReceiptStitcher {
         }
         if (pairs.size < MIN_MATCHES) return null
         val (la, lb) = pairs.last()
-        // la zona in comune deve finire in fondo alla prima foto (al più 3 righe tagliate dopo) e coprire quasi tutta la testa della seconda
-        if (n - 1 - la > 3) return null
-        if (pairs.size < (lb + 1) * 0.6) return null
+        // la zona in comune deve finire in fondo alla prima foto (al più 6 righe tagliate dopo) e coprire quasi tutta la testa della seconda
+        if (n - 1 - la > 6) return null
+        if (pairs.size < (lb + 1) * 0.5) return null
         // nella zona in comune la seconda foto è più affidabile in fondo (la prima è tagliata) e la prima in cima (la seconda è tagliata): si passa alla seconda dalla terza riga di questa
         val cut = pairs.firstOrNull { it.second >= 2 } ?: pairs.last()
         return Join(aOff + cut.first, cut.second, pairs.size)

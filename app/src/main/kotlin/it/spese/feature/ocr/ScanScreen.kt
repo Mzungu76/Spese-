@@ -120,7 +120,7 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         OutlinedTextField(f.description, { v -> vm.edit { it.copy(description = v) } }, Modifier.fillMaxWidth(), label = { Text("Descrizione / esercente" + if (d.merchant == null) " (non riconosciuto)" else "") })
         DateField(f.date, { v -> vm.edit { it.copy(date = v) } }, "Data" + if (d.date == null) " (non riconosciuta)" else "", Modifier.fillMaxWidth())
         DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts.filter { !it.archived }, { it.name }, { a -> vm.edit { it.copy(accountId = a.id) } })
-        DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, CategoryTree.ordered(data.categories), { CategoryTree.label(it, data.categoriesById) }, { c -> vm.edit { it.copy(categoryId = c.id) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
+        DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, CategoryTree.ordered(data.categories), { CategoryTree.label(it, data.categoriesById) }, { c -> vm.edit { it.copy(categoryId = c.id, newParentId = null) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
         OutlinedTextField(f.notes, { v -> vm.edit { it.copy(notes = v) } }, Modifier.fillMaxWidth(), label = { Text("Note (IVA e voci riconosciute)") }, minLines = 2)
         d.vat?.let { Text("IVA riconosciuta: ${Money.eur(it)}", style = MaterialTheme.typography.bodyMedium) }
         ReceiptChecks(s.result)
@@ -152,7 +152,9 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         if (newNames.isNotEmpty()) {
             val parent = vm.parentFor(f)
             SectionCard(title = "Sottocategorie da creare") {
-                if (parent == null) Text("Scegli una categoria principale (es. Supermercato) per creare queste sottocategorie: ${newNames.keys.joinToString(", ")}.", style = MaterialTheme.typography.bodyMedium)
+                val tops = data.categories.filter { c -> c.active && c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null && c.parentId == null }
+                DropdownField("Crea in", parent, tops, { c -> c.name }, { c -> vm.edit { f0 -> f0.copy(newParentId = c.id) } })
+                if (parent == null) Text("Scegli la categoria principale (es. Supermercato) in cui creare: ${newNames.keys.joinToString(", ")}.", style = MaterialTheme.typography.bodyMedium)
                 else {
                     Text("Propongo queste sottocategorie in ${parent.name}, in base ai prodotti riconosciuti. Si creano solo se salvi lo scontrino; togli la spunta a quelle che non vuoi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     newNames.forEach { (n, count) ->
@@ -176,7 +178,11 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         }
         var showText by remember { mutableStateOf(false) }
         TextButton(onClick = { showText = !showText }) { Text(if (showText) "Nascondi testo estratto" else "Mostra testo estratto") }
-        if (showText) Text(d.rawText.ifBlank { "(nessun testo riconosciuto)" }, style = MaterialTheme.typography.bodySmall)
+        if (showText) {
+            val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+            Text(d.rawText.ifBlank { "(nessun testo riconosciuto)" }, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(d.rawText)) }) { Text("Copia il testo letto") }
+        }
         f.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(onClick = vm::confirm, Modifier.fillMaxWidth()) { Text("Salva movimento con documento") }
         OutlinedButton(onClick = vm::discard, Modifier.fillMaxWidth()) { Text("Scarta e rifai la scansione") }

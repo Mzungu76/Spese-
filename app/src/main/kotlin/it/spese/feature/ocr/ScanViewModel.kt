@@ -11,6 +11,7 @@ import it.spese.domain.repository.AppData
 import it.spese.domain.classification.Classifier
 import it.spese.domain.finance.CategoryTree
 import it.spese.domain.ocr.ItemSuggester
+import it.spese.domain.ocr.ParentChooser
 import it.spese.domain.usecase.*
 import java.io.File
 import java.time.LocalDate
@@ -40,6 +41,8 @@ data class ScanForm(
     val itemNew: List<String?> = emptyList(),
     /** Nomi delle sottocategorie da creare che l'utente ha lasciato selezionati. */
     val createNames: Set<String> = emptySet(),
+    /** Categoria principale scelta per le nuove sottocategorie (null = quella della categoria dello scontrino). */
+    val newParentId: Long? = null,
 )
 
 @HiltViewModel
@@ -101,10 +104,13 @@ class ScanViewModel @Inject constructor(
             val cats = data.value.categories; val byId = data.value.categoriesById
             val auto = Classifier(cats, data.value.rules).classify(d.description, (d.total ?: java.math.BigDecimal.ONE).negate(), null).categoryId
             val parent = CategoryTree.rootId(auto, byId)?.takeIf { p -> byId[p]?.let { c -> c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null } == true }
-            val sugg = ItemSuggester.suggest(d.items.map { item -> item.description }, memory.get(), cats, parent)
+            val descs = d.items.map { item -> item.description }
+            // spesa fatta di cibo: la principale è «Supermercato/Alimentari», anche se le regole davano altro per il nome del negozio
+            val chosenParent = ParentChooser.choose(descs, cats, parent)
+            val sugg = ItemSuggester.suggest(descs, memory.get(), cats, chosenParent)
             _form.value = ScanForm(d.description, d.total?.toPlainString()?.replace('.', ',') ?: "", false, d.date ?: LocalDate.now(),
-                data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = sugg.map { it.categoryId },
-                autoCategoryId = auto, itemNew = sugg.map { it.newName }, createNames = sugg.mapNotNull { it.newName }.toSet())
+                data.value.accounts.firstOrNull { !it.archived }?.id, chosenParent?.takeIf { it != parent }, notes, itemCategories = sugg.map { it.categoryId },
+                autoCategoryId = auto, itemNew = sugg.map { it.newName }, createNames = sugg.mapNotNull { it.newName }.toSet(), newParentId = chosenParent)
             _stage.value = ScanStage.Review(r)
             clearPages()
         } catch (e: Exception) { _stage.value = ScanStage.Failed(e.message ?: "Riconoscimento non riuscito") }
@@ -119,7 +125,7 @@ class ScanViewModel @Inject constructor(
     /** Categoria principale in cui creare le nuove sottocategorie: quella scelta (o la sua principale), altrimenti quella che darebbero le regole. */
     fun parentFor(f: ScanForm): it.spese.core.model.Category? {
         val byId = data.value.categoriesById
-        val root = CategoryTree.rootId(f.categoryId ?: f.autoCategoryId, byId) ?: return null
+        val root = f.newParentId ?: CategoryTree.rootId(f.categoryId ?: f.autoCategoryId, byId) ?: return null
         return byId[root]?.takeIf { c -> c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null }
     }
 

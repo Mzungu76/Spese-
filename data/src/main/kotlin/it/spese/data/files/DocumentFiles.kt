@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 /**
  * Archivio locale delle fotografie dei documenti, nella memoria privata dell'app (`filesDir/documents`):
  * non sono visibili ad altre app, non vengono inviate online e vengono rimosse con la disinstallazione.
- * Le immagini sono ridimensionate (lato massimo 2000 px) e compresse in JPEG per risparmiare spazio.
+ * Le immagini sono ridimensionate (lato massimo 2800 px, abbastanza per leggere i caratteri piccoli degli scontrini) e compresse in JPEG per risparmiare spazio.
  */
 @Singleton
 class DocumentFiles @Inject constructor(@ApplicationContext private val context: Context) : DocumentStore {
@@ -43,7 +43,7 @@ class DocumentFiles @Inject constructor(@ApplicationContext private val context:
             }
         } catch (e: Exception) { 0f }
         val maxSide = maxOf(bmp.width, bmp.height)
-        val scale = if (maxSide > 2000) 2000f / maxSide else 1f
+        val scale = if (maxSide > 2800) 2800f / maxSide else 1f
         if (rotation != 0f || scale != 1f) {
             val m = Matrix().apply { postRotate(rotation); postScale(scale, scale) }
             bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)

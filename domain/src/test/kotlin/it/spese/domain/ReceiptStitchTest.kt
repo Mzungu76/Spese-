@@ -2,6 +2,7 @@ package it.spese.domain
 
 import it.spese.domain.ocr.ItemSuggester
 import it.spese.domain.ocr.ItemSuggestion
+import it.spese.domain.ocr.ParentChooser
 import it.spese.domain.ocr.ProductDictionary
 import it.spese.domain.ocr.ReceiptParser
 import it.spese.domain.ocr.ReceiptStitcher
@@ -208,4 +209,42 @@ class ProductDictionaryTest {
         // senza una categoria principale non si propone di creare nulla
         assertEquals(ItemSuggestion(null, null), ItemSuggester.suggest(listOf("NUTELLA 750G"), emptyMap(), cats, null)[0])
     }
+}
+
+class ReceiptRobustnessTest {
+    @org.junit.Test fun `totale e prezzi su righe separate o righe unite dall OCR`() {
+        // «TOTALE COMPLESSIVO €» e la cifra su righe diverse
+        val a = ReceiptParser.parse("COOP\nPANE 4% 0.85\nLATTE 4% 1.19\nTOTALE COMPLESSIVO €\n2.04\nDI CUI IVA\n0.08", LocalDate.parse("2026-11-16"))
+        assertEquals(0, BigDecimal("2.04").compareTo(a.total)); assertEquals(0, BigDecimal("0.08").compareTo(a.vat))
+        // l'OCR ha unito il totale e l'IVA sulla stessa riga: vale la prima cifra dopo «totale», non l'ultima
+        val b = ReceiptParser.parse("COOP\nPANE 4% 0.85\nLATTE 4% 1.19\nTOTALE COMPLESSIVO € 2.04  DI CUI IVA 0.08", LocalDate.parse("2026-11-16"))
+        assertEquals(0, BigDecimal("2.04").compareTo(b.total))
+        // descrizione e prezzo su due righe
+        val c = ReceiptParser.parse("COOP\nPANE BIANCO\n4% 0.85\nLATTE INTERO\n1.19\nTOTALE 2.04", LocalDate.parse("2026-11-16"))
+        assertEquals(2, c.items.size); assertEquals(0, BigDecimal("2.04").compareTo(c.total))
+    }
+
+    @org.junit.Test fun `se la cifra del totale e letta male vale la somma delle voci quando compare nel documento`() {
+        val d = ReceiptParser.parse("COOP\nPANE 4% 0.85\nLATTE 4% 1.19\nPAGAMENTO ELETTRONICO 2.04\nTOTALE COMPLESSIVO 20.4", LocalDate.parse("2026-11-16"))
+        assertEquals(0, BigDecimal("2.04").compareTo(d.total))
+    }
+
+    @org.junit.Test fun `le foto si uniscono anche se i prezzi sono letti diversamente`() {
+        val a = "PANE BIANCO 4% 0.85\nLATTE INTERO 4% 1.19\nUOVA FRESCHE 10% 2.45\nBURRO 4% 1.85\nPASTA PENNE 10% 0.99\nSUGO PRONTO 10% 1.39"
+        val b = "LATTE INTERO 4% 1,19\nUOVA FRESCHE 10% 2.4S\nBURRO 4% I.85\nPASTA PENNE 10% 0.99\nSUGO PRONTO 10% 1.39\nBISCOTTI 10% 1.79\nTOTALE 12.10"
+        val r = ReceiptStitcher.merge(listOf(a, b))
+        assertEquals(0, r.gaps); assertEquals(8, r.text.lines().size)
+    }
+
+    @org.junit.Test fun `abbreviazioni dello scontrino e scelta della principale`() {
+        assertEquals("Animali", ProductDictionary.groupOf("CROCC. GATTI")); assertEquals("Animali", ProductDictionary.groupOf("CROCC.GATTO 1KG"))
+        assertEquals("Salumi e carne", ProductDictionary.groupOf("PROSC. COTTO")); assertEquals("Latticini e uova", ProductDictionary.groupOf("FORMAGG. SPALM."))
+        val cats = listOf(cat(1, "Casa e giardino"), cat(2, "Supermercato e alimentari"), cat(3, "Trasporti"))
+        val food = listOf("LATTE ALTA DIGERIBIL", "PANE BIANCO", "PASTA PENNE", "DET.CAPI SPORTIVI")
+        assertEquals(2L, ParentChooser.choose(food, cats, 1L))                    // le regole davano «Casa e giardino» per il nome del negozio
+        assertEquals(1L, ParentChooser.choose(listOf("DET.CAPI SPORTIVI", "SACCHI PATTUME", "GUANTI"), cats, 1L))   // prevalgono i prodotti per la casa
+        assertEquals(1L, ParentChooser.choose(food, listOf(cat(1, "Casa e giardino")), 1L))                         // nessuna categoria da supermercato: si resta
+    }
+
+    private fun cat(id: Long, name: String) = it.spese.core.model.Category(id, name, it.spese.core.model.TxKind.SPESA, false, 0)
 }

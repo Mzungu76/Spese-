@@ -4,6 +4,8 @@ import android.graphics.BitmapFactory
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import it.spese.domain.ocr.OcrLayout
+import it.spese.domain.ocr.OcrLine
 import it.spese.domain.repository.TextRecognizer
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,24 +28,16 @@ class MlKitTextRecognizer @Inject constructor() : TextRecognizer {
         return suspendCancellableCoroutine { cont ->
             recognizer.process(InputImage.fromBitmap(bmp, 0))
                 .addOnSuccessListener { r ->
-                    // ricostruisce le righe nell'ordine di lettura, una per riga visiva
-                    val text = r.textBlocks.flatMap { it.lines }.sortedWith(compareBy({ it.boundingBox?.top ?: 0 / 20 }, { it.boundingBox?.left ?: 0 }))
-                        .let { lines -> groupByRow(lines.map { Triple(it.boundingBox?.centerY() ?: 0, it.boundingBox?.left ?: 0, it.text) }) }
-                    cont.resume(text)
+                    // righe ricostruite dalla posizione (raddrizzando l'inclinazione): descrizione, IVA e prezzo tornano sulla stessa riga
+                    val ocr = r.textBlocks.flatMap { it.lines }.mapNotNull { l ->
+                        val c = l.cornerPoints?.takeIf { it.size == 4 } ?: return@mapNotNull null
+                        OcrLine(l.text, c.map { it.x }.average().toFloat(), c.map { it.y }.average().toFloat(),
+                            OcrLayout.angle(c[0].x.toFloat(), c[0].y.toFloat(), c[1].x.toFloat(), c[1].y.toFloat()),
+                            kotlin.math.hypot((c[3].x - c[0].x).toFloat(), (c[3].y - c[0].y).toFloat()))
+                    }
+                    cont.resume(if (ocr.isEmpty()) r.text else OcrLayout.rows(ocr))
                 }
                 .addOnFailureListener { cont.resumeWithException(it) }
         }
-    }
-
-    /** Unisce i frammenti che stanno sulla stessa riga (descrizione a sinistra, importo a destra). */
-    private fun groupByRow(items: List<Triple<Int, Int, String>>): String {
-        if (items.isEmpty()) return ""
-        val sorted = items.sortedBy { it.first }
-        val rows = ArrayList<MutableList<Triple<Int, Int, String>>>()
-        for (it in sorted) {
-            val last = rows.lastOrNull()
-            if (last != null && kotlin.math.abs(last.last().first - it.first) <= 18) last.add(it) else rows.add(mutableListOf(it))
-        }
-        return rows.joinToString("\n") { r -> r.sortedBy { it.second }.joinToString("  ") { it.third } }
     }
 }
