@@ -10,6 +10,8 @@ import it.spese.core.common.NumberParser
 import it.spese.domain.repository.AppData
 import it.spese.domain.classification.Classifier
 import it.spese.domain.finance.CategoryTree
+import android.graphics.BitmapFactory
+import it.spese.domain.ocr.ImageQuality
 import it.spese.domain.ocr.ItemSuggester
 import it.spese.domain.ocr.ParentChooser
 import it.spese.domain.usecase.ReceiptDedupe
@@ -65,6 +67,9 @@ class ScanViewModel @Inject constructor(
     /** Foto scattate o scelte per lo scontrino corrente, dall'alto verso il basso (file nella cache, eliminati a fine lavoro). */
     private val _pages = MutableStateFlow<List<String>>(emptyList())
     val pages: StateFlow<List<String>> = _pages.asStateFlow()
+    /** Foto che sembrano mosse o sfocate (da rifare, se si vuole una lettura affidabile). */
+    private val _blurry = MutableStateFlow<Set<String>>(emptySet())
+    val blurry: StateFlow<Set<String>> = _blurry.asStateFlow()
 
     /** Aggiunge una foto: un'immagine della galleria (URI) viene copiata nella cache così la miniatura e la lettura funzionano allo stesso modo. */
     fun addPage(source: String) = viewModelScope.launch {
@@ -74,14 +79,30 @@ class ScanViewModel @Inject constructor(
             f.absolutePath
         } else source
         _pages.value = _pages.value + path
+        val sharp = withContext(Dispatchers.Default) { sharpnessOf(path) }
+        if (sharp != null && ImageQuality.isBlurry(sharp)) {
+            _blurry.value = _blurry.value + path
+            messenger.show("La foto ${_pages.value.indexOf(path) + 1} sembra mossa o sfocata: conviene rifarla (la × la toglie).")
+        }
     }
-    fun removePage(index: Int) { _pages.value.getOrNull(index)?.let { File(it).delete() }; _pages.value = _pages.value.filterIndexed { i, _ -> i != index } }
+
+    /** Nitidezza della foto su una versione ridotta (~640 px di larghezza); null se non si riesce a leggerla. */
+    private fun sharpnessOf(path: String): Double? = try {
+        val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(path, o)
+        var sample = 1; while (o.outWidth / (sample * 2) >= 640) sample *= 2
+        BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })?.let { b ->
+            val px = IntArray(b.width * b.height); b.getPixels(px, 0, b.width, 0, 0, b.width, b.height)
+            val lum = IntArray(px.size) { i -> (0.299 * android.graphics.Color.red(px[i]) + 0.587 * android.graphics.Color.green(px[i]) + 0.114 * android.graphics.Color.blue(px[i])).toInt() }
+            ImageQuality.sharpness(lum, b.width, b.height).also { b.recycle() }
+        }
+    } catch (e: Exception) { null }
+    fun removePage(index: Int) { _pages.value.getOrNull(index)?.let { File(it).delete(); _blurry.value = _blurry.value - it }; _pages.value = _pages.value.filterIndexed { i, _ -> i != index } }
     fun movePage(index: Int, delta: Int) {
         val l = _pages.value.toMutableList(); val to = index + delta
         if (index !in l.indices || to !in l.indices) return
         l.add(to, l.removeAt(index)); _pages.value = l
     }
-    private fun clearPages() { _pages.value.forEach { File(it).delete() }; _pages.value = emptyList() }
+    private fun clearPages() { _pages.value.forEach { File(it).delete() }; _pages.value = emptyList(); _blurry.value = emptySet() }
 
     /** Movimenti già presenti (estratto conto, notifica…) che sembrano lo stesso acquisto: collegarli evita il doppione. */
     val candidates: StateFlow<List<it.spese.core.model.Transaction>> = combine(_form, data) { f, d ->
@@ -96,7 +117,8 @@ class ScanViewModel @Inject constructor(
         if (files.isEmpty()) return@launch
         _stage.value = ScanStage.Processing
         try {
-            val r = scan(files)
+            val vocabulary = memory.get().keys.flatMap { k -> k.split(' ') }.filter { it.length >= 5 }.toSet()
+            val r = scan(files, vocabulary)
             val d = r.data
             val notes = buildString {
                 d.vat?.let { append("IVA: ").append(Money.eur(it)).append('\n') }

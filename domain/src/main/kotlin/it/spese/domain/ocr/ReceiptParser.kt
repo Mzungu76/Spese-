@@ -7,7 +7,10 @@ import java.math.BigDecimal
 import java.time.LocalDate
 
 /** Voce dello scontrino: `quantity` > 1 quando una riga «4 x 1.0 PZ x EUR 0.89» precede la voce. */
-data class ReceiptItem(val description: String, val amount: BigDecimal, val quantity: Int = 1)
+data class ReceiptItem(val description: String, val amount: BigDecimal, val quantity: Int = 1, val unit: BigDecimal? = null)
+
+/** Correzione fatta dall'app sul prezzo di una voce perché la somma non tornava (con motivo, da mostrare all'utente). */
+data class Repair(val description: String, val from: BigDecimal, val to: BigDecimal, val reason: String)
 
 /** Dati estratti da uno scontrino/fattura: ogni campo è facoltativo e va confermato dall'utente. */
 data class ReceiptData(
@@ -20,6 +23,9 @@ data class ReceiptData(
     val rawText: String,
     /** «SUBTOTALE» stampato prima di eventuali voci finali (es. shopper). */
     val subtotal: BigDecimal? = null,
+    val repairs: List<Repair> = emptyList(),
+    /** Indici delle voci lette con poca sicurezza dall'OCR: da controllare. */
+    val weakItems: Set<Int> = emptySet(),
 ) {
     /** Somma delle voci riconosciute. */
     val itemsSum: BigDecimal get() = items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }
@@ -44,18 +50,23 @@ object ReceiptParser {
     fun amountsIn(line: String): List<BigDecimal> =
         AMOUNT.findAll(line).mapNotNull { NumberParser.parseMoney(it.value) }.toList()
 
-    fun parse(text: String, today: LocalDate = LocalDate.now()): ReceiptData {
-        val lines = joinSplitRows(text.lines().map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() })
+    /** @param vocabulary parole in più (voci già viste dall'utente) per riparare i nomi storpiati; @param weakRows righe lette con poca sicurezza (testo). */
+    fun parse(text: String, today: LocalDate = LocalDate.now(), vocabulary: Set<String> = emptySet(), weakRows: Collection<String> = emptyList()): ReceiptData {
+        val lines = joinSplitRows(text.lines().map { ReceiptCorrector.fixLine(it.replace(Regex("\\s+"), " ").trim()) }.filter { it.isNotEmpty() })
         val merchant = findMerchant(lines)
         val date = findDate(lines, today)
-        val items = findItems(lines)
-        val total = findTotal(lines, items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }.takeIf { items.isNotEmpty() })
+        val vocab = ProductDictionary.allKeywords + vocabulary
+        val parsedItems = findItems(lines).map { it.copy(description = ReceiptCorrector.repairWords(it.description, vocab)) }
+        val total = findTotal(lines, parsedItems.fold(BigDecimal.ZERO) { a, b -> a + b.amount }.takeIf { parsedItems.isNotEmpty() })
+        val weakKeys = weakRows.map { ReceiptStitcher.key(it) }.filter { it.length > 3 }
+        val weak = parsedItems.indices.filter { i -> ReceiptStitcher.key(parsedItems[i].description).let { k -> k.length > 3 && weakKeys.any { w -> w.contains(k) || k.contains(w) } } }.toSet()
+        val (items, repairs) = repairSums(parsedItems, total, lines, weak)
         val vat = findVat(lines)
         val desc = buildString {
             append(merchant ?: "Spesa")
             if (items.isNotEmpty() && items.size <= 3) append(": ").append(items.joinToString(", ") { it.description.take(24) })
         }
-        return ReceiptData(merchant, date, total, vat, items, desc, text, findSubtotal(lines))
+        return ReceiptData(merchant, date, total, vat, items, desc, text, findSubtotal(lines), repairs, weak)
     }
 
     private fun findMerchant(lines: List<String>): String? {
@@ -149,19 +160,60 @@ object ReceiptParser {
         val lines = if (end >= 0) allLines.take(end) else allLines
         val out = ArrayList<ReceiptItem>()
         var qty = 1
+        var unit: BigDecimal? = null
         for (l in lines) {
             if (compact(l).let { c -> SERVICE_WORDS.any { c.contains(it) } }) continue
             val q = QTY_LINE.find(l)
-            if (q != null) { qty = q.groupValues[1].toIntOrNull() ?: 1; continue }   // «4 x 1.0 PZ x EUR 0.89»: vale per la voce che segue
+            if (q != null) { qty = q.groupValues[1].toIntOrNull() ?: 1; unit = amountsIn(l).lastOrNull(); continue }   // «4 x 1.0 PZ x EUR 0.89»: vale per la voce che segue
             if (SKIP_ITEM.containsMatchIn(l)) continue
             val m = Regex("^(.*?[A-Za-zÀ-ú].*?)\\s+(-?\\d{1,3}(?:[.]\\d{3})*[,.]\\d{2})\\s*[A-Za-z]?$").find(l) ?: continue
             val a = NumberParser.parseMoney(m.groupValues[2]) ?: continue
             val d = m.groupValues[1].trim().replace(VAT_SUFFIX, "").replace(Regex("\\s+[xX*]$"), "").trim()
             if (d.length < 2 || a.signum() == 0 || DateParser.parseText(d) != null) continue
-            out.add(ReceiptItem(d, a, if (qty > 1 && a.signum() > 0) qty else 1))
-            qty = 1
+            out.add(ReceiptItem(d, a, if (qty > 1 && a.signum() > 0) qty else 1, if (qty > 1) unit else null))
+            qty = 1; unit = null
         }
         return cancelPairs(out)
+    }
+
+    private val CONFUSABLE = mapOf('3' to "8", '8' to "36", '5' to "6", '6' to "58", '1' to "7", '7' to "1", '0' to "8", '4' to "9", '9' to "4")
+
+    /**
+     * Quadra la somma delle voci col totale: se manca poco e c'è UNA sola correzione che fa tornare i conti la si applica.
+     * Prima quantità × prezzo unitario («4 x … 0,89» deve dare 3,56); poi, solo per voci lette con poca sicurezza e se il totale compare
+     * almeno due volte nel documento (è affidabile), una cifra scambiata con una simile (3↔8, 5↔6, 1↔7…). Mai nel dubbio: più soluzioni = nessuna.
+     */
+    private fun repairSums(items: List<ReceiptItem>, total: BigDecimal?, lines: List<String>, weak: Set<Int>): Pair<List<ReceiptItem>, List<Repair>> {
+        if (total == null || items.isEmpty()) return items to emptyList()
+        val tol = BigDecimal("0.009")
+        val gap = total - items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }
+        if (gap.abs() <= tol) return items to emptyList()
+        // 1) quantità × prezzo unitario
+        val byUnit = items.indices.filter { i -> val it = items[i]; it.unit != null && it.quantity > 1 && (it.unit.multiply(BigDecimal(it.quantity)) - it.amount).abs() > tol &&
+            (gap - (it.unit.multiply(BigDecimal(it.quantity)) - it.amount)).abs() <= tol }
+        if (byUnit.size == 1) {
+            val i = byUnit[0]; val it = items[i]; val to = it.unit!!.multiply(BigDecimal(it.quantity))
+            return items.toMutableList().also { l -> l[i] = it.copy(amount = to) } to listOf(Repair(it.description, it.amount, to, "${it.quantity} × ${it.unit} = $to"))
+        }
+        // 2) cifra scambiata, solo su voci poco sicure e con totale confermato da più righe
+        val totalSeen = lines.count { l -> amountsIn(l).any { (it - total).abs() <= tol } }
+        if (totalSeen < 2) return items to emptyList()
+        data class Cand(val i: Int, val to: BigDecimal)
+        val cands = ArrayList<Cand>()
+        for (i in weak) {
+            val a = items[i].amount; val str = a.abs().setScale(2).toPlainString()
+            for (pos in str.indices) {
+                val c = str[pos]; val subs = CONFUSABLE[c] ?: continue
+                for (n in subs) {
+                    val v = BigDecimal(str.substring(0, pos) + n + str.substring(pos + 1)).let { if (a.signum() < 0) it.negate() else it }
+                    if ((gap - (v - a)).abs() <= tol) cands.add(Cand(i, v))
+                }
+            }
+        }
+        val distinct = cands.distinct()
+        if (distinct.size != 1) return items to emptyList()
+        val c = distinct[0]; val it = items[c.i]
+        return items.toMutableList().also { l -> l[c.i] = it.copy(amount = c.to) } to listOf(Repair(it.description, it.amount, c.to, "la somma delle voci ora torna col totale"))
     }
 
     /** «ANNULLI»: una voce negativa elimina la voce uguale che la precede (stesso testo e importo opposto). */

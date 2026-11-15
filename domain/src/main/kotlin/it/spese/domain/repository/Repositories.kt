@@ -138,7 +138,11 @@ interface DocumentStore {
 /** Motore OCR sostituibile (oggi ML Kit on-device; domani anche estratti conto fotografati e documenti multipagina). */
 interface TextRecognizer {
     suspend fun recognize(imagePath: String): String
+    /** Come [recognize], più le righe lette con poca sicurezza (da far controllare all'utente). */
+    suspend fun recognizePage(imagePath: String): OcrPage = OcrPage(recognize(imagePath))
 }
+
+data class OcrPage(val text: String, val weakRows: List<String> = emptyList())
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 

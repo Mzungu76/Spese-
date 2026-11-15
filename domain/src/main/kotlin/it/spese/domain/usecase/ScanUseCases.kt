@@ -35,16 +35,17 @@ class ScanReceiptUseCase @Inject constructor(
      * Più foto dello stesso scontrino (dall'alto verso il basso): ognuna viene riconosciuta, i testi sono uniti togliendo le righe
      * in comune dove le foto si sovrappongono, e le immagini sono archiviate come un unico documento lungo.
      */
-    suspend operator fun invoke(imageSources: List<String>): ScanResult {
+    suspend operator fun invoke(imageSources: List<String>, vocabulary: Set<String> = emptySet()): ScanResult {
         require(imageSources.isNotEmpty()) { "Nessuna foto." }
         val refs = ArrayList<DocumentRef>()
         try {
             for (src in imageSources) refs.add(store.saveImage(src))
-            val texts = refs.map { r -> try { recognizer.recognize(store.pathOf(r.fileName)) } catch (e: Exception) { "" } }
+            val pages = refs.map { r -> try { recognizer.recognizePage(store.pathOf(r.fileName)) } catch (e: Exception) { it.spese.domain.repository.OcrPage("") } }
+            val texts = pages.map { it.text }
             val merged = if (refs.size == 1) ReceiptStitcher.merge(texts).let { it.copy(text = texts[0]) } else ReceiptStitcher.merge(texts)
             val final = if (refs.size == 1) refs[0] else store.stitch(refs).also { refs.forEach { r -> store.deleteFile(r.fileName) } }
             val id = documents.add(final.copy(ocrText = merged.text))
-            return ScanResult(final.copy(id = id, ocrText = merged.text), ReceiptParser.parse(merged.text), refs.size, merged.overlaps)
+            return ScanResult(final.copy(id = id, ocrText = merged.text), ReceiptParser.parse(merged.text, java.time.LocalDate.now(), vocabulary, pages.flatMap { it.weakRows }), refs.size, merged.overlaps)
         } catch (e: Exception) {
             refs.forEach { r -> try { store.deleteFile(r.fileName) } catch (_: Exception) { } }
             throw e

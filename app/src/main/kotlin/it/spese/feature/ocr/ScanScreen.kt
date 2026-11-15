@@ -9,6 +9,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.view.CameraController
 import androidx.camera.view.LifecycleCameraController
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,8 +71,31 @@ private fun CaptureView(vm: ScanViewModel) {
             val controller = remember { LifecycleCameraController(ctx).apply { setEnabledUseCases(CameraController.IMAGE_CAPTURE) } }
             LaunchedEffect(controller) { controller.bindToLifecycle(owner) }
             DisposableEffect(controller) { onDispose { controller.unbind() } }
+            var torch by remember { mutableStateOf(false) }
+            val tilt = rememberTiltDegrees()
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 AndroidView({ c -> PreviewView(c).apply { this.controller = controller; scaleType = PreviewView.ScaleType.FIT_CENTER } }, Modifier.fillMaxSize())
+                // guida: cornice verticale in cui far stare lo scontrino, tenendo il telefono parallelo al tavolo
+                val guide = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.75f)
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val w = size.width * 0.58f; val h = size.height * 0.92f
+                    val l = (size.width - w) / 2f; val t = (size.height - h) / 2f; val k = 28.dp.toPx()
+                    val stroke = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx())
+                    fun corner(x: Float, y: Float, dx: Float, dy: Float) {
+                        drawLine(guide, androidx.compose.ui.geometry.Offset(x, y), androidx.compose.ui.geometry.Offset(x + dx * k, y), stroke.width)
+                        drawLine(guide, androidx.compose.ui.geometry.Offset(x, y), androidx.compose.ui.geometry.Offset(x, y + dy * k), stroke.width)
+                    }
+                    corner(l, t, 1f, 1f); corner(l + w, t, -1f, 1f); corner(l, t + h, 1f, -1f); corner(l + w, t + h, -1f, -1f)
+                }
+                IconButton(onClick = { torch = !torch; controller.enableTorch(torch) }, Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                    Icon(if (torch) Icons.Default.FlashOn else Icons.Default.FlashOff, if (torch) "Spegni la torcia" else "Accendi la torcia", tint = guide)
+                }
+                tilt?.let { t ->
+                    val ok = t <= 12f
+                    Text(if (ok) "Telefono dritto ✓" else "Inclinato di ${t.toInt()}°: tienilo parallelo al tavolo",
+                        Modifier.align(Alignment.BottomCenter).padding(8.dp).background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.5f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium, color = if (ok) androidx.compose.ui.graphics.Color(0xFF7BE08A) else androidx.compose.ui.graphics.Color(0xFFFFC857))
+                }
             }
             PagesStrip(pages, vm)
             Text(if (pages.isEmpty()) "Inquadra lo scontrino: piano e ben illuminato. Se è lungo, scatta più foto dall'alto verso il basso facendole sovrapporre di qualche riga: le righe doppie le tolgo io."
@@ -136,7 +160,10 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", maxLines = 1, style = MaterialTheme.typography.bodyMedium.let { st -> if (out) st.copy(textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough, color = MaterialTheme.colorScheme.onSurfaceVariant) else st })
-                        MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
+                            if (i in d.weakItems && !out) Text("⚠ controlla", style = MaterialTheme.typography.labelSmall, color = SpeseTheme.finance.warning)
+                        }
                     }
                     if (!out) Box {
                         AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1) })
@@ -198,12 +225,13 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
 @Composable
 private fun PagesStrip(pages: List<String>, vm: ScanViewModel) {
     if (pages.isEmpty()) return
+    val blurry by vm.blurry.collectAsStateWithLifecycle()
     androidx.compose.foundation.lazy.LazyRow(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         itemsIndexed(pages, key = { _, p -> p }) { i, p ->
             Card(Modifier.width(92.dp)) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     FileImage(p, Modifier.fillMaxWidth().height(96.dp), maxPx = 300)
-                    Text("Foto ${i + 1}", style = MaterialTheme.typography.labelSmall)
+                    Text(if (p in blurry) "Foto ${i + 1} ⚠ sfocata" else "Foto ${i + 1}", style = MaterialTheme.typography.labelSmall, color = if (p in blurry) SpeseTheme.finance.warning else MaterialTheme.colorScheme.onSurface)
                     Row {
                         IconButton(onClick = { vm.movePage(i, -1) }, Modifier.size(28.dp), enabled = i > 0) { Icon(Icons.Default.ArrowBack, "Sposta prima", Modifier.size(16.dp)) }
                         IconButton(onClick = { vm.removePage(i) }, Modifier.size(28.dp)) { Icon(Icons.Default.Close, "Elimina la foto ${i + 1}", Modifier.size(16.dp)) }
@@ -225,9 +253,12 @@ private fun ReceiptChecks(r: ScanResult, f: ScanForm, vm: ScanViewModel) {
     val amount = it.spese.core.common.NumberParser.parseMoney(f.amountText)?.abs()
     val gap = if (amount == null || included.isEmpty()) null else amount - sum
     val repeated = remember(d) { ReceiptDedupe.repeatedBlocks(d.items) }
-    if (r.pages <= 1 && gap == null && f.note == null) return
+    if (r.pages <= 1 && gap == null && f.note == null && d.repairs.isEmpty() && d.weakItems.isEmpty()) return
     SectionCard(title = "Controllo della lettura") {
         f.note?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        if (d.repairs.isNotEmpty()) Text("Ho corretto ${d.repairs.size} ${if (d.repairs.size == 1) "prezzo letto male" else "prezzi letti male"} perché la somma non tornava: " +
+            d.repairs.joinToString("; ") { "${it.description} ${Money.eur(it.from)} → ${Money.eur(it.to)} (${it.reason})" } + ".", style = MaterialTheme.typography.bodyMedium)
+        if (d.weakItems.isNotEmpty()) Text("${d.weakItems.size} ${if (d.weakItems.size == 1) "voce letta" else "voci lette"} con poca sicurezza (⚠): controllale con la foto.", style = MaterialTheme.typography.bodySmall, color = SpeseTheme.finance.warning)
         if (r.pages > 1) Text(if (joins.isEmpty()) "${r.pages} foto unite: le righe doppie nelle sovrapposizioni sono state tolte." else "${r.pages} foto unite.", style = MaterialTheme.typography.bodyMedium)
         joins.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = SpeseTheme.finance.warning) }
         if (gap != null) {
@@ -246,4 +277,26 @@ private fun ReceiptChecks(r: ScanResult, f: ScanForm, vm: ScanViewModel) {
             }
         }
     }
+}
+
+/** Inclinazione del telefono rispetto al piano orizzontale (gradi), dall'accelerometro: per fotografare dall'alto, parallelo al tavolo. null se manca il sensore. */
+@Composable
+private fun rememberTiltDegrees(): Float? {
+    val ctx = LocalContext.current
+    var tilt by remember { mutableStateOf<Float?>(null) }
+    DisposableEffect(Unit) {
+        val sm = ctx.getSystemService(android.content.Context.SENSOR_SERVICE) as? android.hardware.SensorManager
+        val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(e: android.hardware.SensorEvent) {
+                val g = Math.sqrt((e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2]).toDouble()).coerceAtLeast(0.1)
+                val a = Math.toDegrees(Math.acos((Math.abs(e.values[2]) / g).coerceIn(0.0, 1.0))).toFloat()
+                tilt = tilt?.let { it * 0.8f + a * 0.2f } ?: a
+            }
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+        if (sensor != null) sm.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_UI)
+        onDispose { sm?.unregisterListener(listener) }
+    }
+    return tilt
 }

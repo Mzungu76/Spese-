@@ -28,7 +28,8 @@ object ProductDictionary {
         "Frutta e verdura" to listOf("frutta", "verdura", "mele", "mela", "banane", "banana", "arance", "arancia", "limoni", "limone", "pomodori", "insalata", "zucchine", "zucchina", "patate", "carote", "cipolle", "aglio", "spinaci", "broccoli", "fragole", "uva", "pere", "pera", "kiwi", "melanzane", "peperoni", "funghi"),
     )
 
-    private val allKeywords: Set<String> by lazy { groups.flatMap { it.second }.toSet() }
+    /** Tutte le parole del dizionario (minuscole): servono anche a riparare le parole storpiate dall'OCR. */
+    val allKeywords: Set<String> by lazy { groups.flatMap { it.second }.toSet() }
 
     /** Nome del gruppo (= sottocategoria proposta) per una voce, oppure null se non si riconosce il prodotto. */
     fun groupOf(description: String): String? {
