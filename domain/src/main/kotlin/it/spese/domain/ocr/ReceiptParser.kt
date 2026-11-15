@@ -138,10 +138,19 @@ object ReceiptParser {
     private fun findSubtotal(lines: List<String>): BigDecimal? =
         lines.lastOrNull { Regex("(?i)sub\\s?-?totale").containsMatchIn(it) }?.let { amountsIn(it).lastOrNull() }
 
-    private fun findItems(lines: List<String>): List<ReceiptItem> {
+    private fun compact(l: String) = l.lowercase().filter { it.isLetter() }
+    private val END_OF_ITEMS = listOf("totalecomplessivo", "totaleeuro", "totaleeur", "importopagato", "pagamentocontante", "pagamentoelettronico", "totaledapagare")
+    /** Parole di servizio che l'OCR può spezzare («Impor to pagato»): si riconoscono anche senza spazi. */
+    private val SERVICE_WORDS = listOf("importopagato", "pagamento", "riscosso", "ricalcolato", "subtotale", "contante", "elettronico", "totale")
+
+    private fun findItems(allLines: List<String>): List<ReceiptItem> {
+        // le voci stanno prima dei totali: dal «totale complessivo» in poi (pagamenti, resto, firma) non ce ne sono
+        val end = allLines.indexOfFirst { l -> compact(l).let { c -> END_OF_ITEMS.any { c.contains(it) } } }
+        val lines = if (end >= 0) allLines.take(end) else allLines
         val out = ArrayList<ReceiptItem>()
         var qty = 1
         for (l in lines) {
+            if (compact(l).let { c -> SERVICE_WORDS.any { c.contains(it) } }) continue
             val q = QTY_LINE.find(l)
             if (q != null) { qty = q.groupValues[1].toIntOrNull() ?: 1; continue }   // «4 x 1.0 PZ x EUR 0.89»: vale per la voce che segue
             if (SKIP_ITEM.containsMatchIn(l)) continue

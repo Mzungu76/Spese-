@@ -264,3 +264,27 @@ class ReceiptDedupeTest {
         assertTrue(dedupe.repeatedBlocks(items).isEmpty())                // coppie, non blocchi da 3
     }
 }
+
+class ShortReceiptTest {
+    @org.junit.Test fun `scontrino breve con parole spezzate dall OCR non conta il totale tra le voci`() {
+        val d = ReceiptParser.parse("""
+            IN'S MERCATO SPA
+            DESCRIZIONE IVA PREZZO(€)
+            ZAFFERANO MACINATO 10% 1.49
+            ROSSO SIC.DOC RISERV 22% 2.99
+            SUBTOTALE 4.48
+            ARTICOLI 2
+            TOTALE COMPLESSIVO € 4.48
+            DI CUI IVA 0.68
+            Pagamento contante 0.00
+            Pagamento elettroni co 4.48
+            Non ri scosso 0.00
+            Resto 0.00
+            Impor to pagato 4.48
+            15.11.26 10:39 DOC.N 2886-0088
+        """.trimIndent(), LocalDate.parse("2026-11-16"))
+        assertEquals(listOf("ZAFFERANO MACINATO", "ROSSO SIC.DOC RISERV"), d.items.map { it.description })
+        assertEquals(0, BigDecimal("4.48").compareTo(d.itemsSum)); assertEquals(0, BigDecimal("4.48").compareTo(d.total)); assertEquals(0, BigDecimal.ZERO.compareTo(d.itemsGap))
+        assertEquals(0, BigDecimal("0.68").compareTo(d.vat))
+    }
+}
