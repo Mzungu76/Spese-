@@ -83,6 +83,24 @@ class CaptureTest {
     }
 }
 
+class PosteNotificationTest {
+    private fun p(title: String, text: String) = NotificationParser.parse(CaptureSource.POSTE, title, text)
+
+    @org.junit.Test fun `movimento in uscita e in entrata di Poste vengono riconosciuti`() {
+        val out = p("Poste Italiane", "Hai un movimento in uscita su POSTEPAY EVOLUTION di 12,50 euro")!!
+        org.junit.Assert.assertEquals(0, java.math.BigDecimal("-12.50").compareTo(out.amount))
+        val out2 = p("Hai un movimento in uscita su PostePay", "Importo: 45,00 € - Pagamento carta presso COOP SPA")!!
+        org.junit.Assert.assertEquals(0, java.math.BigDecimal("-45").compareTo(out2.amount)); org.junit.Assert.assertEquals("COOP SPA", out2.description)
+        val inn = p("Poste Italiane", "Hai un movimento in entrata su POSTEPAY EVOLUTION di 100,00 euro")!!
+        org.junit.Assert.assertEquals(0, java.math.BigDecimal("100").compareTo(inn.amount))
+    }
+
+    @org.junit.Test fun `senza importo o con saldo non inventa nulla`() {
+        org.junit.Assert.assertNull(p("Poste Italiane", "Hai un movimento in uscita su POSTEPAY EVOLUTION"))
+        org.junit.Assert.assertNull(p("Poste Italiane", "Saldo disponibile 1.234,50 euro"))
+    }
+}
+
 class ReceiptReconcileTest {
     private fun tx(id: Long, origin: it.spese.core.model.TxOrigin, amount: String, date: String) = it.spese.core.model.Transaction(
         id, "e$id", 1, java.time.LocalDate.parse(date), java.time.LocalDate.parse(date), "x", java.math.BigDecimal(amount), it.spese.core.model.TxKind.SPESA, null, false, null, origin = origin)
