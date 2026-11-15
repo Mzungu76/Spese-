@@ -6,7 +6,8 @@ import it.spese.domain.importing.DateParser
 import java.math.BigDecimal
 import java.time.LocalDate
 
-data class ReceiptItem(val description: String, val amount: BigDecimal)
+/** Voce dello scontrino: `quantity` > 1 quando una riga «4 x 1.0 PZ x EUR 0.89» precede la voce. */
+data class ReceiptItem(val description: String, val amount: BigDecimal, val quantity: Int = 1)
 
 /** Dati estratti da uno scontrino/fattura: ogni campo è facoltativo e va confermato dall'utente. */
 data class ReceiptData(
@@ -17,7 +18,14 @@ data class ReceiptData(
     val items: List<ReceiptItem>,
     val description: String,
     val rawText: String,
-)
+    /** «SUBTOTALE» stampato prima di eventuali voci finali (es. shopper). */
+    val subtotal: BigDecimal? = null,
+) {
+    /** Somma delle voci riconosciute. */
+    val itemsSum: BigDecimal get() = items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }
+    /** Totale stampato meno somma delle voci: 0 = tutto torna; diverso da 0 = righe mancanti, doppie o lette male. null se non si può confrontare. */
+    val itemsGap: BigDecimal? get() = if (total == null || items.isEmpty()) null else total - itemsSum
+}
 
 /**
  * Interpretazione euristica del testo OCR di scontrini, ricevute e fatture italiane.
@@ -29,7 +37,9 @@ object ReceiptParser {
     private val TOTAL_KEYS = listOf("totale complessivo", "totale euro", "totale eur", "importo pagato", "totale da pagare", "da pagare", "importo da pagare", "totale documento", "totale fattura", "totale", "total")
     private val NOT_TOTAL = listOf("subtotale", "sub totale", "sub-totale", "totale iva", "imponibile", "resto", "sconto", "articoli", "pezzi", "iva")
     private val SKIP_MERCHANT = Regex("(?i)^(scontrino|ricevuta|fattura|documento|cassa|cassiere|data|ora|tel|p\\.?\\s?iva|partita|c\\.?f\\.?|www|via |viale |piazza |corso |n\\.|nr|pos|copia|arrivederci|grazie)")
-    private val SKIP_ITEM = Regex("(?i)(totale|subtotale|resto|contant|carta|bancomat|pagamento|iva|imponibile|sconto|arrotond|importo|pos|ticket|buono|punti|saldo|credito)")
+    private val SKIP_ITEM = Regex("(?i)\\b(totale|subtotale|sub\\s?totale|resto|contant\\w*|carta di|c\\.?\\s?credito|credito|bancomat|pagamento|iva|imponibile|sconto|arrotond\\w*|importo|pos|ticket|buono|punti|saldo|annull\\w*|articoli|riscosso|ricalcolato)\\b")
+    private val QTY_LINE = Regex("^(\\d{1,3})\\s*[xX×]\\s*[\\d.,]+\\s*[A-Za-z]{0,3}\\s*[xX×]")
+    private val VAT_SUFFIX = Regex("\\s+\\d{1,2}\\s?%$")
 
     fun amountsIn(line: String): List<BigDecimal> =
         AMOUNT.findAll(line).mapNotNull { NumberParser.parseMoney(it.value) }.toList()
@@ -45,7 +55,7 @@ object ReceiptParser {
             append(merchant ?: "Spesa")
             if (items.isNotEmpty() && items.size <= 3) append(": ").append(items.joinToString(", ") { it.description.take(24) })
         }
-        return ReceiptData(merchant, date, total, vat, items, desc, text)
+        return ReceiptData(merchant, date, total, vat, items, desc, text, findSubtotal(lines))
     }
 
     private fun findMerchant(lines: List<String>): String? {
@@ -98,16 +108,38 @@ object ReceiptParser {
         return rows.firstNotNullOfOrNull { amountsIn(it).lastOrNull() }
     }
 
+    private fun findSubtotal(lines: List<String>): BigDecimal? =
+        lines.lastOrNull { Regex("(?i)sub\\s?-?totale").containsMatchIn(it) }?.let { amountsIn(it).lastOrNull() }
+
     private fun findItems(lines: List<String>): List<ReceiptItem> {
         val out = ArrayList<ReceiptItem>()
+        var qty = 1
         for (l in lines) {
+            val q = QTY_LINE.find(l)
+            if (q != null) { qty = q.groupValues[1].toIntOrNull() ?: 1; continue }   // «4 x 1.0 PZ x EUR 0.89»: vale per la voce che segue
             if (SKIP_ITEM.containsMatchIn(l)) continue
             val m = Regex("^(.*?[A-Za-zÀ-ú].*?)\\s+(-?\\d{1,3}(?:[.]\\d{3})*[,.]\\d{2})\\s*[A-Za-z]?$").find(l) ?: continue
             val a = NumberParser.parseMoney(m.groupValues[2]) ?: continue
-            val d = m.groupValues[1].trim().trimEnd('x', 'X', '*', ' ').trim()
-            if (d.length < 2 || DateParser.parseText(d) != null) continue
-            out.add(ReceiptItem(d, a))
+            val d = m.groupValues[1].trim().replace(VAT_SUFFIX, "").replace(Regex("\\s+[xX*]$"), "").trim()
+            if (d.length < 2 || a.signum() == 0 || DateParser.parseText(d) != null) continue
+            out.add(ReceiptItem(d, a, if (qty > 1 && a.signum() > 0) qty else 1))
+            qty = 1
         }
-        return out
+        return cancelPairs(out)
+    }
+
+    /** «ANNULLI»: una voce negativa elimina la voce uguale che la precede (stesso testo e importo opposto). */
+    private fun cancelPairs(items: List<ReceiptItem>): List<ReceiptItem> {
+        val list = items.toMutableList()
+        var i = 0
+        while (i < list.size) {
+            val n = list[i]
+            if (n.amount.signum() < 0) {
+                val j = (i - 1 downTo 0).firstOrNull { k -> list[k].amount.signum() > 0 && list[k].amount.compareTo(n.amount.negate()) == 0 && list[k].description.equals(n.description, ignoreCase = true) }
+                if (j != null) { list.removeAt(i); list.removeAt(j); i = maxOf(0, j); continue }
+            }
+            i++
+        }
+        return list
     }
 }

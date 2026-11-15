@@ -128,6 +128,8 @@ interface DocumentRepository {
 interface DocumentStore {
     /** Copia/comprime l'immagine nella memoria privata e restituisce metadati (id = 0). */
     suspend fun saveImage(source: String): DocumentRef
+    /** Compone più foto (dall'alto verso il basso) in un'unica immagine lunga e restituisce i metadati (id = 0). Non elimina le foto di partenza. */
+    suspend fun stitch(pages: List<DocumentRef>): DocumentRef
     suspend fun deleteFile(fileName: String)
     suspend fun totalBytes(): Long
     fun pathOf(fileName: String): String

@@ -54,6 +54,33 @@ class DocumentFiles @Inject constructor(@ApplicationContext private val context:
         DocumentRef(0, name, "image/jpeg", f.length(), System.currentTimeMillis())
     }
 
+    /** Compone le foto in un'unica immagine lunga (larghezza max 1200 px, altezza max 7000 px per non esaurire la memoria). */
+    override suspend fun stitch(pages: List<DocumentRef>): DocumentRef = withContext(Dispatchers.IO) {
+        val bitmaps = pages.map { BitmapFactory.decodeFile(File(dir, it.fileName).path) ?: error("Immagine non valida") }
+        try {
+            val width = bitmaps.maxOf { it.width }.coerceAtMost(1200)
+            val heights = bitmaps.map { (it.height * width.toFloat() / it.width).toInt() }
+            val gap = 6
+            val total = heights.sum() + gap * (bitmaps.size - 1)
+            val k = if (total > 7000) 7000f / total else 1f
+            val outW = (width * k).toInt().coerceAtLeast(1); val outH = (total * k).toInt().coerceAtLeast(1)
+            val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(out)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            var y = 0f
+            bitmaps.forEachIndexed { i, b ->
+                val h = heights[i] * k
+                canvas.drawBitmap(b, null, android.graphics.RectF(0f, y, outW.toFloat(), y + h), null)
+                y += h + gap * k
+            }
+            val name = "doc_${System.currentTimeMillis()}_${(Math.random() * 1000).toInt()}.jpg"
+            val f = File(dir, name)
+            FileOutputStream(f).use { out.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+            out.recycle()
+            DocumentRef(0, name, "image/jpeg", f.length(), System.currentTimeMillis())
+        } finally { bitmaps.forEach { it.recycle() } }
+    }
+
     /** Scrive un file ricevuto da un backup completo. */
     suspend fun writeFile(fileName: String, bytes: ByteArray) = withContext(Dispatchers.IO) {
         File(dir, File(fileName).name).writeBytes(bytes)

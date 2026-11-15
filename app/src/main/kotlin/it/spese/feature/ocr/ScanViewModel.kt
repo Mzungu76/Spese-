@@ -12,7 +12,9 @@ import it.spese.domain.usecase.*
 import java.io.File
 import java.time.LocalDate
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 
 sealed interface ScanStage {
@@ -43,6 +45,27 @@ class ScanViewModel @Inject constructor(
     private val _saved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val saved: SharedFlow<Unit> = _saved.asSharedFlow()
 
+    /** Foto scattate o scelte per lo scontrino corrente, dall'alto verso il basso (file nella cache, eliminati a fine lavoro). */
+    private val _pages = MutableStateFlow<List<String>>(emptyList())
+    val pages: StateFlow<List<String>> = _pages.asStateFlow()
+
+    /** Aggiunge una foto: un'immagine della galleria (URI) viene copiata nella cache così la miniatura e la lettura funzionano allo stesso modo. */
+    fun addPage(source: String) = viewModelScope.launch {
+        val path = if (source.startsWith("content:") || source.startsWith("file:")) withContext(Dispatchers.IO) {
+            val f = File(app.cacheDir, "scan_${System.currentTimeMillis()}_${_pages.value.size}.jpg")
+            app.contentResolver.openInputStream(android.net.Uri.parse(source))?.use { i -> f.outputStream().use { o -> i.copyTo(o) } }
+            f.absolutePath
+        } else source
+        _pages.value = _pages.value + path
+    }
+    fun removePage(index: Int) { _pages.value.getOrNull(index)?.let { File(it).delete() }; _pages.value = _pages.value.filterIndexed { i, _ -> i != index } }
+    fun movePage(index: Int, delta: Int) {
+        val l = _pages.value.toMutableList(); val to = index + delta
+        if (index !in l.indices || to !in l.indices) return
+        l.add(to, l.removeAt(index)); _pages.value = l
+    }
+    private fun clearPages() { _pages.value.forEach { File(it).delete() }; _pages.value = emptyList() }
+
     /** Movimenti già presenti (estratto conto, notifica…) che sembrano lo stesso acquisto: collegarli evita il doppione. */
     val candidates: StateFlow<List<it.spese.core.model.Transaction>> = combine(_form, data) { f, d ->
         val amt = NumberParser.parseMoney(f.amountText)?.abs()
@@ -50,23 +73,35 @@ class ScanViewModel @Inject constructor(
         else ReceiptMatcher.candidates(d.ledger, if (f.isIncome) amt else amt.negate(), f.date)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    /** Elabora l'immagine (percorso o URI): archivia localmente, esegue l'OCR sul dispositivo e interpreta il testo. Nessun movimento è creato qui. */
-    fun process(source: String, deleteSource: Boolean = false) = viewModelScope.launch {
+    /** Legge tutte le foto aggiunte (una o più): archivia localmente, riconosce il testo sul dispositivo, unisce le righe e le interpreta. Nessun movimento è creato qui. */
+    fun readPages() = viewModelScope.launch {
+        val files = _pages.value
+        if (files.isEmpty()) return@launch
         _stage.value = ScanStage.Processing
         try {
-            val r = scan(source)
+            val r = scan(files)
             val d = r.data
             val notes = buildString {
                 d.vat?.let { append("IVA: ").append(Money.eur(it)).append('\n') }
-                if (d.items.isNotEmpty()) append("Voci: ").append(d.items.joinToString("; ") { "${it.description} ${Money.eur(it.amount)}" })
+                if (d.items.isNotEmpty()) {
+                    val shown = d.items.take(12)
+                    append("Voci: ").append(shown.joinToString("; ") { "${it.description} ${Money.eur(it.amount)}" })
+                    if (d.items.size > shown.size) append("; … e altre ${d.items.size - shown.size} voci")
+                }
             }.trim()
             val valid = data.value.categories.filter { c -> c.active && c.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.map { c -> c.id }.toSet()
             val remembered = it.spese.domain.ocr.ItemMemory.suggest(d.items.map { item -> item.description }, memory.get(), valid)
             _form.value = ScanForm(d.description, d.total?.toPlainString()?.replace('.', ',') ?: "", false, d.date ?: LocalDate.now(),
                 data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = remembered)
             _stage.value = ScanStage.Review(r)
+            clearPages()
         } catch (e: Exception) { _stage.value = ScanStage.Failed(e.message ?: "Riconoscimento non riuscito") }
-        finally { if (deleteSource && !source.startsWith("content:")) File(source).delete() }
+    }
+
+    /** Una sola foto (percorso o URI): la aggiunge e la legge subito. */
+    fun process(source: String, deleteSource: Boolean = false) = viewModelScope.launch {
+        addPage(source).join()   // i file nella cache si eliminano da soli a fine lettura
+        readPages().join()
     }
 
     fun edit(t: (ScanForm) -> ScanForm) { _form.value = t(_form.value).copy(error = null) }
@@ -99,4 +134,5 @@ class ScanViewModel @Inject constructor(
         _stage.value = ScanStage.Capture
     }
     fun back() { _stage.value = ScanStage.Capture }
+    override fun onCleared() { clearPages(); super.onCleared() }
 }

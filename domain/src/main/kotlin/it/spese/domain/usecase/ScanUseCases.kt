@@ -5,6 +5,7 @@ import it.spese.core.model.DocumentRef
 import it.spese.core.model.Transaction
 import it.spese.core.model.TxOrigin
 import it.spese.domain.ocr.ReceiptItem
+import it.spese.domain.ocr.ReceiptStitcher
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -18,7 +19,8 @@ import it.spese.domain.repository.TextRecognizer
 import it.spese.domain.repository.TransactionRepository
 import javax.inject.Inject
 
-data class ScanResult(val document: DocumentRef, val data: ReceiptData)
+/** `pages` = quante foto compongono lo scontrino; `overlaps[i]` = righe in comune trovate tra la foto i e la i+1 (0 = nessuna: possibili righe mancanti). */
+data class ScanResult(val document: DocumentRef, val data: ReceiptData, val pages: Int = 1, val overlaps: List<Int> = emptyList())
 
 /**
  * Acquisisce un'immagine (da fotocamera o galleria), la archivia localmente, ne estrae il testo con il motore OCR
@@ -27,11 +29,26 @@ data class ScanResult(val document: DocumentRef, val data: ReceiptData)
 class ScanReceiptUseCase @Inject constructor(
     private val store: DocumentStore, private val documents: DocumentRepository, private val recognizer: TextRecognizer,
 ) {
-    suspend operator fun invoke(imageSource: String): ScanResult {
-        val ref = store.saveImage(imageSource)
-        val text = try { recognizer.recognize(store.pathOf(ref.fileName)) } catch (e: Exception) { "" }
-        val id = documents.add(ref.copy(ocrText = text))
-        return ScanResult(ref.copy(id = id, ocrText = text), ReceiptParser.parse(text))
+    suspend operator fun invoke(imageSource: String): ScanResult = invoke(listOf(imageSource))
+
+    /**
+     * Più foto dello stesso scontrino (dall'alto verso il basso): ognuna viene riconosciuta, i testi sono uniti togliendo le righe
+     * in comune dove le foto si sovrappongono, e le immagini sono archiviate come un unico documento lungo.
+     */
+    suspend operator fun invoke(imageSources: List<String>): ScanResult {
+        require(imageSources.isNotEmpty()) { "Nessuna foto." }
+        val refs = ArrayList<DocumentRef>()
+        try {
+            for (src in imageSources) refs.add(store.saveImage(src))
+            val texts = refs.map { r -> try { recognizer.recognize(store.pathOf(r.fileName)) } catch (e: Exception) { "" } }
+            val merged = if (refs.size == 1) ReceiptStitcher.merge(texts).let { it.copy(text = texts[0]) } else ReceiptStitcher.merge(texts)
+            val final = if (refs.size == 1) refs[0] else store.stitch(refs).also { refs.forEach { r -> store.deleteFile(r.fileName) } }
+            val id = documents.add(final.copy(ocrText = merged.text))
+            return ScanResult(final.copy(id = id, ocrText = merged.text), ReceiptParser.parse(merged.text), refs.size, merged.overlaps)
+        } catch (e: Exception) {
+            refs.forEach { r -> try { store.deleteFile(r.fileName) } catch (_: Exception) { } }
+            throw e
+        }
     }
 }
 
