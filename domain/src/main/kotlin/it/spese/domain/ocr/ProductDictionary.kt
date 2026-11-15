@@ -28,6 +28,8 @@ object ProductDictionary {
         "Frutta e verdura" to listOf("frutta", "verdura", "mele", "mela", "banane", "banana", "arance", "arancia", "limoni", "limone", "pomodori", "insalata", "zucchine", "zucchina", "patate", "carote", "cipolle", "aglio", "spinaci", "broccoli", "fragole", "uva", "pere", "pera", "kiwi", "melanzane", "peperoni", "funghi"),
     )
 
+    private val allKeywords: Set<String> by lazy { groups.flatMap { it.second }.toSet() }
+
     /** Nome del gruppo (= sottocategoria proposta) per una voce, oppure null se non si riconosce il prodotto. */
     fun groupOf(description: String): String? {
         val tokens = ItemMemory.key(description).split(' ').filter { it.isNotEmpty() }
@@ -37,7 +39,7 @@ object ProductDictionary {
 
     /** Parola uguale, parola che inizia come la chiave («formaggini»), o abbreviazione dello scontrino che inizia la chiave («crocc» → «crocchette»). */
     private fun matches(t: String, kw: String): Boolean =
-        t == kw || (kw.length >= 5 && t.startsWith(kw)) || (t.length >= 4 && kw.length > t.length && kw.startsWith(t))
+        t == kw || (kw.length >= 5 && t.startsWith(kw)) || (t.length >= 5 && t !in allKeywords && kw.length > t.length && kw.startsWith(t))
 
     /** Gruppi alimentari: una spesa in cui prevalgono fa pensare alla categoria «Supermercato», non a quella data dal nome del negozio. */
     val foodGroups: Set<String> = setOf("Pasta e dispensa", "Piatti pronti", "Dolci e colazione", "Pane e panificati", "Latticini e uova", "Salumi e carne", "Pesce", "Frutta e verdura", "Bevande", "Snack")
