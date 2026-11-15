@@ -130,18 +130,35 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
             d.items.forEachIndexed { i, item ->
                 var open by remember { mutableStateOf(false) }
                 val chosen = f.itemCategories.getOrNull(i)?.let { data.categoriesById[it] }
+                val proposed = f.itemNew.getOrNull(i)?.takeIf { chosen == null && it in f.createNames }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Column(Modifier.weight(1f)) {
-                        Text(item.description, maxLines = 1, style = MaterialTheme.typography.bodyMedium)
+                        Text(item.description + if (item.quantity > 1) "  ×${item.quantity}" else "", maxLines = 1, style = MaterialTheme.typography.bodyMedium)
                         MoneyText(item.amount, colored = false, style = MaterialTheme.typography.bodySmall)
                     }
                     Box {
-                        AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: "Come principale", maxLines = 1) })
+                        AssistChip(onClick = { open = true }, label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1) })
                         DropdownMenu(open, { open = false }) {
-                            DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
+                            DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
                             CategoryTree.ordered(data.categories).filter { cat -> cat.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.forEach { c ->
                                 DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
                             }
+                        }
+                    }
+                }
+            }
+        }
+        val newNames = f.itemNew.filterNotNull().groupingBy { it }.eachCount()
+        if (newNames.isNotEmpty()) {
+            val parent = vm.parentFor(f)
+            SectionCard(title = "Sottocategorie da creare") {
+                if (parent == null) Text("Scegli una categoria principale (es. Supermercato) per creare queste sottocategorie: ${newNames.keys.joinToString(", ")}.", style = MaterialTheme.typography.bodyMedium)
+                else {
+                    Text("Propongo queste sottocategorie in ${parent.name}, in base ai prodotti riconosciuti. Si creano solo se salvi lo scontrino; togli la spunta a quelle che non vuoi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    newNames.forEach { (n, count) ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(n in f.createNames, { on -> vm.edit { f0 -> f0.copy(createNames = if (on) f0.createNames + n else f0.createNames - n) } })
+                            Text("$n · $count ${if (count == 1) "voce" else "voci"}", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }

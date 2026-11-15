@@ -99,4 +99,23 @@ class ReceiptDbTest {
         val idNow = env.cats.getAll().first { it.name == "Supermercato e alimentari" }.id
         assertEquals(mapOf("latte" to idNow, "pane" to idNow), mem.get())
     }
+
+    @Test fun `le sottocategorie proposte si creano sotto la principale e dividono lo scontrino`() = runBlocking {
+        val acc = env.accounts.getOrCreate("Revolut")
+        val food = env.cats.getAll().first { it.name == "Supermercato e alimentari" }
+        val receipt = it.spese.domain.ocr.ReceiptParser.parse("COOP\nLATTE ALTA DIGERIBIL 4% 1.19\nBURRO SENZA LATTOSIO 4% 1.85\nDET.CAPI SPORTIVI 22% 2.49\nSHOPPER BIO 22% 0.15\nTOTALE COMPLESSIVO 5.68", LocalDate.parse("2026-11-15"))
+        assertEquals(4, receipt.items.size)
+        val sugg = it.spese.domain.ocr.ItemSuggester.suggest(receipt.items.map { it.description }, emptyMap(), env.cats.getAll(), food.id)
+        assertEquals(listOf("Latticini e uova", "Latticini e uova", null, null), sugg.map { it.newName })   // «Casa…» esiste già: si assegna lì, senza crearne una nuova
+        assertNotNull(sugg[2].categoryId)
+        val save = SaveCategoryUseCase(env.cats, env.reclassify)
+        val created = sugg.mapNotNull { it.newName }.toSet().associateWith { n -> save(it.spese.core.model.Category(0, n, TxKind.SPESA, false, food.color, parentId = food.id)) }
+        val itemCats = sugg.map { s -> s.categoryId ?: s.newName?.let { created[it] } }
+        val parts = ReceiptSplitPlanner.plan(receipt.total!!, receipt.items, itemCats, food.id, true)
+        val id = saveReceipt(TransactionDraft(0, acc.id, LocalDate.parse("2026-11-15"), description = "COOP", amount = receipt.total!!.negate(), categoryId = food.id), doc(), parts)
+        val splits = env.tx.getSplits().filter { it.txId == id }
+        assertEquals(3, splits.size)                                       // resto in Supermercato + Latticini + Casa
+        assertEquals(0, BigDecimal("-5.68").compareTo(splits.sumOf { it.amount }))
+        assertTrue(env.cats.getAll().filter { it.parentId == food.id }.map { it.name }.contains("Latticini e uova"))
+    }
 }

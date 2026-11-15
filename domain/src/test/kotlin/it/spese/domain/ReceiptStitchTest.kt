@@ -1,5 +1,8 @@
 package it.spese.domain
 
+import it.spese.domain.ocr.ItemSuggester
+import it.spese.domain.ocr.ItemSuggestion
+import it.spese.domain.ocr.ProductDictionary
 import it.spese.domain.ocr.ReceiptParser
 import it.spese.domain.ocr.ReceiptStitcher
 import it.spese.domain.usecase.ScanReceiptUseCase
@@ -174,5 +177,35 @@ class ScanPagesUseCaseTest {
         val uc = ScanReceiptUseCase(store, docs, object : it.spese.domain.repository.TextRecognizer { override suspend fun recognize(imagePath: String) = "PANE 4% 0.85\nTOTALE 0.85" })
         val r = uc("x")
         assertEquals(1, r.pages); assertEquals("p1.jpg", r.document.fileName); assertTrue(r.overlaps.isEmpty())
+    }
+}
+
+class ProductDictionaryTest {
+    private fun cat(id: Long, name: String, parent: Long? = null) = it.spese.core.model.Category(id, name, it.spese.core.model.TxKind.SPESA, false, 0, parentId = parent)
+
+    @org.junit.Test fun `riconosce i prodotti dello scontrino reale`() {
+        val expected = mapOf(
+            "LATTE ALTA DIGERIBIL" to "Latticini e uova", "BURRO SENZA LATTOSIO" to "Latticini e uova", "10 UOVA M TERRA BOX" to "Latticini e uova", "EDAM A FETTE" to "Latticini e uova",
+            "RAVIOLI RICC/SPINACI" to "Pasta e dispensa", "SUGO ALLA RICOTTA" to "Pasta e dispensa", "PASSATA POMOD. BRIK" to "Pasta e dispensa", "LENTICCHIE" to "Pasta e dispensa", "10 DADI VEGETALI" to "Pasta e dispensa",
+            "FROLLINI ALL'UOVO" to "Dolci e colazione", "CORNETTO VUOTO" to "Dolci e colazione", "NUTELLA 750G" to "Dolci e colazione", "KRAPFEN ALLA CREMA" to "Dolci e colazione",
+            "PANE BIANCO A FETTE" to "Pane e panificati", "FOCACC. TRADIZIONALE" to "Pane e panificati", "PANINI PRECOTTI 6 PZ" to "Pane e panificati",
+            "PROSCIUTTO COTTO" to "Salumi e carne", "NUGGETS VEGETALI" to "Piatti pronti", "COTOLETTA VEGETALE" to "Piatti pronti",
+            "PATATINE CLAS.25GX6" to "Snack", "BEV.CAPPUCC.ALPILAND" to "Bevande", "DET.CAPI SPORTIVI" to "Casa e pulizia", "SACCHI PATTUME GIAL." to "Casa e pulizia", "GUANTI LATTICI TALCO" to "Casa e pulizia",
+            "PIATTI DOSATORE" to "Casa e pulizia", "BAGNOSCHIUMA PROFUMA" to "Igiene personale", "CROCCHETTE GATTO" to "Animali",
+        )
+        expected.forEach { (d, g) -> assertEquals(d, g, ProductDictionary.groupOf(d)) }
+        assertNull(ProductDictionary.groupOf("SHOPPER BIO IN'S MAX")); assertNull(ProductDictionary.groupOf("PELLET EN PLUS A1"))
+    }
+
+    @org.junit.Test fun `memoria e categorie esistenti hanno la precedenza, altrimenti propone di creare`() {
+        val cats = listOf(cat(1, "Supermercato"), cat(2, "Latticini", 1), cat(9, "Frutta e verdura"))
+        val s = ItemSuggester.suggest(listOf("LATTE ALTA DIGERIBIL", "NUTELLA 750G", "Mela golden", "SHOPPER BIO", "PANE BIANCO"), mapOf("pane bianco" to 1L), cats, 1L)
+        assertEquals(ItemSuggestion(2, null), s[0])               // esiste «Latticini» (figlia): si assegna senza creare nulla
+        assertEquals(ItemSuggestion(null, "Dolci e colazione"), s[1])   // manca: da creare con il consenso
+        assertEquals(ItemSuggestion(9, null), s[2])               // esiste «Frutta e verdura» come categoria a sé
+        assertEquals(ItemSuggestion(null, null), s[3])            // prodotto sconosciuto: resta nella principale
+        assertEquals(ItemSuggestion(1, null), s[4])               // la memoria dell'utente vince sul dizionario
+        // senza una categoria principale non si propone di creare nulla
+        assertEquals(ItemSuggestion(null, null), ItemSuggester.suggest(listOf("NUTELLA 750G"), emptyMap(), cats, null)[0])
     }
 }

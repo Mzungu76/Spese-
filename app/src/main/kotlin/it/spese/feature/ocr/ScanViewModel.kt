@@ -8,6 +8,9 @@ import it.spese.app.common.UiMessenger
 import it.spese.core.common.Money
 import it.spese.core.common.NumberParser
 import it.spese.domain.repository.AppData
+import it.spese.domain.classification.Classifier
+import it.spese.domain.finance.CategoryTree
+import it.spese.domain.ocr.ItemSuggester
 import it.spese.domain.usecase.*
 import java.io.File
 import java.time.LocalDate
@@ -31,12 +34,18 @@ data class ScanForm(
     val itemCategories: List<Long?> = emptyList(),
     /** false = l'utente rifiuta il collegamento a un movimento già presente e vuole comunque crearne uno nuovo. */
     val attach: Boolean = true,
+    /** Categoria che le regole darebbero allo scontrino (serve a sapere dove proporre le nuove sottocategorie). */
+    val autoCategoryId: Long? = null,
+    /** Per ogni voce, la sottocategoria che non esiste ancora e che il dizionario propone di creare (null = nessuna). */
+    val itemNew: List<String?> = emptyList(),
+    /** Nomi delle sottocategorie da creare che l'utente ha lasciato selezionati. */
+    val createNames: Set<String> = emptySet(),
 )
 
 @HiltViewModel
 class ScanViewModel @Inject constructor(
     private val app: Application, val data: StateFlow<AppData>, private val scan: ScanReceiptUseCase, private val saveReceipt: SaveReceiptUseCase, private val memory: it.spese.domain.ocr.ItemMemoryRepository,
-    private val deleteDoc: DeleteDocumentUseCase, private val messenger: UiMessenger,
+    private val deleteDoc: DeleteDocumentUseCase, private val messenger: UiMessenger, private val saveCategory: SaveCategoryUseCase,
 ) : AndroidViewModel(app) {
     private val _stage = MutableStateFlow<ScanStage>(ScanStage.Capture)
     val stage: StateFlow<ScanStage> = _stage.asStateFlow()
@@ -89,10 +98,13 @@ class ScanViewModel @Inject constructor(
                     if (d.items.size > shown.size) append("; … e altre ${d.items.size - shown.size} voci")
                 }
             }.trim()
-            val valid = data.value.categories.filter { c -> c.active && c.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.map { c -> c.id }.toSet()
-            val remembered = it.spese.domain.ocr.ItemMemory.suggest(d.items.map { item -> item.description }, memory.get(), valid)
+            val cats = data.value.categories; val byId = data.value.categoriesById
+            val auto = Classifier(cats, data.value.rules).classify(d.description, (d.total ?: java.math.BigDecimal.ONE).negate(), null).categoryId
+            val parent = CategoryTree.rootId(auto, byId)?.takeIf { p -> byId[p]?.let { c -> c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null } == true }
+            val sugg = ItemSuggester.suggest(d.items.map { item -> item.description }, memory.get(), cats, parent)
             _form.value = ScanForm(d.description, d.total?.toPlainString()?.replace('.', ',') ?: "", false, d.date ?: LocalDate.now(),
-                data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = remembered)
+                data.value.accounts.firstOrNull { !it.archived }?.id, null, notes, itemCategories = sugg.map { it.categoryId },
+                autoCategoryId = auto, itemNew = sugg.map { it.newName }, createNames = sugg.mapNotNull { it.newName }.toSet())
             _stage.value = ScanStage.Review(r)
             clearPages()
         } catch (e: Exception) { _stage.value = ScanStage.Failed(e.message ?: "Riconoscimento non riuscito") }
@@ -102,6 +114,13 @@ class ScanViewModel @Inject constructor(
     fun process(source: String, deleteSource: Boolean = false) = viewModelScope.launch {
         addPage(source).join()   // i file nella cache si eliminano da soli a fine lettura
         readPages().join()
+    }
+
+    /** Categoria principale in cui creare le nuove sottocategorie: quella scelta (o la sua principale), altrimenti quella che darebbero le regole. */
+    fun parentFor(f: ScanForm): it.spese.core.model.Category? {
+        val byId = data.value.categoriesById
+        val root = CategoryTree.rootId(f.categoryId ?: f.autoCategoryId, byId) ?: return null
+        return byId[root]?.takeIf { c -> c.kind == it.spese.core.model.TxKind.SPESA && c.systemKey == null }
     }
 
     fun edit(t: (ScanForm) -> ScanForm) { _form.value = t(_form.value).copy(error = null) }
@@ -115,9 +134,18 @@ class ScanViewModel @Inject constructor(
         val acc = f.accountId ?: run { _form.value = f.copy(error = "Scegli un conto."); return@launch }
         try {
             val signed = if (f.isIncome) amt else amt.negate()
-            val parts = ReceiptSplitPlanner.plan(amt, r.data.items, f.itemCategories, f.categoryId, !f.isIncome)
+            // sottocategorie proposte dal dizionario: si creano ora (solo quelle lasciate selezionate) e si assegnano alle voci
+            val parent = parentFor(f)
+            val created = HashMap<String, Long>()
+            if (parent != null && !f.isIncome) f.createNames.filter { n -> f.itemNew.contains(n) }.forEach { n ->
+                val id = try { saveCategory(it.spese.core.model.Category(0, n, it.spese.core.model.TxKind.SPESA, false, parent.color, parentId = parent.id, nature = parent.nature)) }
+                catch (e: Exception) { data.value.categories.firstOrNull { c -> c.name.equals(n, ignoreCase = true) }?.id ?: throw e }
+                created[n] = id
+            }
+            val itemCats = r.data.items.indices.map { i -> f.itemCategories.getOrNull(i) ?: f.itemNew.getOrNull(i)?.let { created[it] } }
+            val parts = ReceiptSplitPlanner.plan(amt, r.data.items, itemCats, f.categoryId ?: f.autoCategoryId, !f.isIncome)
             // l'app ricorda le scelte per le voci: la prossima volta le propone da sola
-            memory.learn(r.data.items.mapIndexedNotNull { i, item -> f.itemCategories.getOrNull(i)?.let { c -> it.spese.domain.ocr.ItemMemory.key(item.description).takeIf { k -> k.isNotBlank() }?.let { k -> k to c } } }.toMap())
+            memory.learn(r.data.items.mapIndexedNotNull { i, item -> itemCats.getOrNull(i)?.let { c -> it.spese.domain.ocr.ItemMemory.key(item.description).takeIf { k -> k.isNotBlank() }?.let { k -> k to c } } }.toMap())
             val existing = candidates.value.firstOrNull()?.takeIf { f.attach }
             saveReceipt(TransactionDraft(0, acc, f.date, f.date, f.description, signed, f.categoryId, null, f.notes, r.document.id, it.spese.core.model.TxOrigin.OCR), r.document.id, parts, existing?.id)
             messenger.show(when {
