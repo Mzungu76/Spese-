@@ -15,6 +15,8 @@ sealed interface CaptureResult {
     /** Stesso pagamento già registrato (notifica riproposta, o notificato da un'altra app). */
     data object Duplicate : CaptureResult
     data object Unrecognized : CaptureResult
+    /** Il movimento è segnalato senza importo: va completato dall'utente (o si risolve da solo). */
+    data class NeedsAmount(val pending: PendingAmount) : CaptureResult
 }
 
 /**
@@ -26,7 +28,7 @@ class CaptureNotificationUseCase @Inject constructor(
     private val categories: CategoryRepository, private val rules: RuleRepository, private val applyQuotas: ApplyCashQuotasUseCase,
 ) {
     suspend operator fun invoke(source: CaptureSource, accountId: Long?, raw: RawNotification, zone: ZoneId = ZoneId.systemDefault()): CaptureResult {
-        val parsed = NotificationParser.parse(source, raw.title, raw.text) ?: return CaptureResult.Unrecognized
+        val parsed = NotificationParser.parse(source, raw.title, raw.text) ?: return noAmount(source, accountId, raw, zone)
         val acc = accounts.getAll().let { all -> all.firstOrNull { it.id == accountId && !it.archived } ?: all.firstOrNull { !it.archived } } ?: accounts.getOrCreate("Conto principale")
         val externalId = externalId(source, raw, parsed.amount)
         val existing = tx.getAll()
@@ -49,6 +51,16 @@ class CaptureNotificationUseCase @Inject constructor(
         applyQuotas()
         val id = tx.getAll().firstOrNull { it.externalId == externalId }?.id ?: return CaptureResult.Duplicate
         return CaptureResult.Added(id, parsed.description, parsed.amount)
+    }
+
+    /** Notifica senza importo: se un pagamento di pari direzione è già stato registrato da un'altra notifica nello stesso momento (es. Wallet), non serve chiedere nulla. */
+    private suspend fun noAmount(source: CaptureSource, accountId: Long?, raw: RawNotification, zone: ZoneId): CaptureResult {
+        val sign = NotificationParser.parseWithoutAmount(source, raw.title, raw.text) ?: return CaptureResult.Unrecognized
+        val covered = tx.getAll().any { t -> t.origin == TxOrigin.NOTIFICATION && t.amount.signum() == sign && sourceOf(t.externalId) != source &&
+            (postedAt(t.externalId)?.let { abs(it - raw.postedAtMs) <= PendingMatcher.WINDOW_MS } ?: false) }
+        if (covered) return CaptureResult.Duplicate
+        val dir = if (sign < 0) "in uscita" else "in entrata"
+        return CaptureResult.NeedsAmount(PendingAmount(raw.postedAtMs, source.id, accountId, sign, "Movimento ${source.label} $dir", "${raw.title} ${raw.text}".trim().take(160)))
     }
 
     companion object {

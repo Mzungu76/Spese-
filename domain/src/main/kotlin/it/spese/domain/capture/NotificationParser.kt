@@ -17,6 +17,17 @@ object NotificationParser {
     private val GENERIC_TITLE = Regex("""google wallet|wallet|revolut|hype|poste|postepay|pagamento|addebito|accredito|transazione|notifica|avviso|carta|movimento|operazione|nuovo|hai ricevuto|hai pagato""", RegexOption.IGNORE_CASE)
     private val MERCHANT = Regex("""(?i:presso|da|a favore di|a|@)\s+((?-i:[A-ZÀ-Ý0-9][^,;.\n]{1,40}?))(?=\s+(?:(?i:il|con|del|della|alle|in data|carta|per|tramite|su)\b)|\s+\d{1,2}/\d{1,2}|[,;.\n]|$)""")
 
+    private val NO_AMOUNT_MOVEMENT = Regex("""movimento in (uscita|entrata)""", RegexOption.IGNORE_CASE)
+
+    /** Direzione di una notifica che segnala un movimento ma non ha importo (-1 uscita, +1 entrata); null se non è di questo tipo. */
+    fun parseWithoutAmount(source: CaptureSource, title: String, text: String): Int? {
+        if (source.kind == SourceKind.WALLET) return null
+        val full = "$title $text"
+        if (AMOUNT.containsMatchIn(full)) return null
+        val m = NO_AMOUNT_MOVEMENT.find(full) ?: return null
+        return if (m.groupValues[1].equals("uscita", ignoreCase = true)) -1 else 1
+    }
+
     fun parse(source: CaptureSource, title: String, text: String): ParsedMovement? {
         val full = "$title $text".trim()
         // importo: il primo che non sia un saldo o un limite

@@ -45,11 +45,18 @@ data class SourceConfig(
 /** Una notifica delle fonti scelte che non è stato possibile interpretare (testo conservato solo sul telefono, per correggere il riconoscimento). */
 data class UnrecognizedNotification(val atMs: Long, val source: String, val text: String)
 
+/**
+ * Notifica che segnala un movimento ma non riporta l'importo (es. Poste: «Hai un movimento in uscita su POSTEPAY»).
+ * `id` è l'istante della notifica; `sign` è -1 per uscite e +1 per entrate. L'utente aggiunge l'importo, oppure si risolve da sola.
+ */
+data class PendingAmount(val id: Long, val sourceId: String, val accountId: Long?, val sign: Int, val description: String, val text: String)
+
 data class CaptureConfig(
     val sources: Map<String, SourceConfig> = emptyMap(), val unrecognized: List<UnrecognizedNotification> = emptyList(),
     /** Avvisa (con "Annulla") ogni volta che un movimento viene aggiunto da una notifica. */
     val notifyOnAdd: Boolean = true,
     val ignoreRules: List<IgnoreRule> = emptyList(),
+    val pending: List<PendingAmount> = emptyList(),
 ) {
     /** Troppe notifiche non riconosciute accumulate: chiedi all'utente di controllarle. */
     val needsReview: Boolean get() = unrecognized.size >= IgnoreFilter.REVIEW_THRESHOLD
@@ -88,5 +95,25 @@ object NotificationReconciler {
             out[r.index] = best.first; free.remove(best.first)
         }
         return out
+    }
+}
+
+
+/** Abbina i movimenti "senza importo" a quelli che poi arrivano con l'importo, senza mai indovinare tra più candidati. */
+object PendingMatcher {
+    const val WINDOW_MS = 10 * 60_000L
+
+    /** Un pagamento con importo notificato (da un'altra fonte, es. Google Wallet) nello stesso momento chiude il promemoria. */
+    fun coveredByNotification(p: PendingAmount, sign: Int, postedAtMs: Long): Boolean = p.sign == sign && kotlin.math.abs(p.id - postedAtMs) <= WINDOW_MS
+
+    /** Id dei promemoria risolti dalle righe importate: stessa direzione, stesso giorno (±1), un solo candidato e non conteso da un altro promemoria. */
+    fun resolveByStatement(pending: List<PendingAmount>, rows: List<it.spese.core.model.Transaction>, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): Set<Long> {
+        val imported = rows.filter { it.origin == TxOrigin.IMPORT_FILE }
+        fun candidates(p: PendingAmount): List<it.spese.core.model.Transaction> {
+            val day = java.time.Instant.ofEpochMilli(p.id).atZone(zone).toLocalDate()
+            return imported.filter { it.amount.signum() == p.sign && kotlin.math.abs(ChronoUnit.DAYS.between(it.bookingDate, day)) <= 1 && (p.accountId == null || it.accountId == p.accountId) }
+        }
+        val byPending = pending.associateWith { candidates(it) }
+        return byPending.filter { (_, c) -> c.size == 1 && byPending.count { (_, o) -> o.any { it.id == c[0].id } } == 1 }.keys.map { it.id }.toSet()
     }
 }

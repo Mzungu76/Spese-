@@ -30,6 +30,17 @@ class CaptureNotifier @Inject constructor(@ApplicationContext private val contex
         try { NotificationManagerCompat.from(context).notify(NOTIFICATION_BASE + txId.toInt(), n) } catch (_: SecurityException) { }
     }
 
+    /** "Movimento Poste in uscita: tocca per inserire l'importo". */
+    fun needsAmount(pendingId: Long, description: String) {
+        ensureChannel()
+        val open = PendingIntent.getActivity(context, 1, Intent(context, MainActivity::class.java).putExtra(MainActivity.EXTRA_ROUTE, "capture").addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val n = NotificationCompat.Builder(context, CHANNEL).setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(description).setContentText("Tocca per inserire l'importo").setContentIntent(open).setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW).build()
+        try { NotificationManagerCompat.from(context).notify(NOTIFICATION_BASE + 20_000 + (pendingId % 10_000).toInt(), n) } catch (_: SecurityException) { }
+    }
+
     fun cancel(txId: Long) = NotificationManagerCompat.from(context).cancel(NOTIFICATION_BASE + txId.toInt())
 
     private fun ensureChannel() {

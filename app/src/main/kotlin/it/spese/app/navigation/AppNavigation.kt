@@ -124,6 +124,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     var addOpen by remember { mutableStateOf(false) }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.generateRecurring() }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
+    val launchRoute by vm.incoming.route.collectAsStateWithLifecycle()
+    LaunchedEffect(launchRoute) { launchRoute?.let { r -> nav.navigate(r) { launchSingleTop = true }; vm.incoming.consumeRoute() } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
 
     val menu = DataMenu(

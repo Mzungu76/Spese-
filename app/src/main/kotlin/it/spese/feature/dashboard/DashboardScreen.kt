@@ -54,6 +54,7 @@ fun DashboardScreen(
     val st by vm.state.collectAsStateWithLifecycle()
     val pendingNotifs by vm.pendingNotifications.collectAsStateWithLifecycle()
     val subs by vm.subscriptions.collectAsStateWithLifecycle()
+    val pendingAmounts by vm.pendingAmounts.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -119,6 +120,17 @@ fun DashboardScreen(
                     val dot = when { m.alerts.any { it.level >= 2 } -> MaterialTheme.colorScheme.error; alertCount > 0 -> fin.warning; else -> fin.positive }
                     Box(Modifier.size(11.dp).background(dot, androidx.compose.foundation.shape.CircleShape))
                     Text(if (alertCount > 0) (if (alertCount == 1) "1 cosa da guardare" else "$alertCount cose da guardare") else "Tutto sotto controllo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            if (pendingAmounts > 0) item(key = "pending-amounts") {
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenCapture).padding(horizontal = 18.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Icon(Icons.Default.EditNote, null, tint = fin.warning)
+                    Column(Modifier.weight(1f)) {
+                        Text(if (pendingAmounts == 1) "1 movimento senza importo" else "$pendingAmounts movimenti senza importo", style = MaterialTheme.typography.titleMedium)
+                        Text("La notifica non riporta la cifra: inseriscila in pochi secondi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }

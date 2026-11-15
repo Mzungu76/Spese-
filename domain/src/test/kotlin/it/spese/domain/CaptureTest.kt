@@ -129,3 +129,13 @@ class ReceiptReconcileTest {
         org.junit.Assert.assertTrue(it.spese.domain.finance.SubcategoryTemplates.suggest("Zzz").isEmpty())
     }
 }
+
+class PendingParseTest {
+    @org.junit.Test fun `riconosce la direzione senza importo solo per le frasi esplicite`() {
+        org.junit.Assert.assertEquals(-1, NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Hai un movimento in uscita su POSTEPAY"))
+        org.junit.Assert.assertEquals(1, NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Hai un movimento in entrata su POSTEPAY"))
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Scopri le nuove offerte"))
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Hai un movimento in uscita di 12,50 euro"))   // ha l'importo: lo gestisce il parser normale
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.WALLET, "x", "movimento in uscita"))
+    }
+}

@@ -30,6 +30,8 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Notifiche non riconosciute accumulate (0 se sono poche: il promemoria compare solo oltre la soglia). */
     val pendingNotifications: StateFlow<Int> = captureConfig.observe().map { if (it.needsReview) it.unrecognized.size else 0 }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+    /** Movimenti segnalati da notifiche senza importo, da completare. */
+    val pendingAmounts: StateFlow<Int> = captureConfig.observe().map { it.pending.size }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     private val selected = MutableStateFlow<Set<Long>>(emptySet())
     private val compareMode = MutableStateFlow(false)
 

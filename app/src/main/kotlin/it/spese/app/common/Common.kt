@@ -76,4 +76,10 @@ class IncomingFile @Inject constructor() {
     val uri: StateFlow<Uri?> = _uri.asStateFlow()
     fun offer(u: Uri?) { _uri.value = u }
     fun consume() { _uri.value = null }
+
+    /** Schermata da aprire all'avvio (es. dal tocco su una notifica dell'app). */
+    private val _route = MutableStateFlow<String?>(null)
+    val route: StateFlow<String?> = _route.asStateFlow()
+    fun offerRoute(r: String?) { _route.value = r }
+    fun consumeRoute() { _route.value = null }
 }

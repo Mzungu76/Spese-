@@ -48,7 +48,7 @@ data class ImportState(
 @HiltViewModel
 class ImportViewModel @Inject constructor(
     private val app: Application, val data: StateFlow<AppData>, private val read: ReadStatementUseCase, private val previewUc: PreviewImportUseCase,
-    private val commit: CommitImportUseCase, private val profiles: ImportProfilesUseCase, private val messenger: UiMessenger,
+    private val commit: CommitImportUseCase, private val resolvePending: it.spese.domain.usecase.ResolvePendingAmountsUseCase, private val profiles: ImportProfilesUseCase, private val messenger: UiMessenger,
 ) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(ImportState())
     val state: StateFlow<ImportState> = _state.asStateFlow()
@@ -136,7 +136,9 @@ class ImportViewModel @Inject constructor(
             val o = commit(t, s.headerRow, s.mapping, s.accountName, s.options)
             lastAccount = s.accountName.trim()
             if (s.remember && s.rememberName.isNotBlank()) profiles.remember(s.rememberName.trim(), t, s.roles, s.options, s.headerRow)
-            val line = "${s.fileName} → ${s.accountName.trim()}: ${o.added} importati" + (if (o.duplicates > 0) ", ${o.duplicates} già presenti" else "") + (if (o.skipped > 0) ", ${o.skipped} righe scartate" else "") + (if (o.reconciled > 0) ", ${o.reconciled} sostituiti ai movimenti da notifica" else "")
+            val closed = resolvePending()
+            val line0 = "${s.fileName} → ${s.accountName.trim()}: ${o.added} importati" + (if (o.duplicates > 0) ", ${o.duplicates} già presenti" else "") + (if (o.skipped > 0) ", ${o.skipped} righe scartate" else "") + (if (o.reconciled > 0) ", ${o.reconciled} sostituiti ai movimenti da notifica" else "")
+            val line = line0 + (if (closed > 0) ", $closed movimenti Poste senza importo chiusi" else "")
             val log = s.log + line
             if (s.index + 1 < s.queue.size) { upd { it.copy(log = log) }; startFile(s.index + 1) }
             else { upd { it.copy(log = log, step = ImportStep.DONE, busy = false) }; messenger.show("Importazione completata") }

@@ -33,5 +33,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); handle(intent) }
 
-    private fun handle(i: android.content.Intent?) { if (i?.action == android.content.Intent.ACTION_VIEW) incoming.offer(i.data) }
+    private fun handle(i: android.content.Intent?) {
+        if (i?.action == android.content.Intent.ACTION_VIEW) incoming.offer(i.data)
+        i?.getStringExtra(EXTRA_ROUTE)?.let { incoming.offerRoute(it) }
+    }
+
+    companion object { const val EXTRA_ROUTE = "open_route" }
 }

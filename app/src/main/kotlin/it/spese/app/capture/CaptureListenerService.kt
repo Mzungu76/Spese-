@@ -65,7 +65,18 @@ class CaptureListenerService : NotificationListenerService() {
             if (IgnoreFilter.matches(cfg.ignoreRules, source.id, title, text)) return@launch
             val raw = RawNotification(sbn.packageName, title, text, sbn.postTime)
             when (val r = capture(source, cfg.of(source).accountId, raw)) {
-                is CaptureResult.Added -> if (cfg.notifyOnAdd) notifier.added(r.txId, r.description, r.amount)
+                is CaptureResult.Added -> {
+                    // un pagamento con importo notificato nello stesso momento chiude i promemoria "senza importo" di pari direzione
+                    config.update { c -> c.copy(pending = c.pending.filterNot { PendingMatcher.coveredByNotification(it, r.amount.signum(), raw.postedAtMs) }) }
+                    if (cfg.notifyOnAdd) notifier.added(r.txId, r.description, r.amount)
+                }
+                is CaptureResult.NeedsAmount -> {
+                    val isNew = config.get().pending.none { it.id == r.pending.id && it.sourceId == r.pending.sourceId }
+                    if (isNew) {
+                        config.update { c -> c.copy(pending = listOf(r.pending.copy(accountId = cfg.of(source).accountId)) + c.pending) }
+                        if (cfg.notifyOnAdd) notifier.needsAmount(r.pending.id, r.pending.description)
+                    }
+                }
                 CaptureResult.Unrecognized -> config.update { c -> c.copy(unrecognized = listOf(UnrecognizedNotification(System.currentTimeMillis(), source.label, "$title — $text".trim())) + c.unrecognized) }
                 CaptureResult.Duplicate -> Unit
             }

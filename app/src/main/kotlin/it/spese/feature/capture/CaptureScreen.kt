@@ -61,6 +61,8 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
     val learning = now < until
     var ignoring by remember { mutableStateOf<UnrecognizedNotification?>(null) }
     ignoring?.let { u -> IgnoreDialog(u, vm, { ignoring = null }) }
+    var completing by remember { mutableStateOf<PendingAmount?>(null) }
+    completing?.let { p -> CompleteDialog(p, data, vm) { completing = null } }
 
     Scaffold(topBar = { SubTopBar("Movimenti da notifiche", onBack) }, contentWindowInsets = WindowInsets.safeDrawing) { pad ->
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -95,6 +97,22 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
                 }
             }
             item { TryParser() }
+            if (cfg.pending.isNotEmpty()) {
+                item {
+                    SectionCard(title = "Da completare (${cfg.pending.size})") {
+                        Text("Notifiche che segnalano un movimento ma non riportano l'importo (come quelle di Poste). Inserisci l'importo: se arriva la notifica di Wallet, o importi l'estratto conto, il promemoria si chiude da solo.", style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                items(cfg.pending, key = { "pa-${it.id}" }) { p ->
+                    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("${p.description} · ${TIME.format(Instant.ofEpochMilli(p.id).atZone(ZoneId.systemDefault()))}", style = MaterialTheme.typography.titleSmall)
+                            if (p.text.isNotBlank()) Text(p.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row { TextButton(onClick = { completing = p }) { Text("Inserisci importo") }; TextButton(onClick = { vm.dismissPending(p.id) }) { Text("Non è un movimento") } }
+                        }
+                    }
+                }
+            }
             if (cfg.needsReview) item {
                 SectionCard(title = "Hai ${cfg.unrecognized.size} notifiche da controllare") {
                     Text("Si sono accumulate notifiche che l'app non sa leggere. Per ognuna scegli: «Ignora simili» se non riguarda soldi (promozioni, codici, avvisi), oppure copiala e provala in «Prova un testo» se è un pagamento.", style = MaterialTheme.typography.bodyMedium)
@@ -228,5 +246,24 @@ private fun IgnoreDialog(u: UnrecognizedNotification, vm: CaptureViewModel, onDi
             }
         },
         confirmButton = { TextButton(onClick = { vm.addIgnoreRule(rule); onDismiss() }, enabled = ok) { Text("Ignora") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
+
+/** Inserisce l'importo mancante di un movimento segnalato da una notifica. */
+@Composable
+private fun CompleteDialog(p: PendingAmount, data: it.spese.domain.repository.AppData, vm: CaptureViewModel, onDismiss: () -> Unit) {
+    var amount by remember { mutableStateOf("") }
+    var desc by remember { mutableStateOf("") }
+    var cat by remember { mutableStateOf<Long?>(null) }
+    val cats = it.spese.domain.finance.CategoryTree.ordered(data.categories).filter { c -> c.kind == (if (p.sign < 0) it.spese.core.model.TxKind.SPESA else it.spese.core.model.TxKind.ENTRATA) }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(p.description) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AmountField(amount, { amount = it }, "Importo", Modifier.fillMaxWidth())
+                OutlinedTextField(desc, { desc = it }, label = { Text("Descrizione (facoltativa, es. COOP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                DropdownField("Categoria", cats.firstOrNull { it.id == cat }, cats, { c -> it.spese.domain.finance.CategoryTree.label(c, data.categoriesById) }, { c -> cat = c.id }, nullLabel = "Automatica (regole)", onNull = { cat = null })
+            }
+        },
+        confirmButton = { TextButton(onClick = { vm.complete(p.id, amount, desc, cat, onDismiss) }) { Text("Aggiungi movimento") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }
