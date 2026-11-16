@@ -57,6 +57,8 @@ data class CaptureConfig(
     val notifyOnAdd: Boolean = true,
     val ignoreRules: List<IgnoreRule> = emptyList(),
     val pending: List<PendingAmount> = emptyList(),
+    /** Istante (ms) dell'ultima notifica ricevuta per ogni fonte: dice se l'app sta davvero ricevendo. */
+    val lastSeen: Map<String, Long> = emptyMap(),
 ) {
     /** Troppe notifiche non riconosciute accumulate: chiedi all'utente di controllarle. */
     val needsReview: Boolean get() = unrecognized.size >= IgnoreFilter.REVIEW_THRESHOLD

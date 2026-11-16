@@ -28,7 +28,8 @@ class CaptureListenerService : NotificationListenerService() {
     @Inject lateinit var learning: CaptureLearning
     @Inject lateinit var notifier: CaptureNotifier
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // un errore in una notifica non deve mai far cadere l'app (e con lei l'ascolto): si registra e si va avanti
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.w("CaptureListener", "notifica non elaborata", e) })
     @Volatile private var current = CaptureConfig()
     @Volatile private var loaded = false
 
@@ -38,6 +39,12 @@ class CaptureListenerService : NotificationListenerService() {
     }
 
     override fun onDestroy() { scope.cancel(); super.onDestroy() }
+
+    /** Android può scollegare l'ascolto (aggiornamento dell'app, risparmio energetico, processo terminato): si chiede subito di riconnettersi. */
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        try { requestRebind(android.content.ComponentName(this, CaptureListenerService::class.java)) } catch (_: Exception) { }
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
@@ -55,6 +62,7 @@ class CaptureListenerService : NotificationListenerService() {
         scope.launch {
             val cfg = if (loaded) current else config.get()
             val source = CaptureRouting.route(cfg, sbn.packageName, title) ?: return@launch
+            config.update { c -> c.copy(lastSeen = c.lastSeen + (source.id to System.currentTimeMillis())) }
             // testo completo: grande se c'è, altrimenti normale; più le righe e il sottotesto (alcune app mettono lì l'importo)
             val text = listOfNotNull(
                 (extras.getCharSequence(Notification.EXTRA_BIG_TEXT) ?: extras.getCharSequence(Notification.EXTRA_TEXT))?.toString(),

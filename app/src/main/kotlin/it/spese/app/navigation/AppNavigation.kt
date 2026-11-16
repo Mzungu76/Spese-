@@ -122,7 +122,13 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     val incoming by vm.incoming.uri.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var addOpen by remember { mutableStateOf(false) }
-    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) { vm.generateRecurring() }
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        vm.generateRecurring()
+        // dopo un aggiornamento dell'app Android a volte non ricollega l'ascolto delle notifiche: lo si richiede a ogni apertura
+        if (androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(appCtx).contains(appCtx.packageName))
+            try { android.service.notification.NotificationListenerService.requestRebind(android.content.ComponentName(appCtx, it.spese.app.capture.CaptureListenerService::class.java)) } catch (_: Exception) { }
+    }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
     val launchRoute by vm.incoming.route.collectAsStateWithLifecycle()
     LaunchedEffect(launchRoute) { launchRoute?.let { r -> nav.navigate(r) { launchSingleTop = true }; vm.incoming.consumeRoute() } }

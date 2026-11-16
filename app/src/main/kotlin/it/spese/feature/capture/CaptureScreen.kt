@@ -89,7 +89,7 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
                     Text("Se i tre puntini non compaiono: prima tocca una volta l'interruttore grigio (Android mostra un avviso), poi riapri «Info app» e la voce c'è.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            items(CaptureSource.entries.toList(), key = { it.id }) { s -> SourceCard(s, cfg.of(s), data, vm, learning, now, until, seen) }
+            items(CaptureSource.entries.toList(), key = { it.id }) { s -> SourceCard(s, cfg.of(s), cfg.lastSeen, data, vm, learning, now, until, seen) }
             item {
                 SectionCard(title = "Avvisi") {
                     LabeledSwitch("Avvisami quando aggiungo un movimento", cfg.notifyOnAdd, vm::setNotify, supporting = "Con il pulsante Annulla, se ha letto male")
@@ -161,11 +161,14 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun SourceCard(s: CaptureSource, c: SourceConfig, data: it.spese.domain.repository.AppData, vm: CaptureViewModel, learning: Boolean, now: Long, until: Long, seen: List<it.spese.app.capture.CaptureLearning.Seen>) {
+private fun SourceCard(s: CaptureSource, c: SourceConfig, lastSeen: Map<String, Long>, data: it.spese.domain.repository.AppData, vm: CaptureViewModel, learning: Boolean, now: Long, until: Long, seen: List<it.spese.app.capture.CaptureLearning.Seen>) {
     SectionCard(title = s.label) {
         LabeledSwitch("Leggi ${if (s.kind == SourceKind.SMS) "gli SMS" else "le notifiche"} di ${s.label}", c.enabled, { on -> vm.updateSource(s) { it.copy(enabled = on) } },
             supporting = when (s.kind) { SourceKind.WALLET -> "Notifica i pagamenti contactless; non dice da quale conto"; SourceKind.SMS -> "Solo dai mittenti indicati sotto"; SourceKind.BANK_APP -> null })
         if (c.enabled) {
+            val last = lastSeen[s.id]
+            Text(if (last == null) "Nessuna notifica ricevuta finora da questa fonte." else "Ultima notifica ricevuta: ${java.time.format.DateTimeFormatter.ofPattern("d/M HH:mm").format(Instant.ofEpochMilli(last).atZone(ZoneId.systemDefault()))}",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val acc = data.accounts.filter { !it.archived }
             DropdownField("Registra sul conto", acc.firstOrNull { it.id == c.accountId } ?: acc.firstOrNull(), acc, { it.name }, { a -> vm.updateSource(s) { it.copy(accountId = a.id) } })
             if (s.kind == SourceKind.SMS) {
