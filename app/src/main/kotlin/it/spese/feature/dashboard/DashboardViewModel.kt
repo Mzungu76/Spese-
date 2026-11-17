@@ -26,10 +26,10 @@ data class DashboardState(
 class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger,
     captureConfig: it.spese.domain.repository.CaptureConfigRepository,
     review: it.spese.domain.finance.SubscriptionReviewRepository,
-    recurring: it.spese.domain.repository.RecurringRepository) : ViewModel() {
+    recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository) : ViewModel() {
     /** «Disponibile oggi»: quanto si può spendere ancora nel mese, tenendo conto di risparmio e uscite note (conto del filtro, se scelto). */
-    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter) { d, rules, ign, f ->
-        runCatching { SafeToSpendEngine.forApp(d, rules, ign, f.accountId) }.getOrNull()
+    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll()) { d, rules, ign, f, g ->
+        runCatching { SafeToSpendEngine.forApp(d, rules, ign, f.accountId, goals = g) }.getOrNull()
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Costo mensile di abbonamenti e rate riconosciuti e quante novità (aumenti, addebiti mancanti) ci sono. */
     val subscriptions: StateFlow<it.spese.domain.finance.SubscriptionSummary?> = combine(data, review.observeIgnored()) { d, ign ->

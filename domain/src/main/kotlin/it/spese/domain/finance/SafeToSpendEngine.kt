@@ -2,6 +2,8 @@ package it.spese.domain.finance
 
 import it.spese.core.common.MonthCalendar
 import it.spese.core.model.Due
+import it.spese.core.model.Goal
+import it.spese.domain.goals.GoalEngine
 import it.spese.core.model.RecurringRule
 import it.spese.core.model.SpendNature
 import it.spese.core.model.Transaction
@@ -43,6 +45,8 @@ data class SafeToSpendReport(
     /** I dati sono fermi a una data passata (ultimo movimento vecchio): la cifra non è quella di oggi. */
     val stale: Boolean,
     val status: SafeStatus,
+    /** La quota di risparmio viene dagli obiettivi (altrimenti dall'obiettivo unico del Piano). */
+    val savingsFromGoals: Boolean = false,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
     val variableSpent: BigDecimal get() = spentToDate - fixedPaid
@@ -59,19 +63,20 @@ object SafeToSpendEngine {
         patterns: List<RecurringPattern> = emptyList(),
         accountId: Long? = null,
         realToday: LocalDate = LocalDate.now(),
+        goals: List<Goal> = emptyList(),
     ): SafeToSpendReport? = compute(
         data.transactions.filter { accountId == null || it.accountId == accountId }.filter { it.kind != TxKind.TRASFERIMENTO },
-        data, rules, patterns, realToday,
+        data, rules, patterns, realToday, goals,
     )
 
     /** Come [compute], rilevando da sé abbonamenti e rate dai movimenti (senza quelli ignorati dall'utente o già coperti da una ricorrenza). Unico ingresso per Home, notifica e widget. */
-    fun forApp(data: AppData, rules: List<RecurringRule>, ignoredPatterns: Set<String> = emptySet(), accountId: Long? = null, realToday: LocalDate = LocalDate.now()): SafeToSpendReport? {
+    fun forApp(data: AppData, rules: List<RecurringRule>, ignoredPatterns: Set<String> = emptySet(), accountId: Long? = null, realToday: LocalDate = LocalDate.now(), goals: List<Goal> = emptyList()): SafeToSpendReport? {
         if (!data.loaded) return null
         val patterns = SubscriptionDetector.detect(data.transactions, SubscriptionDetector.excludedCategories(data.categories), realToday, rules).filter { it.key !in ignoredPatterns }
-        return compute(data, rules, patterns, accountId, realToday)
+        return compute(data, rules, patterns, accountId, realToday, goals)
     }
 
-    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate): SafeToSpendReport? {
+    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>): SafeToSpendReport? {
         if (tx.isEmpty()) return null
         val cal: MonthCalendar = data.calendar
         val today = AlertEngine.referenceToday(realToday, tx)
@@ -97,7 +102,7 @@ object SafeToSpendEngine {
 
         val upcoming = upcoming(rules, patterns, data.dues, today, end, start)
         val upcomingTotal = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
-        val savings = AlertEngine.goalMonthly(data.goal).max(BigDecimal.ZERO)
+        val savings = (if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, today) else AlertEngine.goalMonthly(data.goal)).max(BigDecimal.ZERO)
 
         val variableBudget = expectedIncome - savings - fixedPaid - upcomingTotal
         val available = expectedIncome - savings - spent - upcomingTotal
@@ -111,7 +116,7 @@ object SafeToSpendEngine {
             else -> SafeStatus.OK
         }
         return SafeToSpendReport(today, start, end, daysLeft, daysTotal, expectedIncome, incomeToDate, avgIncome == null || avgIncome < incomeToDate, savings,
-            spent, fixedPaid, upcoming, variableBudget, available, perDay, delta, stale, status)
+            spent, fixedPaid, upcoming, variableBudget, available, perDay, delta, stale, status, goals.isNotEmpty())
     }
 
     /** Uscite note da oggi a fine periodo: ricorrenze manuali, abbonamenti/rate rilevati, scadenze. Niente doppioni tra ricorrenze e rilevati. */

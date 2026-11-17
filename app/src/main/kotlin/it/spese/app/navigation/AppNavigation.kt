@@ -38,6 +38,7 @@ import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
 import it.spese.feature.capture.CaptureScreen
+import it.spese.feature.goals.GoalsScreen
 import it.spese.feature.recurring.RecurringScreen
 import it.spese.feature.subscriptions.SubscriptionsScreen
 import it.spese.feature.reports.ReportsScreen
@@ -58,7 +59,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -161,7 +162,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
-                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, contentPadding = pad)
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, onOpenGoals = { nav.navigate(Routes.GOALS) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, bottomPadding = pad) }
@@ -182,6 +183,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
             composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.RECURRING) { RecurringScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.GOALS) { GoalsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SUBSCRIPTIONS) { SubscriptionsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }

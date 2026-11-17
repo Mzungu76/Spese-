@@ -30,6 +30,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class SafeToSpendWidget : AppWidgetProvider() {
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var recurring: RecurringRepository
+    @Inject lateinit var goals: it.spese.domain.repository.GoalRepository
     @Inject lateinit var review: SubscriptionReviewRepository
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -37,7 +38,7 @@ class SafeToSpendWidget : AppWidgetProvider() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val d = withTimeoutOrNull(8_000) { data.first { it.loaded } }
-                val report = d?.let { runCatching { SafeToSpendEngine.forApp(it, recurring.getAll(), review.observeIgnored().first()) }.getOrNull() }
+                val report = d?.let { runCatching { SafeToSpendEngine.forApp(it, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll()) }.getOrNull() }
                 val views = render(context, report, d != null)
                 appWidgetIds.forEach { manager.updateAppWidget(it, views) }
             } finally { pending.finish() }

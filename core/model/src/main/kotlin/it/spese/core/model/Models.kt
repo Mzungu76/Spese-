@@ -232,3 +232,20 @@ data class DocumentRef(
     val createdAt: Long,
     val ocrText: String? = null,
 )
+
+/**
+ * Obiettivo di risparmio (fondo di emergenza, vacanza, investimento…). `saved` è quanto è già stato messo da parte;
+ * la quota mensile è quella scelta (`monthly`) oppure, se manca, quella che serve per arrivare alla scadenza.
+ */
+data class Goal(
+    val id: Long,
+    val name: String,
+    val target: BigDecimal,
+    val saved: BigDecimal = BigDecimal.ZERO,
+    val deadline: LocalDate? = null,
+    /** Quota mensile scelta; null = calcolata dalla scadenza. */
+    val monthly: BigDecimal? = null,
+    /** 0 = la più importante. */
+    val priority: Int = 0,
+    val enabled: Boolean = true,
+)

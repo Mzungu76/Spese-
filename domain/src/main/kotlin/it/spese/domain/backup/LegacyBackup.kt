@@ -69,6 +69,8 @@ data class NativeRecurring(
 )
 /** Voce di scontrino ricordata e categoria (per nome). */
 data class NativeItemMemory(val key: String, val category: String)
+/** Obiettivo di risparmio (scadenza e quota possono mancare). */
+data class NativeGoal(val name: String, val target: BigDecimal, val saved: BigDecimal, val deadline: java.time.LocalDate?, val monthly: BigDecimal?, val priority: Int, val enabled: Boolean)
 data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
@@ -80,6 +82,7 @@ data class NativeExtras(
     val ignoreRules: List<NativeIgnoreRule> = emptyList(),
     /** Esercenti che l'utente non vuole vedere come abbonamenti o rate. */
     val subIgnored: List<String> = emptyList(),
+    val goals: List<NativeGoal> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -183,6 +186,10 @@ object LegacyBackupCodec {
         itemMemory = o["items"].arr()?.mapNotNull { e -> e.obj()?.let { m -> NativeItemMemory(m["k"].str()?.takeIf { it.isNotBlank() } ?: return@let null, m["cat"].str()?.takeIf { it.isNotBlank() } ?: return@let null) } } ?: emptyList(),
         ignoreRules = o["ignore"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIgnoreRule(r["src"].str() ?: "", r["p"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["t"].dec()?.toLong() ?: 0L, r["on"]?.let { flag(it) } ?: true) } } ?: emptyList(),
         subIgnored = o["subIgnored"].arr()?.mapNotNull { it.str() } ?: emptyList(),
+        goals = o["goals"].arr()?.mapNotNull { e -> e.obj()?.let { g ->
+            NativeGoal(g["n"].str()?.takeIf { it.isNotBlank() } ?: return@let null, g["t"].dec() ?: return@let null, g["s"].dec() ?: BigDecimal.ZERO,
+                g["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) }, g["m"].dec(), g["p"].dec()?.toInt() ?: 0, g["on"]?.let { flag(it) } ?: true)
+        } } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -256,6 +263,9 @@ object LegacyBackupCodec {
                 if (x.itemMemory.isNotEmpty()) put("items", buildJsonArray { x.itemMemory.forEach { m -> add(buildJsonObject { put("k", m.key); put("cat", m.category) }) } })
                 if (x.ignoreRules.isNotEmpty()) put("ignore", buildJsonArray { x.ignoreRules.forEach { r -> add(buildJsonObject { put("src", r.source); put("p", r.phrase); put("t", r.createdMs); put("on", if (r.enabled) 1 else 0) }) } })
                 if (x.subIgnored.isNotEmpty()) putJsonArray("subIgnored") { x.subIgnored.forEach { add(JsonPrimitive(it)) } }
+                if (x.goals.isNotEmpty()) putJsonArray("goals") { x.goals.forEach { g -> add(buildJsonObject {
+                    put("n", g.name); put("t", jnum(g.target)); put("s", jnum(g.saved)); g.deadline?.let { put("d", it.toEpochDay()) }; g.monthly?.let { put("m", jnum(it)) }; put("p", g.priority); put("on", if (g.enabled) 1 else 0)
+                }) } }
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)

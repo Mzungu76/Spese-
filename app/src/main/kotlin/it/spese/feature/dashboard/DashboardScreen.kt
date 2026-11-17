@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenGoals: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -86,6 +86,14 @@ fun DashboardScreen(
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
+            item(key = "goals-link") {
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenGoals).padding(horizontal = 18.dp, vertical = 14.dp).testTag("goals_link"),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Icon(Icons.Default.Savings, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Obiettivi di risparmio", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
                     Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")

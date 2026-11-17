@@ -182,6 +182,17 @@ interface CaptureConfigRepository {
     suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
 }
 
+/** Obiettivi di risparmio (preferenze dell'app, nel backup). */
+interface GoalRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.Goal>>
+    suspend fun getAll(): List<it.spese.core.model.Goal>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(g: it.spese.core.model.Goal): Long
+    suspend fun delete(id: Long)
+    /** Sostituisce tutti gli obiettivi (ripristino da backup). */
+    suspend fun setAll(goals: List<it.spese.core.model.Goal>)
+}
+
 /** Entrate e spese ricorrenti. */
 interface RecurringRepository {
     fun observeAll(): Flow<List<it.spese.core.model.RecurringRule>>

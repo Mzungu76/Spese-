@@ -50,7 +50,7 @@ private fun SafeToSpendDetails(r: SafeToSpendReport, onDismiss: () -> Unit) {
             Text("Periodo ${Dates.fmt(r.periodStart)} – ${Dates.fmt(r.periodEnd)} · ${r.daysLeft} giorni compreso oggi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
             Line("Entrate attese${if (r.incomeEstimated) "" else " (media degli ultimi mesi)"}", r.expectedIncome, "già incassate ${Money.eur0(r.incomeToDate)}")
-            Line("Da mettere da parte", r.savingsTarget.negate(), "obiettivo di risparmio mensile")
+            Line("Da mettere da parte", r.savingsTarget.negate(), if (r.savingsFromGoals) "somma delle quote dei tuoi obiettivi" else "obiettivo di risparmio mensile del Piano")
             Line("Già speso nel periodo", r.spentToDate.negate(), "di cui spese fisse ${Money.eur0(r.fixedPaid)}")
             Line("Uscite già note in arrivo", r.upcomingTotal.negate(), if (r.upcoming.isEmpty()) "nessuna" else "${r.upcoming.size} voci, qui sotto")
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
