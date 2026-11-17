@@ -43,7 +43,8 @@ private fun SetupForm(p: SetupProposal, onBack: () -> Unit, vm: SetupViewModel) 
     val goalV = parseAmountOrNull(goal) ?: BigDecimal.ZERO
     val free = incomeV - goalV - p.fixedMonthly
     val perDay = free.divide(BigDecimal("30.44"), 0, RoundingMode.HALF_UP)
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize()) {
+    LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Ho guardato i tuoi movimenti e ti propongo un piano. Controlla i numeri, correggili se serve e conferma: nulla cambia finché non salvi.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -84,11 +85,11 @@ private fun SetupForm(p: SetupProposal, onBack: () -> Unit, vm: SetupViewModel) 
                 }
             }
         }
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { vm.apply(incomeV, goalV, p.budgets.filter { it.categoryId in chosen }, onBack) }, Modifier.fillMaxWidth().testTag("setup_save"), enabled = incomeV.signum() > 0 && goalV.signum() >= 0) { Text("Salva il piano") }
-                TextButton(onClick = { vm.skip(onBack) }, Modifier.fillMaxWidth()) { Text("Non ora") }
-            }
-        }
+    }
+    // i pulsanti restano sempre visibili sotto l'elenco
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Button(onClick = { vm.apply(incomeV, goalV, p.budgets.filter { it.categoryId in chosen }, onBack) }, Modifier.fillMaxWidth().testTag("setup_save"), enabled = incomeV.signum() > 0 && goalV.signum() >= 0) { Text("Salva il piano") }
+        TextButton(onClick = { vm.skip(onBack) }, Modifier.fillMaxWidth()) { Text("Non ora") }
+    }
     }
 }

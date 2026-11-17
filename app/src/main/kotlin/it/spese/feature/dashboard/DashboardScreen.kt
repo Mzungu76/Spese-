@@ -93,7 +93,7 @@ fun DashboardScreen(
                 }
             }
             item(key = "legend") {
-                Row(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                Row(Modifier.testTag("legend").padding(start = 24.dp, end = 24.dp, top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
                     LegendItem("Entrate", Money.eur0(s.income), fin.positive)
                     LegendItem("Spese", Money.eur0(s.expense), fin.negative)
                 }
@@ -103,7 +103,7 @@ fun DashboardScreen(
                 PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             }
             item(key = "alerts") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),
+                Row(Modifier.testTag("alerts_row").padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     val dot = when { m.alerts.any { it.level >= 2 } -> MaterialTheme.colorScheme.error; alertCount > 0 -> fin.warning; else -> fin.positive }
                     Box(Modifier.size(11.dp).background(dot, androidx.compose.foundation.shape.CircleShape))

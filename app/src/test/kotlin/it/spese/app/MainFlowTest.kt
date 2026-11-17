@@ -92,8 +92,11 @@ class MainFlowTest {
         runBlocking { restore(env, RestoreMode.Replace) }
         compose.waitUntil(10000) { data.value.transactions.size == 223 }
         waitText("Hai ", substring = true, ms = 10000)   // "Hai messo da parte" oppure "Hai speso in più…"
+        // sotto la card "oggi puoi spendere" la lista è più lunga dello schermo: si scorre fino alle voci da verificare
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("legend"))
         waitText("Entrate"); waitText("Spese")
         // avvisi calcolati sui dati importati (budget superati, scadenze…)
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("alerts_row"))
         waitText("da guardare", substring = true)
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
     }
@@ -164,7 +167,9 @@ class MainFlowTest {
         // consigli e "Il tuo mese"
         compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("open_report"))
         compose.onNodeWithTag("open_report").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
-        waitText("Il tuo mese"); waitText("Rivedi entrate, obiettivo e budget")
+        waitText("Il tuo mese")
+        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Rivedi entrate, obiettivo e budget"))
+        waitText("Rivedi entrate, obiettivo e budget")
     }
 
     @Test fun la_configurazione_guidata_propone_e_salva_entrate_e_obiettivo() {
@@ -175,7 +180,6 @@ class MainFlowTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("setup_prompt"))
         compose.onNodeWithTag("setup_prompt").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         waitText("1 · Quanto entra ogni mese"); waitText("3 · Quanto vuoi mettere da parte")
-        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("setup_save"))
         compose.onNodeWithTag("setup_save").assertIsEnabled().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(20); data.value.goal.expectedIncome != null }
         assertTrue(data.value.goal.expectedIncome!!.signum() > 0)
