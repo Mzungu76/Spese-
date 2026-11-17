@@ -30,17 +30,17 @@ import java.time.YearMonth
 
 /** Patrimonio: quanto hai, come è cambiato, se il fondo di emergenza è al sicuro e quanto potresti investire. */
 @Composable
-fun NetWorthScreen(onBack: () -> Unit, vm: NetWorthViewModel = hiltViewModel()) {
+fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), vm: NetWorthViewModel = hiltViewModel()) {
     val r by vm.report.collectAsStateWithLifecycle()
     var edit by remember { mutableStateOf<AccountBalance?>(null) }
     Column(Modifier.fillMaxSize()) {
-        BackHeader("Patrimonio", onBack)
+        if (onBack != null) BackHeader("Patrimonio", onBack) else it.spese.app.common.LargeHeader("Patrimonio", menu = menu)
         val rep = r
         if (rep == null) {
             EmptyState(Icons.Default.AccountBalance, "Nessun conto", "Importa un estratto conto o crea un conto in Impostazioni › Conti per vedere il patrimonio.")
             return@Column
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
             item { Hero(rep) }
             if (rep.series.size >= 2) item { Trend(rep) }
             item { FundCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }

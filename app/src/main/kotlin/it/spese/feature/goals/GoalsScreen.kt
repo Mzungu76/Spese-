@@ -32,7 +32,7 @@ import java.time.LocalDate
 
 /** Obiettivi di risparmio: ognuno con la sua quota mensile; la somma decide quanto «Disponibile oggi» tiene da parte. */
 @Composable
-fun GoalsScreen(onBack: () -> Unit, vm: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), vm: GoalsViewModel = hiltViewModel()) {
     val goals by vm.goals.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
@@ -41,10 +41,11 @@ fun GoalsScreen(onBack: () -> Unit, vm: GoalsViewModel = hiltViewModel()) {
     var deposit by remember { mutableStateOf<Goal?>(null) }
     var budgets by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        BackHeader("Obiettivi", onBack, actions = {
+        val addButton: @Composable RowScope.() -> Unit = {
             RoundIconButton(Icons.Default.Add, "Nuovo obiettivo", { edit = Goal(0, "", BigDecimal.ZERO) }, Modifier.testTag("goal_add"), primary = true)
-        })
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+        }
+        if (onBack != null) BackHeader("Obiettivi", onBack, actions = addButton) else it.spese.app.common.LargeHeader("Obiettivi", menu = menu, actions = addButton)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
             item {
                 Text("Prima metti da parte, poi spendi: ogni obiettivo ha una quota mensile (scelta da te, o calcolata dalla scadenza). La somma delle quote è ciò che «Disponibile oggi» riserva ogni mese.",
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

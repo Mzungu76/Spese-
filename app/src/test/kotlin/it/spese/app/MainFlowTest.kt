@@ -62,10 +62,11 @@ class MainFlowTest {
 
     @Test fun le_cinque_sezioni_principali_sono_raggiungibili() {
         compose.waitForIdle()
-        listOf("transactions", "categories", "plan", "dashboard").forEach { route ->
+        listOf("transactions", "goals", "networth", "more", "dashboard").forEach { route ->
             compose.onNodeWithTag("tab_$route").performClick(); compose.waitForIdle()
         }
-        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("tab_goals").performClick(); waitText("Nessun obiettivo")
+        openMore("categories")
         // la sezione Categorie mostra le categorie predefinite
         compose.waitUntil(5000) { compose.onAllNodesWithText("Supermercato e alimentari").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Supermercato e alimentari").assertExists()
@@ -104,7 +105,7 @@ class MainFlowTest {
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
         compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true)); waitText("Ritmo di spesa", substring = true)
-        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        openMore("categories")
         waitText("Supermercato e alimentari")
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
         compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
@@ -137,9 +138,21 @@ class MainFlowTest {
     }
 
     private fun goTab(label: String) {
-        val route = mapOf("Movimenti" to "transactions", "Categorie" to "categories", "Piano" to "plan", "Panoramica" to "dashboard").getValue(label)
-        compose.onNodeWithTag("tab_$route").performClick()
-        compose.waitForIdle()
+        when (label) {
+            "Categorie" -> openMore("categories")
+            "Piano" -> openMore("plan")
+            else -> {
+                val route = mapOf("Movimenti" to "transactions", "Panoramica" to "dashboard").getValue(label)
+                compose.onNodeWithTag("tab_$route").performClick()
+                compose.waitForIdle()
+            }
+        }
+    }
+
+    /** Categorie e Piano si aprono dalla scheda «Altro». */
+    private fun openMore(key: String) {
+        compose.onNodeWithTag("tab_more").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("more_$key").performClick(); compose.waitForIdle()
     }
 
     private fun openMenu(item: String) {

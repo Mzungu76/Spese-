@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenGoals: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenReview: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenReview: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -86,6 +86,7 @@ fun DashboardScreen(
         var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
+            item(key = "h-today") { SectionHeader("Oggi", Modifier.padding(horizontal = 24.dp)) }
             safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             advice.reviewMonth?.let { month ->
                 item(key = "review-link") {
@@ -112,22 +113,7 @@ fun DashboardScreen(
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            item(key = "networth-link") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenNetWorth).padding(horizontal = 18.dp, vertical = 14.dp).testTag("networth_link"),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Default.AccountBalance, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Patrimonio e fondo di emergenza", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            item(key = "goals-link") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenGoals).padding(horizontal = 18.dp, vertical = 14.dp).testTag("goals_link"),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Default.Savings, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Obiettivi di risparmio", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
+            item(key = "h-month") { SectionHeader("Questo mese", Modifier.padding(horizontal = 24.dp)) }
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
                     Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")
@@ -159,6 +145,41 @@ fun DashboardScreen(
                     Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             st.pace?.let { pace -> item(key = "pace") { PaceSection(pace, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
+            val watch = SavingsOpportunities.surging(m.categories)
+            val opps = SavingsOpportunities.compute(m.categories, 20)
+            if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
+            item(key = "cats-head") {
+                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Dove vanno i soldi", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                        if (st.compareMode) TextButton(onClick = { vm.setCompareMode(false) }) { Text("Fine") }
+                        else TextButton(onClick = { vm.setCompareMode(true) }) { Icon(Icons.Default.CompareArrows, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Confronta") }
+                    }
+                    if (st.compareMode && st.selected.isEmpty()) Text("Tocca le categorie da confrontare tra loro e con le entrate del periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
+                }
+            }
+            val rows = if (catKind == TxKind.SPESA) m.categories else m.incomeCategories
+            val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
+            if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
+                val rid = r.category?.id
+                CategoryRankRow(r, catKind, maxTotal, { if (st.compareMode && rid != null) vm.toggleCategory(rid) else onOpenCategory(rid) },
+                    Modifier.testTag("rank-$rid"), selectable = st.compareMode, selected = rid != null && rid in st.selected, onLongClick = { if (rid != null) vm.toggleCategory(rid) },
+                    budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
+            }
+            item(key = "cats-trends") { TextButton(onClick = onOpenTrends, Modifier.padding(horizontal = 12.dp)) { Icon(Icons.Default.Timeline, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tendenze e proiezioni per categoria") } }
+            if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }
+            if (s.transfers.signum() != 0) item(key = "cats-transfers") {
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpenTransfers).padding(horizontal = 4.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Giroconti esclusi dai totali", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    MoneyText(s.transfers.abs(), decimals = false, muted = true)
+                }
+            }
+            item(key = "h-fix") { SectionHeader("Da sistemare", Modifier.padding(horizontal = 24.dp)) }
             item(key = "alerts") {
                 Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -201,40 +222,6 @@ fun DashboardScreen(
                         }
                         Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                }
-            }
-            val watch = SavingsOpportunities.surging(m.categories)
-            val opps = SavingsOpportunities.compute(m.categories, 20)
-            if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            item(key = "cats-head") {
-                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Dove vanno i soldi", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                        if (st.compareMode) TextButton(onClick = { vm.setCompareMode(false) }) { Text("Fine") }
-                        else TextButton(onClick = { vm.setCompareMode(true) }) { Icon(Icons.Default.CompareArrows, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Confronta") }
-                    }
-                    if (st.compareMode && st.selected.isEmpty()) Text("Tocca le categorie da confrontare tra loro e con le entrate del periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
-                }
-            }
-            val rows = if (catKind == TxKind.SPESA) m.categories else m.incomeCategories
-            val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
-            if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
-                val rid = r.category?.id
-                CategoryRankRow(r, catKind, maxTotal, { if (st.compareMode && rid != null) vm.toggleCategory(rid) else onOpenCategory(rid) },
-                    Modifier.testTag("rank-$rid"), selectable = st.compareMode, selected = rid != null && rid in st.selected, onLongClick = { if (rid != null) vm.toggleCategory(rid) },
-                    budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
-            }
-            item(key = "cats-trends") { TextButton(onClick = onOpenTrends, Modifier.padding(horizontal = 12.dp)) { Icon(Icons.Default.Timeline, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tendenze e proiezioni per categoria") } }
-            if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }
-            if (s.transfers.signum() != 0) item(key = "cats-transfers") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpenTransfers).padding(horizontal = 4.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Giroconti esclusi dai totali", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    MoneyText(s.transfers.abs(), decimals = false, muted = true)
                 }
             }
         }
