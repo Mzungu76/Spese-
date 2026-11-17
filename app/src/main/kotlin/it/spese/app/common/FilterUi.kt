@@ -72,7 +72,7 @@ fun FilterSheet(f: TxFilter, data: AppData, onChange: ((TxFilter) -> TxFilter) -
                 DateField(dr?.to, { d -> onChange { it.copy(period = Period.Custom(dr?.from, d)) } }, "Al", Modifier.weight(1f))
             }
             DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts, { it.name }, { a -> onChange { it.copy(accountId = a.id) } }, nullLabel = "Tutti (aggregato)", onNull = { onChange { it.copy(accountId = null) } })
-            DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories, { it.name }, { c -> onChange { it.copy(categoryId = c.id) } }, nullLabel = "Tutte", onNull = { onChange { it.copy(categoryId = null) } })
+            CategoryField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories, { c -> onChange { it.copy(categoryId = c.id) } }, nullLabel = "Tutte", onNull = { onChange { it.copy(categoryId = null) } }, allowNew = false)
             Text("Tipo", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(f.kind == null, { onChange { it.copy(kind = null) } }, { Text("Tutti") })

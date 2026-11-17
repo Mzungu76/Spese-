@@ -43,6 +43,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
     var q by remember { mutableStateOf("") }
     var editCat by remember { mutableStateOf<Category?>(null) }
+    val expandedCats = remember { mutableStateListOf<Long>() }     // le sottocategorie stanno nel sottomenu della loro categoria: si aprono col chevron
     var editRule by remember { mutableStateOf<Rule?>(null) }
     var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
     var editQuota by remember { mutableStateOf<CashQuota?>(null) }
@@ -62,13 +63,13 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
             when (tab) {
                 0 -> {
                     item(key = "subs-hint") {
-                        Text("Per vedere la spesa nel dettaglio (es. Supermercato → frutta e verdura, pulizia casa, bevande) tocca ⊕ accanto a una categoria per aggiungere una sottocategoria. Nei totali restano dentro la categoria principale.",
+                        Text("Per vedere la spesa nel dettaglio (es. Supermercato → frutta e verdura, pulizia casa, bevande) tocca ⊕ accanto a una categoria per aggiungere una sottocategoria; con la freccia ▾ apri o chiudi le sottocategorie di una categoria. Nei totali restano dentro la categoria principale.",
                             Modifier.padding(horizontal = 24.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate", TxKind.TRASFERIMENTO to "Giroconti (esclusi dai totali)").forEach { (kind, title) ->
                         val ofKind = d.categories.filter { it.kind == kind && SearchMatcher.matches(q, it.name) }
                         // le sottocategorie stanno sotto la loro principale
-                        val list = ofKind.filter { it.parentId == null || ofKind.none { p -> p.id == it.parentId } }.flatMap { p -> listOf(p) + ofKind.filter { it.parentId == p.id } }
+                        val list = ofKind.filter { it.parentId == null || ofKind.none { p -> p.id == it.parentId } }.flatMap { p -> listOf(p) + (if (q.isNotBlank() || p.id in expandedCats) ofKind.filter { it.parentId == p.id } else emptyList()) }
                         if (list.isEmpty()) return@forEach
                         item(key = "h$kind") { Text(title.uppercase(), Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         items(list, key = { it.id }) { c ->
@@ -85,6 +86,9 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                                     }
                                     Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); if (c.parentId == null) ofKind.count { it.parentId == c.id }.takeIf { it > 0 }?.let { append(" · $it sottocategorie") }; c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
                                         Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                                }
+                                if (c.parentId == null && ofKind.any { it.parentId == c.id }) IconButton(onClick = { if (c.id in expandedCats) expandedCats.remove(c.id) else expandedCats.add(c.id) }) {
+                                    Icon(if (c.id in expandedCats) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if (c.id in expandedCats) "Nascondi le sottocategorie di ${c.name}" else "Mostra le sottocategorie di ${c.name}")
                                 }
                                 if (c.parentId == null && c.kind != TxKind.TRASFERIMENTO && c.systemKey == null)
                                     IconButton(onClick = { editCat = Category(0, "", c.kind, true, c.color, null, true, d.categories.size, parentId = c.id, nature = c.nature) }) {
@@ -156,7 +160,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(u.sampleDescription, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(kw, { kw = it }, label = { Text("Parola chiave") }, singleLine = true)
-                DropdownField("Assegna a", d.categories.firstOrNull { it.id == cat }, d.categories.filter { it.active }, { it.name }, { cat = it.id })
+                it.spese.app.common.CategoryField("Assegna a", d.categories.firstOrNull { it.id == cat }, d.categories, { cat = it.id })
             } },
             confirmButton = { TextButton(enabled = kw.isNotBlank() && cat != null, onClick = { vm.assignUnclassified(kw.trim(), cat!!); assign = null }) { Text("Crea regola e assegna") } },
             dismissButton = { TextButton(onClick = { assign = null }) { Text("Annulla") } })
@@ -260,7 +264,7 @@ private fun RuleDialog(r: Rule, d: it.spese.domain.repository.AppData, onDismiss
                     AmountField(min, { min = it }, "Importo ≥", Modifier.weight(1f)); AmountField(max, { max = it }, "Importo ≤", Modifier.weight(1f))
                 }
                 Text("Importi in valore assoluto. La parola chiave può restare vuota se usi solo l'importo.", style = MaterialTheme.typography.bodySmall)
-                DropdownField("Categoria", d.categoriesById[cat], d.categories.filter { it.active }, { it.name }, { cat = it.id })
+                it.spese.app.common.CategoryField("Categoria", d.categoriesById[cat], d.categories, { cat = it.id })
                 if (r.id != 0L) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.moveRule(r.id, -1) }) { Icon(Icons.Default.ArrowUpward, null); Text("Su") }
                     OutlinedButton(onClick = { vm.moveRule(r.id, 1) }) { Icon(Icons.Default.ArrowDownward, null); Text("Giù") }
@@ -289,7 +293,7 @@ private fun QuotaDialog(q: CashQuota, categories: List<Category>, onDismiss: () 
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 AmountField(amount, { amount = it }, "Importo (€)", Modifier.fillMaxWidth())
-                DropdownField("Categoria della quota", categories.firstOrNull { it.id == cat }, categories, { it.name }, { cat = it.id })
+                it.spese.app.common.CategoryField("Categoria della quota", categories.firstOrNull { it.id == cat }, categories, { cat = it.id })
                 Text("Quando si applica", style = MaterialTheme.typography.labelLarge)
                 ChipChoice(QuotaMode.entries.map { it to it.label }, mode, { mode = it })
                 Text(mode.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

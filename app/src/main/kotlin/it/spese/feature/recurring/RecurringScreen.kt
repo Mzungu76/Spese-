@@ -83,7 +83,7 @@ private fun RecurringDialog(r: RecurringRule, categories: List<Category>, accoun
                 OutlinedTextField(name, { name = it }, label = { Text("Nome (es. Stipendio)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 AmountField(amount, { amount = it }, "Importo (€)", Modifier.fillMaxWidth())
                 if (accounts.size > 1) DropdownField("Conto", accounts.firstOrNull { it.id == acc }, accounts, { it.name }, { a -> acc = a.id }, nullLabel = "Il primo conto", onNull = { acc = null })
-                DropdownField("Categoria", cats.firstOrNull { it.id == cat }, cats, { it.name }, { c -> cat = c.id }, nullLabel = "Scelta dalle regole", onNull = { cat = null })
+                it.spese.app.common.CategoryField("Categoria", cats.firstOrNull { it.id == cat }, cats, { c -> cat = c.id }, nullLabel = "Scelta dalle regole", onNull = { cat = null })
                 Text("Ripetizione", style = MaterialTheme.typography.labelLarge)
                 ChipChoice(listOf(1 to "Ogni mese", 2 to "Ogni 2 mesi", 3 to "Ogni 3 mesi", 6 to "Ogni 6 mesi", 12 to "Ogni anno"), every, { every = it })
                 OutlinedTextField(day, { day = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Giorno del mese") }, singleLine = true, modifier = Modifier.fillMaxWidth(), supportingText = { Text("Se il mese è più corto si usa l'ultimo giorno (31 → 28, 30…)") })

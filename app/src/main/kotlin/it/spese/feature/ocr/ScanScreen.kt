@@ -30,6 +30,8 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import it.spese.app.common.CategoryField
+import it.spese.app.common.CategoryPickerDialog
 import it.spese.app.common.FileImage
 import it.spese.app.common.SubTopBar
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -147,7 +149,7 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
         OutlinedTextField(f.description, { v -> vm.edit { it.copy(description = v) } }, Modifier.fillMaxWidth(), label = { Text("Descrizione / esercente" + if (d.merchant == null) " (non riconosciuto)" else "") })
         DateField(f.date, { v -> vm.edit { it.copy(date = v) } }, "Data" + if (d.date == null) " (non riconosciuta)" else "", Modifier.fillMaxWidth())
         DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts.filter { !it.archived }, { it.name }, { a -> vm.edit { it.copy(accountId = a.id) } })
-        DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, CategoryTree.ordered(data.categories), { CategoryTree.label(it, data.categoriesById) }, { c -> vm.edit { it.copy(categoryId = c.id, newParentId = null) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
+        CategoryField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories, { c -> vm.edit { it.copy(categoryId = c.id, newParentId = null) } }, nullLabel = "Automatica (regole)", onNull = { vm.edit { it.copy(categoryId = null) } })
         OutlinedTextField(f.notes, { v -> vm.edit { it.copy(notes = v) } }, Modifier.fillMaxWidth(), label = { Text("Note (IVA e voci riconosciute)") }, minLines = 2)
         d.vat?.let { Text("IVA riconosciuta: ${Money.eur(it)}", style = MaterialTheme.typography.bodyMedium) }
         ReceiptChecks(s.result, f, vm)
@@ -170,12 +172,10 @@ private fun ReviewView(s: ScanStage.Review, vm: ScanViewModel) {
                         if (!out) Box(Modifier.weight(1f)) {
                             AssistChip(onClick = { open = true }, modifier = Modifier.fillMaxWidth(),
                                 label = { Text(chosen?.let { CategoryTree.label(it, data.categoriesById) } ?: proposed?.let { "＋ $it" } ?: "Come principale", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) })
-                            DropdownMenu(open, { open = false }) {
-                                DropdownMenuItem(text = { Text("Come la categoria principale") }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } })
-                                CategoryTree.ordered(data.categories).filter { cat -> cat.kind != it.spese.core.model.TxKind.TRASFERIMENTO }.forEach { c ->
-                                    DropdownMenuItem(text = { Text(CategoryTree.label(c, data.categoriesById)) }, onClick = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) } })
-                                }
-                        }
+                            if (open) CategoryPickerDialog(data.categories, { open = false }, kind = if (f.isIncome) it.spese.core.model.TxKind.ENTRATA else it.spese.core.model.TxKind.SPESA, title = "Categoria della voce",
+                                noneLabel = "Come la categoria principale", onNone = { open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = null }, itemNew = f0.itemNew.toMutableList().also { l -> if (i < l.size) l[i] = null }) } }) { c ->
+                                open = false; vm.edit { f0 -> f0.copy(itemCategories = f0.itemCategories.toMutableList().also { l -> if (i < l.size) l[i] = c.id }) }
+                            }
                         } else Spacer(Modifier.weight(1f))
                         if (i in d.weakItems && !out) Text("⚠", color = SpeseTheme.finance.warning, modifier = Modifier.semantics { contentDescription = "Letta con poca sicurezza: controlla con la foto" })
                         IconButton(onClick = { vm.edit { f0 -> f0.copy(excluded = if (out) f0.excluded - i else f0.excluded + i) } }, Modifier.size(36.dp)) {

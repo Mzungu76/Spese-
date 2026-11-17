@@ -63,7 +63,7 @@ fun SplitDialog(tx: Transaction, categories: List<Category>, existing: List<Tran
                 }
                 rows.forEachIndexed { i, r ->
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Box(Modifier.weight(1.3f)) { DropdownField("Categoria", categories.firstOrNull { it.id == r.categoryId }, categories, { it.name }, { c -> rows[i] = PartRow(c.id, r.amount, r.quotaId) }) }
+                        Box(Modifier.weight(1.3f)) { it.spese.app.common.CategoryField("Categoria", categories.firstOrNull { it.id == r.categoryId }, categories, { c -> rows[i] = PartRow(c.id, r.amount, r.quotaId) }) }
                         AmountField(r.amount, { v -> rows[i] = PartRow(r.categoryId, v, r.quotaId) }, "€", Modifier.weight(1f))
                         if (rows.size > 2) IconButton(onClick = { rows.removeAt(i) }) { Icon(Icons.Default.Close, "Rimuovi parte") }
                     }

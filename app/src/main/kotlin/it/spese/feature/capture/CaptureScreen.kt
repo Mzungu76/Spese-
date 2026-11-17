@@ -264,7 +264,7 @@ private fun CompleteDialog(p: PendingAmount, data: it.spese.domain.repository.Ap
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 AmountField(amount, { amount = it }, "Importo", Modifier.fillMaxWidth())
                 OutlinedTextField(desc, { desc = it }, label = { Text("Descrizione (facoltativa, es. COOP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                DropdownField("Categoria", cats.firstOrNull { it.id == cat }, cats, { c -> it.spese.domain.finance.CategoryTree.label(c, data.categoriesById) }, { c -> cat = c.id }, nullLabel = "Automatica (regole)", onNull = { cat = null })
+                it.spese.app.common.CategoryField("Categoria", cats.firstOrNull { it.id == cat }, data.categories, { c -> cat = c.id }, kind = if (p.sign < 0) it.spese.core.model.TxKind.SPESA else if (p.sign > 0) it.spese.core.model.TxKind.ENTRATA else null, nullLabel = "Automatica (regole)", onNull = { cat = null })
             }
         },
         confirmButton = { TextButton(onClick = { vm.complete(p.id, amount, desc, cat, onDismiss) }) { Text("Aggiungi movimento") } },
