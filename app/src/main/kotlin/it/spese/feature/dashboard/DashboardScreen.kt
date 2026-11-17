@@ -81,7 +81,7 @@ fun DashboardScreen(
         val saved = s.net.signum() >= 0
         val points = remember(st.buckets) { st.buckets.map { GapPoint(it.label, it.income, it.expense, it.title) } }
         val period = st.filter.period
-        val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
+        val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> period; else -> Period.All }
         var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "hero") {
@@ -107,13 +107,14 @@ fun DashboardScreen(
                 item(key = "chart") { GapAreaChart(points, Modifier.padding(horizontal = 24.dp, vertical = 12.dp), height = 300.dp) }
             } else item(key = "compare") { ComparisonSection(st.compare!!, vm::toggleCategory, vm::clearSelection, Modifier.padding(top = 20.dp, bottom = 8.dp)) }
             item(key = "period") {
-                PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                PillSegmented(listOf<Pair<Period, String>>(Period.CurrentWeek to "Sett.", Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             }
             if (!st.filter.calendar.isSolar && st.data.ledger.isNotEmpty()) item(key = "calendar-note") {
                 val r = PeriodResolver.resolve(shownPeriod, st.data.ledger.minOf { it.bookingDate }, st.data.ledger.maxOf { it.bookingDate }, st.filter.calendar)
                 Text("Mese contabile dal giorno ${st.filter.calendar.startDay}" + (r.from?.let { f -> r.to?.let { t -> " · periodo ${Dates.fmt(f)} – ${Dates.fmt(t)}" } } ?: ""),
                     Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            st.pace?.let { pace -> item(key = "pace") { PaceSection(pace, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             item(key = "alerts") {
                 Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {

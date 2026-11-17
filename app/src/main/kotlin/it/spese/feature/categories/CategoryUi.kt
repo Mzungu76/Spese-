@@ -80,8 +80,8 @@ fun CategoryRankRow(
 /** Selettore del periodo condiviso (Mese / 3 mesi / Anno / Tutto): i periodi non previsti ricadono su "Tutto". */
 @Composable
 fun PeriodPills(period: Period, onSet: (Period) -> Unit, modifier: Modifier = Modifier) {
-    val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
-    PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
+    val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> period; else -> Period.All }
+    PillSegmented(listOf<Pair<Period, String>>(Period.CurrentWeek to "Sett.", Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
 }
 
 private fun natureColorOf(n: SpendNature?, scheme: androidx.compose.material3.ColorScheme, warn: androidx.compose.ui.graphics.Color) = when (n) {

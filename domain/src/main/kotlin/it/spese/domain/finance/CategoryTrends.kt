@@ -132,7 +132,7 @@ object CategoryTrendEngine {
 
     private fun periodLabel(p: Period) = when (p) {
         Period.All -> "tutto il periodo"; Period.YearToDate -> "quest'anno"; Period.Last3Months -> "ultimi 3 mesi"; Period.Last6Months -> "ultimi 6 mesi"
-        Period.CurrentMonth -> "mese corrente"; is Period.Month -> "mese scelto"; is Period.Custom -> "intervallo scelto"
+        Period.CurrentMonth -> "mese corrente"; Period.CurrentWeek -> "settimana corrente"; is Period.Month -> "mese scelto"; is Period.Custom -> "intervallo scelto"
     }
 
     internal fun build(cat: Category?, kind: TxKind, series: List<Pair<YearMonth, BigDecimal>>, periodAvg: BigDecimal, historyAvg: BigDecimal?): CategoryTrend {

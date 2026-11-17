@@ -103,7 +103,7 @@ fun FilterPills(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.hi
     val months = remember(data.transactions.size) { data.transactions.map { data.calendar.monthOf(it.bookingDate) }.distinct().sortedDescending().take(12) }
     val periodLabel = when (val p = f.period) {
         Period.All -> "Tutto il periodo"; Period.YearToDate -> "Quest'anno"; Period.Last3Months -> "Ultimi 3 mesi"; Period.Last6Months -> "Ultimi 6 mesi"
-        Period.CurrentMonth -> "Mese corrente"; is Period.Month -> Dates.monthLabelLong(p.month); is Period.Custom -> "Intervallo"
+        Period.CurrentMonth -> "Mese corrente"; Period.CurrentWeek -> "Settimana corrente"; is Period.Month -> Dates.monthLabelLong(p.month); is Period.Custom -> "Intervallo"
     }
     Row(modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         var pm by remember { mutableStateOf(false) }
@@ -111,7 +111,7 @@ fun FilterPills(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.hi
         Box {
             Pill(periodLabel) { pm = true }
             DropdownMenu(pm, { pm = false }) {
-                listOf(Period.All to "Tutto il periodo", Period.YearToDate to "Quest'anno", Period.Last6Months to "Ultimi 6 mesi", Period.Last3Months to "Ultimi 3 mesi", Period.CurrentMonth to "Mese corrente").forEach { (p, l) ->
+                listOf(Period.All to "Tutto il periodo", Period.YearToDate to "Quest'anno", Period.Last6Months to "Ultimi 6 mesi", Period.Last3Months to "Ultimi 3 mesi", Period.CurrentMonth to "Mese corrente", Period.CurrentWeek to "Settimana corrente").forEach { (p, l) ->
                     DropdownMenuItem({ Text(l) }, { vm.update { it.copy(period = p) }; pm = false })
                 }
                 HorizontalDivider()

@@ -95,6 +95,7 @@ class MainFlowTest {
         waitText("Hai ", substring = true, ms = 10000)   // "Hai messo da parte" oppure "Hai speso in più…"
         waitText("Entrate"); waitText("Spese")
         // avvisi calcolati sui dati importati (budget superati, scadenze…)
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("da guardare", substring = true))   // la scheda del ritmo di spesa sta sopra gli avvisi
         waitText("da guardare", substring = true)
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
     }

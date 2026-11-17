@@ -16,6 +16,8 @@ sealed interface Period {
     data object Last3Months : Period
     data object Last6Months : Period
     data object CurrentMonth : Period
+    /** Settimana in corso (lunedì-domenica) rispetto all'ultimo movimento. */
+    data object CurrentWeek : Period
     data class Month(val month: YearMonth) : Period
     data class Custom(val from: LocalDate?, val to: LocalDate?) : Period
 }
@@ -39,6 +41,7 @@ object PeriodResolver {
             Period.All -> DateRange(dataMin, dataMax)
             Period.YearToDate -> DateRange(maxOf(cal.start(YearMonth.of(cur.year, 1)), dataMin), dataMax)
             Period.CurrentMonth -> DateRange(maxOf(cal.start(cur), dataMin), dataMax)
+            Period.CurrentWeek -> DateRange(maxOf(dataMax.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)), dataMin), dataMax)
             Period.Last3Months -> DateRange(maxOf(cal.start(cur.minusMonths(2)), dataMin), dataMax)
             Period.Last6Months -> DateRange(maxOf(cal.start(cur.minusMonths(5)), dataMin), dataMax)
             is Period.Month -> DateRange(cal.start(period.month), cal.end(period.month))

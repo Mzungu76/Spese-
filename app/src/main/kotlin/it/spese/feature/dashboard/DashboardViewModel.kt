@@ -17,6 +17,8 @@ data class DashboardState(
     val data: AppData = AppData(), val model: DashboardModel? = null, val filter: TxFilter = TxFilter(), val buckets: List<Bucket> = emptyList(),
     /** Confronto di categorie: modalità attiva, scelte e risultato (null senza scelte). */
     val compareMode: Boolean = false, val selected: Set<Long> = emptySet(), val compare: CategoryComparison? = null,
+    /** Avanzamento delle spese del periodo in corso rispetto alla media storica (null senza movimenti). */
+    val pace: it.spese.domain.finance.PaceReport? = null,
 )
 
 @HiltViewModel
@@ -42,7 +44,7 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)
-                DashboardState(d, m, f, TrendBuckets.compute(m.filtered, f.calendar), cm, sel, CategoryComparisonEngine.compute(d, f, sel))
+                DashboardState(d, m, f, (if (f.period == Period.CurrentWeek) d.transactions.maxOfOrNull { it.bookingDate }?.let { last -> val mon = last.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); TrendBuckets.daily(m.filtered, mon, mon.plusDays(6)) } ?: emptyList() else TrendBuckets.compute(m.filtered, f.calendar)), cm, sel, CategoryComparisonEngine.compute(d, f, sel), it.spese.domain.finance.PaceEngine.compute(d, f))
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())

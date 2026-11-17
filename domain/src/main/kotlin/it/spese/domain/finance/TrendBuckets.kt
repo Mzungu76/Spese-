@@ -11,12 +11,12 @@ import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
 
 /** Un punto del grafico entrate/spese: un mese (periodi lunghi) o una settimana (periodi brevi). Giroconti esclusi. */
-data class Bucket(val label: String, val start: LocalDate, val weekly: Boolean, val income: BigDecimal, val expense: BigDecimal) {
+data class Bucket(val label: String, val start: LocalDate, val weekly: Boolean, val income: BigDecimal, val expense: BigDecimal, val daily: Boolean = false) {
     val net: BigDecimal get() = income - expense
 
     /** Frase mostrata quando si tocca il punto. */
     val title: String
-        get() = if (weekly) "settimana dal ${Dates.fmt(start).take(5)}" else Dates.monthLabelLong(YearMonth.from(start)).lowercase()
+        get() = if (daily) Dates.fmt(start) else if (weekly) "settimana dal ${Dates.fmt(start).take(5)}" else Dates.monthLabelLong(YearMonth.from(start)).lowercase()
 }
 
 object TrendBuckets {
@@ -24,6 +24,16 @@ object TrendBuckets {
     fun compute(list: List<Transaction>, cal: MonthCalendar = MonthCalendar.SOLAR): List<Bucket> {
         if (list.isEmpty()) return emptyList()
         return if (StatsEngine.monthsSpan(list) >= BigDecimal("2.5")) monthly(list, cal) else weekly(list)
+    }
+
+    /** Un punto per ogni giorno da [from] a [to] (per la settimana in corso: lunedì-domenica, anche i giorni ancora senza movimenti). */
+    fun daily(list: List<Transaction>, from: LocalDate, to: LocalDate): List<Bucket> {
+        val by = list.groupBy { it.bookingDate }
+        val names = listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")
+        return generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }.map { d ->
+            val st = StatsEngine.compute(by[d].orEmpty())
+            Bucket(names[d.dayOfWeek.value - 1], d, false, st.income, st.expense, daily = true)
+        }.toList()
     }
 
     fun monthly(list: List<Transaction>, cal: MonthCalendar = MonthCalendar.SOLAR): List<Bucket> {

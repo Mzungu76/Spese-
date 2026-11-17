@@ -109,6 +109,7 @@ object CategoryDetailCalculator {
 
         val prevLabel = when {
             prevRange == null -> null
+            filter.period == Period.CurrentWeek -> "rispetto alla settimana scorsa"
             filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + cal.label(cal.monthOf(prevRange.first))
             else -> "rispetto al periodo precedente"
         }

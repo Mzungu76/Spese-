@@ -101,6 +101,7 @@ object DashboardCalculator {
         val previous = prevRange?.let { StatsEngine.compute(FilterEngine.apply(data.transactions, filter.copy(period = Period.Custom(it.first, it.second)), data.categoriesById)) }
         val prevLabel = when {
             prevRange == null -> null
+            filter.period == Period.CurrentWeek -> "rispetto alla settimana scorsa"
             filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + cal.label(cal.monthOf(prevRange.first))
             else -> "rispetto al periodo precedente"
         }
@@ -163,7 +164,11 @@ object DashboardCalculator {
 
     /** Periodo di confronto: per un mese, gli stessi giorni del mese prima; altrimenti i giorni immediatamente precedenti, in pari numero. */
     internal fun previousRange(period: Period, from: LocalDate, to: LocalDate, cal: MonthCalendar = MonthCalendar.SOLAR): Pair<LocalDate, LocalDate> =
-        if (period == Period.CurrentMonth || period is Period.Month) {
+        if (period == Period.CurrentWeek) {
+            // stessi giorni della settimana scorsa (lunedì-… fino allo stesso giorno)
+            val monday = to.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+            monday.minusWeeks(1) to monday.minusWeeks(1).plusDays(ChronoUnit.DAYS.between(monday, to))
+        } else if (period == Period.CurrentMonth || period is Period.Month) {
             val cur = cal.monthOf(from); val pm = cur.minusMonths(1)
             val pFrom = cal.start(pm)
             val pTo = minOf(pFrom.plusDays(to.toEpochDay() - cal.start(cur).toEpochDay()), cal.end(pm))

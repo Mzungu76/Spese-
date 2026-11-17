@@ -23,7 +23,7 @@ enum class ReportSection(val key: String, val label: String, val hint: String) {
 }
 
 enum class ReportPeriodKind(val key: String, val label: String) {
-    CURRENT_MONTH("cm", "Mese corrente"), PREVIOUS_MONTH("pm", "Mese precedente"), MONTH("m", "Un mese a scelta"), LAST_3("l3", "Ultimi 3 mesi"), LAST_6("l6", "Ultimi 6 mesi"),
+    CURRENT_WEEK("cw", "Settimana corrente"), CURRENT_MONTH("cm", "Mese corrente"), PREVIOUS_MONTH("pm", "Mese precedente"), MONTH("m", "Un mese a scelta"), LAST_3("l3", "Ultimi 3 mesi"), LAST_6("l6", "Ultimi 6 mesi"),
     YEAR_TO_DATE("ytd", "Quest'anno"), PREVIOUS_YEAR("py", "Anno scorso"), ALL("all", "Tutto il periodo"), CUSTOM("c", "Intervallo");
 
     companion object { fun fromKey(k: String?) = entries.firstOrNull { it.key == k } ?: CURRENT_MONTH }
@@ -35,6 +35,7 @@ data class ReportPeriod(val kind: ReportPeriodKind, val month: YearMonth? = null
         val ref = dataMax ?: LocalDate.now()
         val cur = cal.monthOf(ref)
         return when (kind) {
+            ReportPeriodKind.CURRENT_WEEK -> Period.CurrentWeek
             ReportPeriodKind.CURRENT_MONTH -> Period.CurrentMonth
             ReportPeriodKind.PREVIOUS_MONTH -> Period.Month(cur.minusMonths(1))
             ReportPeriodKind.MONTH -> Period.Month(month ?: cur)
@@ -84,6 +85,8 @@ data class ReportPreset(val id: String, val name: String, val description: Strin
 object ReportPresets {
     private fun p(kind: ReportPeriodKind) = ReportPeriod(kind)
     val BUILT_IN: List<ReportPreset> = listOf(
+        ReportPreset("weekly", "Riepilogo settimanale", "La settimana in corso: entrate, spese, categorie, esercenti e spese più alte.",
+            ReportSpec("Riepilogo settimanale", period = p(ReportPeriodKind.CURRENT_WEEK), sections = listOf(ReportSection.SUMMARY, ReportSection.CATEGORIES, ReportSection.MERCHANTS, ReportSection.TOP_EXPENSES), topN = 8)),
         ReportPreset("monthly", "Riepilogo mensile", "Il mese in una pagina: entrate, spese, categorie, esercenti, spese più alte e budget.",
             ReportSpec("Riepilogo mensile", period = p(ReportPeriodKind.CURRENT_MONTH), sections = listOf(ReportSection.SUMMARY, ReportSection.CATEGORIES, ReportSection.MERCHANTS, ReportSection.TOP_EXPENSES, ReportSection.BUDGETS), topN = 8)),
         ReportPreset("yearly", "Riepilogo annuale", "L'anno mese per mese, con le categorie e gli esercenti principali.",
