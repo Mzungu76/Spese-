@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenGoals: () -> Unit = {}, onOpenNetWorth: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenGoals: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenReview: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -57,6 +57,7 @@ fun DashboardScreen(
     val subs by vm.subscriptions.collectAsStateWithLifecycle()
     val pendingAmounts by vm.pendingAmounts.collectAsStateWithLifecycle()
     val safe by vm.safeToSpend.collectAsStateWithLifecycle()
+    val advice by vm.advice.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -86,6 +87,31 @@ fun DashboardScreen(
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
+            advice.reviewMonth?.let { month ->
+                item(key = "review-link") {
+                    Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenReview).padding(horizontal = 18.dp, vertical = 14.dp).testTag("review_link"),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Icon(Icons.Default.EventAvailable, null, tint = fin.positive)
+                        Column(Modifier.weight(1f)) {
+                            Text("Chiudi ${Dates.monthLabelLong(month)}", style = MaterialTheme.typography.titleMedium)
+                            Text("Quanto hai risparmiato e cosa fare ora", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item(key = "advice-link") {
+                val top = advice.insights.firstOrNull()
+                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAdvice).padding(horizontal = 18.dp, vertical = 14.dp).testTag("advice_link"),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Icon(Icons.Default.Lightbulb, null, tint = if ((top?.level ?: 0) >= 1) fin.warning else MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(Modifier.weight(1f)) {
+                        Text(top?.title ?: "Consigli e guida", style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                        Text(if (top != null && advice.insights.size > 1) "e altri ${advice.insights.size - 1} consigli" else if (top != null) top.text else "Piccola guida sui tuoi numeri", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+                    }
+                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             item(key = "networth-link") {
                 Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenNetWorth).padding(horizontal = 18.dp, vertical = 14.dp).testTag("networth_link"),
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {

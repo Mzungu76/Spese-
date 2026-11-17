@@ -21,16 +21,30 @@ data class DashboardState(
     val pace: it.spese.domain.finance.PaceReport? = null,
 )
 
+/** Consigli per la Home: l'elenco e, nei primi giorni del mese contabile, il mese da chiudere. */
+data class HomeAdvice(val insights: List<it.spese.domain.advice.Insight> = emptyList(), val reviewMonth: java.time.YearMonth? = null)
+
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
 class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger,
     captureConfig: it.spese.domain.repository.CaptureConfigRepository,
     review: it.spese.domain.finance.SubscriptionReviewRepository,
-    recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository) : ViewModel() {
+    recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
+    valuations: it.spese.domain.repository.ValuationRepository) : ViewModel() {
     /** «Disponibile oggi»: quanto si può spendere ancora nel mese, tenendo conto di risparmio e uscite note (conto del filtro, se scelto). */
     val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll()) { d, rules, ign, f, g ->
         runCatching { SafeToSpendEngine.forApp(d, rules, ign, f.accountId, goals = g) }.getOrNull()
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    /** Consigli in evidenza (i più importanti) e mese da chiudere, se siamo nei primi giorni del nuovo mese contabile. */
+    val advice: StateFlow<HomeAdvice> = combine(data, goals.observeAll(), valuations.observeAll(), recurring.observeAll(), review.observeIgnored()) { d, g, v, r, ign ->
+        if (!d.loaded) HomeAdvice()
+        else runCatching {
+            val today = java.time.LocalDate.now()
+            val ref = it.spese.domain.finance.AlertEngine.referenceToday(today, d.transactions)
+            val month = it.spese.domain.advice.MonthReviewEngine.reviewMonth(d, today)
+            HomeAdvice(it.spese.domain.advice.InsightEngine.forApp(d, g, v, r, ign, limit = 5), month?.takeIf { ref == today && d.calendar.dayIndex(ref) <= 14 })
+        }.getOrDefault(HomeAdvice())
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeAdvice())
     /** Costo mensile di abbonamenti e rate riconosciuti e quante novità (aumenti, addebiti mancanti) ci sono. */
     val subscriptions: StateFlow<it.spese.domain.finance.SubscriptionSummary?> = combine(data, review.observeIgnored()) { d, ign ->
         if (!d.loaded) null else it.spese.domain.finance.SubscriptionDetector.detect(d.transactions, it.spese.domain.finance.SubscriptionDetector.excludedCategories(d.categories)).filter { p -> p.key !in ign }.let { l -> it.spese.domain.finance.SubscriptionDetector.summary(l) }
