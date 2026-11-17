@@ -31,6 +31,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Uscendo dall'app il widget si riallinea ai dati appena modificati. */
+    override fun onStop() { super.onStop(); it.spese.app.widget.SafeToSpendWidget.refresh(this) }
+
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); handle(intent) }
 
     private fun handle(i: android.content.Intent?) {

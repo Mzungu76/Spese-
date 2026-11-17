@@ -59,6 +59,14 @@
         </service>
         <receiver android:name=".capture.CaptureUndoReceiver" android:exported="false" />
 
+        <!-- Widget «Disponibile oggi»: la cifra calcolata sul telefono, nessun dato in uscita -->
+        <receiver android:name=".widget.SafeToSpendWidget" android:exported="false" android:label="@string/widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/safe_to_spend_widget_info" />
+        </receiver>
+
         <!-- WorkManager con inizializzazione Hilt (l'inizializzatore predefinito è disattivato) -->
         <provider
             android:name="androidx.startup.InitializationProvider"

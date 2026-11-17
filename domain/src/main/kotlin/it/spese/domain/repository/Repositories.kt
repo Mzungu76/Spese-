@@ -165,6 +165,8 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     /** Giorno in cui inizia il mese contabile (1 = mese di calendario). */
     val monthStartDay: Int = 1,
+    /** Nella notifica giornaliera, la cifra «disponibile oggi» (solo con le notifiche locali attive). */
+    val notifyDailySpend: Boolean = true,
 )
 
 interface SettingsRepository {

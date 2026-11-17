@@ -61,6 +61,7 @@ class Notifier @Inject constructor(@ApplicationContext private val context: Cont
 class AlertsWorker @AssistedInject constructor(
     @Assisted context: Context, @Assisted params: WorkerParameters,
     private val data: StateFlow<AppData>, private val settings: SettingsRepository, private val notifier: Notifier,
+    private val recurring: RecurringRepository, private val review: it.spese.domain.finance.SubscriptionReviewRepository,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val s = settings.get()
@@ -82,6 +83,12 @@ class AlertsWorker @AssistedInject constructor(
             val critical = alerts.count { it.level >= 2 }
             val title = if (critical > 0) "$critical avvisi importanti" else "${alerts.size} avvisi da controllare"
             notifier.post(1001, title, alerts.first().message, alerts.take(6).joinToString("\n") { "• " + it.message })
+        }
+        it.spese.app.widget.SafeToSpendWidget.refresh(applicationContext)
+        if (s.notifyDailySpend) {
+            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first()) }.getOrNull()
+            if (r != null && r.status != it.spese.domain.finance.SafeStatus.NOT_ENOUGH && !r.stale)
+                notifier.post(1002, "Oggi: " + it.spese.domain.finance.SafeToSpendText.perDay(r), it.spese.domain.finance.SafeToSpendText.comment(r))
         }
         return Result.success()
     }

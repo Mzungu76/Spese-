@@ -130,6 +130,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         if (on && Build.VERSION.SDK_INT >= 33 && !vm.notifier.canPost()) notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS) else vm.update { it.copy(notificationsEnabled = on) }
                     }, supporting = "Un riepilogo giornaliero generato sul telefono: nessun dato lascia il dispositivo")
                     if (s.notificationsEnabled) {
+                        LabeledSwitch("Quanto puoi spendere oggi", s.notifyDailySpend, { v -> vm.update { it.copy(notifyDailySpend = v) } }, supporting = "Ogni giorno la cifra disponibile e un commento")
                         LabeledSwitch("Budget superati o in esaurimento", s.notifyBudgets, { v -> vm.update { it.copy(notifyBudgets = v) } })
                         LabeledSwitch("Scadenze imminenti o in ritardo", s.notifyDues, { v -> vm.update { it.copy(notifyDues = v) } })
                         LabeledSwitch("Addebiti ricorrenti attesi", s.notifyRecurring, { v -> vm.update { it.copy(notifyRecurring = v) } })

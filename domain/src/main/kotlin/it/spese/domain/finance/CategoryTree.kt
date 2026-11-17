@@ -12,6 +12,12 @@ object CategoryTree {
         return if (p != null && byId.containsKey(p)) p else id
     }
 
+    /** Natura della categoria; se manca (tipico delle sottocategorie) quella della principale. */
+    fun rootNature(id: Long?, byId: Map<Long, Category>): it.spese.core.model.SpendNature? {
+        val c = id?.let { byId[it] } ?: return null
+        return c.nature ?: c.parentId?.let { byId[it]?.nature }
+    }
+
     fun children(id: Long, categories: Collection<Category>): List<Category> = categories.filter { it.parentId == id }
 
     /** La categoria e tutte le sue sottocategorie. */

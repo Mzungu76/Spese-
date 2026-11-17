@@ -56,6 +56,7 @@ fun DashboardScreen(
     val pendingNotifs by vm.pendingNotifications.collectAsStateWithLifecycle()
     val subs by vm.subscriptions.collectAsStateWithLifecycle()
     val pendingAmounts by vm.pendingAmounts.collectAsStateWithLifecycle()
+    val safe by vm.safeToSpend.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -84,6 +85,7 @@ fun DashboardScreen(
         var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
+            safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
                     Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")

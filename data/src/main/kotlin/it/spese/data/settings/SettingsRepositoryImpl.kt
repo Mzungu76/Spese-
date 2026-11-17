@@ -24,13 +24,13 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
         val nRec = booleanPreferencesKey("n_rec"); val nUnx = booleanPreferencesKey("n_unx"); val hour = intPreferencesKey("n_hour")
         val ab = booleanPreferencesKey("ab"); val abDays = intPreferencesKey("ab_days"); val abKeep = intPreferencesKey("ab_keep")
         val abLast = longPreferencesKey("ab_last"); val onb = booleanPreferencesKey("onb"); val undo = stringPreferencesKey("undo")
-        val syncUri = stringPreferencesKey("sync_uri"); val syncAt = longPreferencesKey("sync_at"); val monthDay = intPreferencesKey("month_start_day")
+        val syncUri = stringPreferencesKey("sync_uri"); val syncAt = longPreferencesKey("sync_at"); val monthDay = intPreferencesKey("month_start_day"); val nDay = booleanPreferencesKey("n_daily_spend")
     }
 
     private fun Preferences.toSettings() = AppSettings(
         runCatching { ThemeMode.valueOf(this[K.theme] ?: "DARK") }.getOrDefault(ThemeMode.DARK),
         this[K.notif] ?: false, this[K.nBud] ?: true, this[K.nDue] ?: true, this[K.nRec] ?: true, this[K.nUnx] ?: true, this[K.hour] ?: 9,
-        this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0, (this[K.monthDay] ?: 1).coerceIn(1, 28),
+        this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0, (this[K.monthDay] ?: 1).coerceIn(1, 28), this[K.nDay] ?: true,
     )
 
     override fun observe(): Flow<AppSettings> = context.store.data.map { it.toSettings() }
@@ -41,7 +41,7 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
             val n = transform(p.toSettings())
             p[K.theme] = n.themeMode.name; p[K.notif] = n.notificationsEnabled; p[K.nBud] = n.notifyBudgets; p[K.nDue] = n.notifyDues
             p[K.nRec] = n.notifyRecurring; p[K.nUnx] = n.notifyUnexpected; p[K.hour] = n.notifyHour; p[K.ab] = n.autoBackupEnabled
-            p[K.abDays] = n.autoBackupEveryDays; p[K.abKeep] = n.autoBackupKeep; p[K.abLast] = n.lastAutoBackupAt; p[K.onb] = n.onboardingDone; p[K.undo] = n.lastUndo; p[K.syncUri] = n.syncUri; p[K.syncAt] = n.lastSyncAt; p[K.monthDay] = n.monthStartDay.coerceIn(1, 28)
+            p[K.abDays] = n.autoBackupEveryDays; p[K.abKeep] = n.autoBackupKeep; p[K.abLast] = n.lastAutoBackupAt; p[K.onb] = n.onboardingDone; p[K.undo] = n.lastUndo; p[K.syncUri] = n.syncUri; p[K.syncAt] = n.lastSyncAt; p[K.monthDay] = n.monthStartDay.coerceIn(1, 28); p[K.nDay] = n.notifyDailySpend
         }
     }
 }

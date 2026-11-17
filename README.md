@@ -5,6 +5,7 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 
 ## Cosa fa
 
+- **Disponibile oggi** – il numero da guardare ogni giorno, in cima alla Home: quanto puoi ancora spendere al giorno fino a fine mese, dopo aver tolto la spesa già fatta, l'obiettivo di risparmio e le uscite già note in arrivo (ricorrenze, abbonamenti e rate, scadenze). Verde/ambra/rosso secondo il piano; un tocco mostra il calcolo voce per voce. La stessa cifra arriva nella notifica del mattino (si può spegnere in Impostazioni) e nel widget «Disponibile oggi» da aggiungere alla schermata del telefono.
 - **Panoramica** – entrate, spese, saldo, risparmio, media mensile, giroconti esclusi, grafici interattivi (ciambella, barre, impilate, cumulato, esercenti), avvisi.
 - **Movimenti** – inserimento, modifica, duplicazione, ricerca, filtri, selezione multipla, ordinamento, esportazione CSV/Excel.
 - **Categorie** – classifica per peso con icone, variazioni sul periodo precedente, dettaglio per categoria (andamento, esercenti, sottocategorie), natura della spesa (fissa/necessaria/discrezionale), budget suggerito, "dove puoi risparmiare" e simulazione "e se la riducessi?" collegata al Piano.
