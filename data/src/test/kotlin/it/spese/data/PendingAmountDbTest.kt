@@ -72,4 +72,19 @@ class PendingAmountDbTest {
         assertEquals(1, n)
         assertEquals(listOf(other.id), env.captureConfig.get().pending.map { it.id })
     }
+
+    @Test fun `una notifica generica senza importo diventa un promemoria da verificare, e si completa scegliendo la direzione`() = runBlocking {
+        val r = env.capture(CaptureSource.POSTE, null, raw(poste, "Poste Italiane", "Nuova comunicazione disponibile", at("2024-04-02")), ZoneOffset.UTC) as CaptureResult.NeedsAmount
+        assertEquals(0, r.pending.sign); assertEquals("Notifica Poste / Postepay da verificare", r.pending.description)
+        // con la registrazione estesa spenta non nasce nulla (finisce tra le non riconosciute)
+        assertEquals(CaptureResult.Unrecognized, env.capture(CaptureSource.POSTE, null, raw(poste, "Poste Italiane", "Nuova comunicazione disponibile", at("2024-04-03")), ZoneOffset.UTC, noAmountToo = false))
+        // si salva e si rilegge, anche con la direzione 0 e l'impostazione
+        env.captureConfig.update { it.copy(pending = listOf(r.pending), captureNoAmount = false) }
+        val c = env.captureConfig.get(); assertEquals(0, c.pending.single().sign); assertFalse(c.captureNoAmount)
+        val complete = CompletePendingAmountUseCase(SaveTransactionUseCase(env.tx, env.accounts, env.cats, env.rules), env.accounts, env.captureConfig)
+        try { complete(r.pending.id, BigDecimal("9.90"), "", null, null, ZoneOffset.UTC); fail("senza direzione non si può completare") } catch (e: IllegalStateException) { }
+        complete(r.pending.id, BigDecimal("9.90"), "Canone", null, null, ZoneOffset.UTC, sign = -1)
+        assertEquals(0, BigDecimal("-9.90").compareTo(env.tx.getAll().single().amount)); assertTrue(env.captureConfig.get().pending.isEmpty())
+        env.captureConfig.update { it.copy(captureNoAmount = true) }
+    }
 }

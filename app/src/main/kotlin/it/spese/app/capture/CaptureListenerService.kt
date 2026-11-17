@@ -72,14 +72,15 @@ class CaptureListenerService : NotificationListenerService() {
             // notifiche che l'utente ha chiesto di ignorare (mai se contengono un importo)
             if (IgnoreFilter.matches(cfg.ignoreRules, source.id, title, text)) return@launch
             val raw = RawNotification(sbn.packageName, title, text, sbn.postTime)
-            when (val r = capture(source, cfg.of(source).accountId, raw)) {
+            when (val r = capture(source, cfg.of(source).accountId, raw, noAmountToo = cfg.captureNoAmount)) {
                 is CaptureResult.Added -> {
                     // un pagamento con importo notificato nello stesso momento chiude i promemoria "senza importo" di pari direzione
                     config.update { c -> c.copy(pending = c.pending.filterNot { PendingMatcher.coveredByNotification(it, r.amount.signum(), raw.postedAtMs) }) }
                     if (cfg.notifyOnAdd) notifier.added(r.txId, r.description, r.amount)
                 }
                 is CaptureResult.NeedsAmount -> {
-                    val isNew = config.get().pending.none { it.id == r.pending.id && it.sourceId == r.pending.sourceId }
+                    // la stessa notifica ripetuta (o riproposta dall'app dopo pochi minuti) non crea un secondo promemoria
+                    val isNew = config.get().pending.none { it.sourceId == r.pending.sourceId && (it.id == r.pending.id || (it.text == r.pending.text && kotlin.math.abs(it.id - r.pending.id) < 120_000L)) }
                     if (isNew) {
                         config.update { c -> c.copy(pending = listOf(r.pending.copy(accountId = cfg.of(source).accountId)) + c.pending) }
                         if (cfg.notifyOnAdd) notifier.needsAmount(r.pending.id, r.pending.description)

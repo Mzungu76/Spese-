@@ -14,13 +14,14 @@ import javax.inject.Inject
 class CompletePendingAmountUseCase @Inject constructor(
     private val saveTx: SaveTransactionUseCase, private val accounts: AccountRepository, private val config: CaptureConfigRepository,
 ) {
-    suspend operator fun invoke(pendingId: Long, amount: BigDecimal, description: String, categoryId: Long?, accountId: Long?, zone: ZoneId = ZoneId.systemDefault()) {
+    suspend operator fun invoke(pendingId: Long, amount: BigDecimal, description: String, categoryId: Long?, accountId: Long?, zone: ZoneId = ZoneId.systemDefault(), sign: Int? = null) {
         val p = config.get().pending.firstOrNull { it.id == pendingId } ?: error("Promemoria non trovato")
+        val dir = (sign ?: p.sign).takeIf { it != 0 } ?: error("Scegli se è un'uscita o un'entrata.")
         require(amount.signum() > 0) { "Inserisci l'importo." }
         val acc = accountId ?: p.accountId ?: accounts.getAll().firstOrNull { !it.archived }?.id ?: accounts.getOrCreate("Conto principale").id
         val date = Instant.ofEpochMilli(p.id).atZone(zone).toLocalDate()
         val label = it.spese.domain.capture.CaptureSource.byId(p.sourceId)?.label ?: p.sourceId
-        saveTx(TransactionDraft(0, acc, date, date, description.ifBlank { p.description }, if (p.sign < 0) amount.negate() else amount, categoryId, null,
+        saveTx(TransactionDraft(0, acc, date, date, description.ifBlank { p.description }, if (dir < 0) amount.negate() else amount, categoryId, null,
             "Da notifica · $label · importo inserito a mano", null, TxOrigin.NOTIFICATION))
         config.update { c -> c.copy(pending = c.pending.filterNot { it.id == pendingId }) }
     }

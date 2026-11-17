@@ -136,6 +136,28 @@ class PendingParseTest {
         org.junit.Assert.assertEquals(1, NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Hai un movimento in entrata su POSTEPAY"))
         org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Scopri le nuove offerte"))
         org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Hai un movimento in uscita di 12,50 euro"))   // ha l'importo: lo gestisce il parser normale
-        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.WALLET, "x", "movimento in uscita"))
+        org.junit.Assert.assertEquals(-1, NotificationParser.parseWithoutAmount(CaptureSource.WALLET, "x", "movimento in uscita"))
+    }
+}
+
+
+class AmountlessBroadTest {
+    @org.junit.Test fun `con la registrazione estesa ogni notifica senza importo delle fonti scelte diventa da regolarizzare`() {
+        // direzione chiara dalle parole, altrimenti 0 (la sceglie l'utente)
+        org.junit.Assert.assertEquals(-1, NotificationParser.parseWithoutAmount(CaptureSource.REVOLUT, "Revolut", "Pagamento effettuato con la carta presso BAR ROMA", broad = true))
+        org.junit.Assert.assertEquals(1, NotificationParser.parseWithoutAmount(CaptureSource.REVOLUT, "Revolut", "Hai ricevuto un bonifico da Mario", broad = true))
+        org.junit.Assert.assertEquals(0, NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Nuova comunicazione disponibile", broad = true))
+        org.junit.Assert.assertEquals(-1, NotificationParser.parseWithoutAmount(CaptureSource.WALLET, "Google Wallet", "Pagamento completato", broad = true))
+        // senza la modalità estesa restano solo le frasi esplicite
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.POSTE, "Poste Italiane", "Nuova comunicazione disponibile"))
+        // con un importo la gestisce il parser normale; testo vuoto: niente
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.REVOLUT, "Revolut", "Pagamento di 12,50 €", broad = true))
+        org.junit.Assert.assertNull(NotificationParser.parseWithoutAmount(CaptureSource.REVOLUT, "", " ", broad = true))
+    }
+
+    @org.junit.Test fun `un promemoria con direzione non chiara si chiude con qualunque pagamento vicino e con una sola riga dell estratto`() {
+        val p = PendingAmount(1_000_000L, "poste", null, 0, "Notifica Poste da verificare", "x")
+        org.junit.Assert.assertTrue(PendingMatcher.coveredByNotification(p, -1, 1_000_000L + 60_000)); org.junit.Assert.assertTrue(PendingMatcher.coveredByNotification(p, 1, 1_000_000L + 60_000))
+        org.junit.Assert.assertFalse(PendingMatcher.coveredByNotification(p, -1, 1_000_000L + 3_600_000))
     }
 }

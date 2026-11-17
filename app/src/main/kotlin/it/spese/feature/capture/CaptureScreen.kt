@@ -93,14 +93,15 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
             item {
                 SectionCard(title = "Avvisi") {
                     LabeledSwitch("Avvisami quando aggiungo un movimento", cfg.notifyOnAdd, vm::setNotify, supporting = "Con il pulsante Annulla, se ha letto male")
+                    LabeledSwitch("Registra anche le notifiche senza importo", cfg.captureNoAmount, vm::setCaptureNoAmount, supporting = "Come movimenti da regolarizzare: li completi tu, o si chiudono con Wallet o con l'estratto conto")
                     if (cfg.notifyOnAdd && !postOk && Build.VERSION.SDK_INT >= 33) OutlinedButton(onClick = { askPost.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Consenti gli avvisi di Spese") }
                 }
             }
             item { TryParser() }
             if (cfg.pending.isNotEmpty()) {
                 item {
-                    SectionCard(title = "Da completare (${cfg.pending.size})") {
-                        Text("Notifiche che segnalano un movimento ma non riportano l'importo (come quelle di Poste). Inserisci l'importo: se arriva la notifica di Wallet, o importi l'estratto conto, il promemoria si chiude da solo.", style = MaterialTheme.typography.bodyMedium)
+                    SectionCard(title = "Movimenti da regolarizzare (${cfg.pending.size})") {
+                        Text("Notifiche delle tue fonti che non riportano l'importo (come quelle di Poste): restano qui, collegate al conto della fonte, come movimenti provvisori da regolarizzare. Inserisci l'importo quando vuoi; se arriva la notifica di Wallet con la cifra, o importi l'estratto conto, si chiudono da sole. Se una non è un movimento, «Ignora simili» la scarta in futuro.", style = MaterialTheme.typography.bodyMedium)
                     }
                 }
                 items(cfg.pending, key = { "pa-${it.id}" }) { p ->
@@ -108,7 +109,11 @@ fun CaptureScreen(onBack: () -> Unit, vm: CaptureViewModel = hiltViewModel()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text("${p.description} · ${TIME.format(Instant.ofEpochMilli(p.id).atZone(ZoneId.systemDefault()))}", style = MaterialTheme.typography.titleSmall)
                             if (p.text.isNotBlank()) Text(p.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Row { TextButton(onClick = { completing = p }) { Text("Inserisci importo") }; TextButton(onClick = { vm.dismissPending(p.id) }) { Text("Non è un movimento") } }
+                            Row {
+                                TextButton(onClick = { completing = p }) { Text("Inserisci importo") }
+                                TextButton(onClick = { ignoring = UnrecognizedNotification(p.id, CaptureSource.byId(p.sourceId)?.label ?: p.sourceId, p.text) }) { Text("Ignora simili") }
+                                TextButton(onClick = { vm.dismissPending(p.id) }) { Text("Elimina") }
+                            }
                         }
                     }
                 }
@@ -258,15 +263,20 @@ private fun CompleteDialog(p: PendingAmount, data: it.spese.domain.repository.Ap
     var amount by remember { mutableStateOf("") }
     var desc by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf<Long?>(null) }
+    var dir by remember { mutableStateOf(p.sign) }
     val cats = it.spese.domain.finance.CategoryTree.ordered(data.categories).filter { c -> c.kind == (if (p.sign < 0) it.spese.core.model.TxKind.SPESA else it.spese.core.model.TxKind.ENTRATA) }
     AlertDialog(onDismissRequest = onDismiss, title = { Text(p.description) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (p.sign == 0) SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    SegmentedButton(dir < 0, { dir = -1 }, SegmentedButtonDefaults.itemShape(0, 2)) { Text("Uscita") }
+                    SegmentedButton(dir > 0, { dir = 1 }, SegmentedButtonDefaults.itemShape(1, 2)) { Text("Entrata") }
+                }
                 AmountField(amount, { amount = it }, "Importo", Modifier.fillMaxWidth())
                 OutlinedTextField(desc, { desc = it }, label = { Text("Descrizione (facoltativa, es. COOP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                it.spese.app.common.CategoryField("Categoria", cats.firstOrNull { it.id == cat }, data.categories, { c -> cat = c.id }, kind = if (p.sign < 0) it.spese.core.model.TxKind.SPESA else if (p.sign > 0) it.spese.core.model.TxKind.ENTRATA else null, nullLabel = "Automatica (regole)", onNull = { cat = null })
+                it.spese.app.common.CategoryField("Categoria", cats.firstOrNull { it.id == cat }, data.categories, { c -> cat = c.id }, kind = if (dir < 0) it.spese.core.model.TxKind.SPESA else if (dir > 0) it.spese.core.model.TxKind.ENTRATA else null, nullLabel = "Automatica (regole)", onNull = { cat = null })
             }
         },
-        confirmButton = { TextButton(onClick = { vm.complete(p.id, amount, desc, cat, onDismiss) }) { Text("Aggiungi movimento") } },
+        confirmButton = { TextButton(onClick = { vm.complete(p.id, amount, desc, cat, dir.takeIf { it != 0 }, onDismiss) }) { Text("Aggiungi movimento") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

@@ -129,8 +129,8 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     Icon(Icons.Default.EditNote, null, tint = fin.warning)
                     Column(Modifier.weight(1f)) {
-                        Text(if (pendingAmounts == 1) "1 movimento senza importo" else "$pendingAmounts movimenti senza importo", style = MaterialTheme.typography.titleMedium)
-                        Text("La notifica non riporta la cifra: inseriscila in pochi secondi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(if (pendingAmounts == 1) "1 movimento da regolarizzare" else "$pendingAmounts movimenti da regolarizzare", style = MaterialTheme.typography.titleMedium)
+                        Text("La notifica non riporta la cifra: inseriscila quando vuoi o attendi l'estratto conto", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

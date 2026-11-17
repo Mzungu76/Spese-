@@ -19,13 +19,19 @@ object NotificationParser {
 
     private val NO_AMOUNT_MOVEMENT = Regex("""movimento in (uscita|entrata)""", RegexOption.IGNORE_CASE)
 
-    /** Direzione di una notifica che segnala un movimento ma non ha importo (-1 uscita, +1 entrata); null se non è di questo tipo. */
-    fun parseWithoutAmount(source: CaptureSource, title: String, text: String): Int? {
-        if (source.kind == SourceKind.WALLET) return null
-        val full = "$title $text"
-        if (AMOUNT.containsMatchIn(full)) return null
-        val m = NO_AMOUNT_MOVEMENT.find(full) ?: return null
-        return if (m.groupValues[1].equals("uscita", ignoreCase = true)) -1 else 1
+    /**
+     * Direzione di una notifica che segnala un movimento ma non ha importo (-1 uscita, +1 entrata, 0 non chiara); null se non va registrata.
+     * Con [broad] (impostazione di default) vale ogni notifica senza importo delle fonti scelte: l'utente la completa o la ignora;
+     * senza, solo le frasi esplicite «movimento in uscita/entrata».
+     */
+    fun parseWithoutAmount(source: CaptureSource, title: String, text: String, broad: Boolean = false): Int? {
+        val full = "$title $text".trim()
+        if (full.isBlank() || AMOUNT.containsMatchIn(full)) return null
+        NO_AMOUNT_MOVEMENT.find(full)?.let { return if (it.groupValues[1].equals("uscita", ignoreCase = true)) -1 else 1 }
+        if (!broad) return null
+        if (source.kind == SourceKind.WALLET) return -1                      // Google Wallet notifica solo pagamenti
+        val out = OUT.containsMatchIn(full); val inn = IN.containsMatchIn(full)
+        return when { out && !inn -> -1; inn && !out -> 1; else -> 0 }
     }
 
     fun parse(source: CaptureSource, title: String, text: String): ParsedMovement? {
