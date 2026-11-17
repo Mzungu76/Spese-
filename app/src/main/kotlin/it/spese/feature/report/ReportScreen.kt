@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -35,7 +36,7 @@ fun ReportScreen(onBack: () -> Unit, onOpenSetup: () -> Unit, vm: ReportViewMode
             EmptyState(Icons.Default.Insights, "Ancora pochi dati", "Con qualche settimana di movimenti qui trovi il riepilogo del mese, il fondo di emergenza e i consigli.")
             return@Column
         }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(Modifier.fillMaxSize().testTag("report_list"), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (st.months.size > 1) item { ChipChoice(st.months.map { it to Dates.monthLabel(it) }, st.selected ?: st.months.last(), vm::select) }
             st.report?.let { r -> item { MonthCard(r) }; if (r.history.size >= 2) item { HistoryCard(r.history) } }
             m.surplusPlan?.let { sp -> item { FundCard(sp) } }

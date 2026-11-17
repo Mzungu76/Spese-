@@ -168,7 +168,9 @@ class MainFlowTest {
         compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("open_report"))
         compose.onNodeWithTag("open_report").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         waitText("Il tuo mese")
-        compose.onNode(hasScrollAction()).performScrollToNode(hasText("Rivedi entrate, obiettivo e budget"))
+        // il report si calcola in modo asincrono: si attende la sua lista
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("report_list").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("report_list").performScrollToNode(hasText("Rivedi entrate, obiettivo e budget"))
         waitText("Rivedi entrate, obiettivo e budget")
     }
 
