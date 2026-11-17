@@ -28,6 +28,7 @@ import it.spese.app.common.DataMenu
 import it.spese.app.common.FilterSheet
 import it.spese.app.common.FilterViewModel
 import it.spese.app.common.LargeHeader
+import it.spese.app.common.SearchFilterBar
 import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Dates
 import it.spese.core.common.Money
@@ -61,9 +62,7 @@ fun DashboardScreen(
     Column(Modifier.fillMaxSize()) {
         LargeHeader("Panoramica", menu = menu, actions = {
             RoundIconButton(Icons.Default.Add, "Aggiungi", onAdd, Modifier.testTag("fab_add"), primary = true)
-            RoundIconButton(Icons.Default.Search, "Cerca movimenti", onSearch)
             RoundIconButton(Icons.Default.Notifications, if (alertCount > 0) "Avvisi: $alertCount da vedere" else "Avvisi", onOpenAlerts, badge = alertCount > 0)
-            RoundIconButton(Icons.Default.Tune, "Filtri", { filters = true }, badge = st.filter.activeCount > 0)
         })
         if (!st.data.loaded || m == null) { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }; return@Column }
         if (st.data.transactions.isEmpty()) {
@@ -83,11 +82,12 @@ fun DashboardScreen(
         val period = st.filter.period
         val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> period; else -> Period.All }
         var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
+        SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
                     Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")
-                    MoneyText(s.net.abs(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, colored = false, decimals = true)
+                    CountUpMoney(s.net.abs()) { v -> MoneyText(v, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, colored = false, decimals = true) }
                     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         s.savingsRatePercent?.let { r ->
                             Text(if (r >= 0) "$r%" else "$r%", Modifier.background(if (r >= 0) fin.positive.copy(alpha = 0.16f) else fin.negative.copy(alpha = 0.16f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
@@ -205,4 +205,19 @@ private fun LegendItem(label: String, value: String, color: androidx.compose.ui.
         Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
     }
+}
+
+
+/** Il numero grande «sale» dal valore precedente a quello nuovo (stile app bancarie) invece di cambiare di colpo. */
+@Composable
+private fun CountUpMoney(value: BigDecimal, content: @Composable (BigDecimal) -> Unit) {
+    var from by remember { mutableStateOf(BigDecimal.ZERO) }
+    val t = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(value) {
+        val start = from
+        t.snapTo(0f)
+        t.animateTo(1f, androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) { from = start + (value - start).multiply(BigDecimal(value.signum().let { _ -> this.value.toDouble() })) }
+        from = value
+    }
+    content(if (t.value >= 1f) value else from.setScale(2, java.math.RoundingMode.HALF_UP))
 }

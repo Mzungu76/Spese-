@@ -156,15 +156,17 @@ private fun TrendCard(t: CategoryTrend, title: String, onOpen: (() -> Unit)?, mo
 @Composable
 private fun Sparkline(values: List<BigDecimal>, color: Color, level: BigDecimal, modifier: Modifier = Modifier) {
     val track = MaterialTheme.colorScheme.onSurfaceVariant
+    val grow = remember(values) { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(values) { grow.snapTo(0f); grow.animateTo(1f, androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
     Canvas(modifier) {
         if (values.isEmpty()) return@Canvas
         val max = (values.maxOrNull() ?: BigDecimal.ONE).max(level).toFloat().coerceAtLeast(1f)
         val gap = 4.dp.toPx(); val w = (size.width - gap * (values.size - 1)) / values.size
         values.forEachIndexed { i, v ->
-            val h = (v.toFloat() / max * size.height).coerceAtLeast(2f)
+            val h = (v.toFloat() / max * size.height * grow.value).coerceAtLeast(2f)
             drawRoundRect(color.copy(alpha = 0.85f), Offset(i * (w + gap), size.height - h), Size(w, h), CornerRadius(3.dp.toPx()))
         }
-        val y = size.height - level.toFloat() / max * size.height
+        val y = size.height - level.toFloat() / max * size.height * grow.value
         drawLine(track, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.5.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
     }
 }
