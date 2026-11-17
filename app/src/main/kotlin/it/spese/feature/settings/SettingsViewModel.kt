@@ -32,6 +32,7 @@ class SettingsViewModel @Inject constructor(
     private val store: DocumentStore, private val deleteDoc: DeleteDocumentUseCase, private val inspect: InspectBackupUseCase, private val restoreUc: RestoreBackupUseCase,
     private val exporter: ExportTransactionsUseCase, val data: StateFlow<AppData>, private val scheduler: WorkScheduler, val notifier: Notifier,
     private val messenger: UiMessenger, private val reclassify: ReclassifyAllUseCase, private val incoming: it.spese.app.common.IncomingFile,
+    private val restartUc: it.spese.domain.usecase.RestartFromStatementsUseCase,
 ) : AndroidViewModel(app) {
     val state: StateFlow<AppSettings> = settings.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
     private val _pending = MutableStateFlow<RestorePrompt?>(null)
@@ -128,6 +129,17 @@ class SettingsViewModel @Inject constructor(
     fun autoBackupNow() = run("Backup automatico creato") { backup.autoBackup(settings.get().autoBackupKeep); settings.update { it.copy(lastAutoBackupAt = System.currentTimeMillis()) }; refreshStorage() }
     fun autoBackups(): List<File> = backup.listAutoBackups()
     fun resetAll() = run("Dati azzerati: puoi annullare dal menu Dati") { backup.resetAll() }
+
+    /** Cosa si tiene e cosa si cancella se si ricomincia dagli estratti (nessuna modifica). */
+    suspend fun restartPreview(keepManual: Boolean) = restartUc.preview(keepManual)
+
+    /** Cancella le righe importate tenendo i dettagli degli scontrini (che tornano «in attesa dell'estratto»); prima salva uno snapshot per «Annulla». */
+    fun restartFromStatements(keepManual: Boolean) = viewModelScope.launch {
+        try {
+            val r = restartUc(keepManual)
+            messenger.show("Fatto: ${r.deleted} movimenti cancellati, ${r.converted} con dettagli in attesa dell'estratto, ${r.keptProvisional + r.keptManual} tenuti. Ora importa gli estratti da Altro › Importa. Per tornare indietro: menu ⋮ › Annulla l'ultima operazione")
+        } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
 }
 
 private object CsvLike { fun decode(b: ByteArray): String = it.spese.domain.importing.CsvParser.decode(b) }

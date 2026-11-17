@@ -48,6 +48,8 @@ interface TransactionRepository {
     /** Chiave di deduplica salvata di un movimento. */
     suspend fun getDedupKey(id: Long): String?
     suspend fun delete(ids: Collection<Long>)
+    /** Rimette i movimenti «in attesa dell'estratto conto» (origine scontrino, chiave di deduplica = identificativo): la prossima importazione li sostituisce con la riga giusta, ereditandone documento, voci e note. */
+    suspend fun markProvisional(ids: Collection<Long>)
     suspend fun applyClassifications(updates: List<ClassificationUpdate>)
     /** Chiavi di deduplica dei movimenti esistenti di un conto (una per movimento). */
     suspend fun dedupKeys(accountId: Long): List<String>

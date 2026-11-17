@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -38,6 +39,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var confirmReset by remember { mutableStateOf(false) }
+    var restartOpen by remember { mutableStateOf(false) }
     var confirmDocs by remember { mutableStateOf(false) }
     var autoList by remember { mutableStateOf(false) }
 
@@ -148,6 +150,8 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
             }
             item {
                 SectionCard(title = "Dati") {
+                    OutlinedButton(onClick = { restartOpen = true }, Modifier.testTag("restart_from_statements")) { Icon(Icons.Default.RestartAlt, null); Spacer(Modifier.width(8.dp)); Text("Ricomincia dagli estratti…") }
+                    Text("Cancella le righe importate e le reimporti, tenendo i dettagli degli scontrini. Conti, categorie, regole e obiettivi restano.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     OutlinedButton(onClick = { confirmReset = true }, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.DeleteForever, null); Spacer(Modifier.width(8.dp)); Text("Azzera tutti i dati") }
                     Text("Prima dell'azzeramento viene salvato uno snapshot: puoi annullare subito dal menu Dati.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -161,6 +165,7 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
         }
     }
     pending?.let { RestoreDialog(it, vm) }
+    if (restartOpen) RestartDialog(vm) { restartOpen = false }
     if (confirmReset) ConfirmDialog("Azzerare tutti i dati?", "Verranno cancellati movimenti, categorie personalizzate, regole, budget e scadenze, e ripristinate le categorie e regole predefinite. Potrai annullare subito dal menu Dati.", "Azzera", vm::resetAll, { confirmReset = false }, destructive = true)
     if (confirmDocs) ConfirmDialog("Eliminare tutte le foto?", "I movimenti restano, ma perdono il documento allegato.", "Elimina", vm::deleteAllDocuments, { confirmDocs = false }, destructive = true)
     if (autoList) AlertDialog(onDismissRequest = { autoList = false }, title = { Text("Backup automatici") }, confirmButton = {}, dismissButton = { TextButton(onClick = { autoList = false }) { Text("Chiudi") } },

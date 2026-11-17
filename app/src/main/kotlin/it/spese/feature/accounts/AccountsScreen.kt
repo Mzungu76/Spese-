@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -63,6 +64,7 @@ fun AccountsScreen(onBack: () -> Unit, vm: AccountsViewModel = hiltViewModel()) 
     val d by vm.data.collectAsStateWithLifecycle()
     var edit by remember { mutableStateOf<Account?>(null) }
     var deleting by remember { mutableStateOf<Account?>(null) }
+    var checking by remember { mutableStateOf<Account?>(null) }
     Scaffold(topBar = { SubTopBar("Conti", onBack) }, floatingActionButton = { ExtendedFloatingActionButton(onClick = { edit = Account(0, "") }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Conto") }) }, contentWindowInsets = WindowInsets.safeDrawing) { pad ->
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(bottom = 96.dp)) {
             item { Text("Rinomina un conto per cambiarne il nome; dando lo stesso nome a due conti li unisci. Il saldo iniziale serve a calcolare il saldo reale e le proiezioni.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -85,11 +87,13 @@ fun AccountsScreen(onBack: () -> Unit, vm: AccountsViewModel = hiltViewModel()) 
                 DropdownField("Tipo", type, AccountType.entries, { it.label }, { type = it })
                 AmountField(opening, { opening = it }, "Saldo iniziale")
                 LabeledSwitch("Archiviato", archived, { archived = it }, supporting = "Nascosto nelle nuove scelte")
+                if (a.id != 0L) TextButton(onClick = { checking = a; edit = null }, Modifier.testTag("check_balance")) { Text("Controlla il saldo…") }
                 if (a.id != 0L) TextButton(onClick = { deleting = a; edit = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina il conto…") }
             } },
             confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { vm.save(a.copy(type = type, openingBalance = parseAmountOrNull(opening) ?: BigDecimal.ZERO, archived = archived), name.trim()); edit = null }) { Text("Salva") } },
             dismissButton = { TextButton(onClick = { edit = null }) { Text("Annulla") } })
     }
+    checking?.let { a -> BalanceCheckDialog(a, d, vm) { checking = null } }
     deleting?.let { a -> DeleteAccountDialog(a, d.accounts.filter { it.id != a.id && !it.archived }, vm, { deleting = null }) }
 }
 
@@ -143,4 +147,41 @@ private fun DeletionOption(selected: Boolean, title: String, subtitle: String, e
         RadioButton(selected, onSelect, enabled = enabled)
         Column(Modifier.padding(top = 12.dp)) { Text(title, style = MaterialTheme.typography.bodyLarge); Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
     }
+}
+
+/**
+ * Controllo del saldo: inserisci il saldo che vedi in banca a una data; l'app lo confronta con quello che calcola (saldo iniziale + movimenti)
+ * e, se non tornano, indica le cause probabili e propone di correggere il saldo iniziale (solo se lo confermi).
+ */
+@Composable
+private fun BalanceCheckDialog(a: Account, d: AppData, vm: AccountsViewModel, onDismiss: () -> Unit) {
+    var text by remember { mutableStateOf("") }
+    var date by remember { mutableStateOf<java.time.LocalDate?>(java.time.LocalDate.now()) }
+    val declared = parseAmountOrNull(text)
+    val result = if (declared != null && date != null) it.spese.domain.finance.BalanceCheckEngine.check(a, d.ledger, d.unassigned, declared, date!!) else null
+    AlertDialog(onDismissRequest = onDismiss, title = { Text("Controlla il saldo di «${a.name}»") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Scrivi il saldo che vedi in banca (o sull'estratto) a quella data.", style = MaterialTheme.typography.bodySmall)
+                AmountField(text, { text = it }, "Saldo in banca", Modifier.fillMaxWidth())
+                DateField(date, { date = it }, "Alla data", Modifier.fillMaxWidth())
+                if (a.type == AccountType.INVESTIMENTO) Text("Per i conti Investimenti il valore si inserisce in Patrimonio.", style = MaterialTheme.typography.bodySmall)
+                if (result != null) {
+                    HorizontalDivider()
+                    Text("Nell'app: ${Money.eur(result.computed)} · In banca: ${Money.eur(result.declared)}", style = MaterialTheme.typography.bodyMedium)
+                    if (result.matches) Text("Il saldo torna.", style = MaterialTheme.typography.titleMedium, color = it.spese.core.designsystem.theme.SpeseTheme.finance.positive)
+                    else {
+                        Text("Differenza: ${Money.eur(result.difference)} (${if (result.difference.signum() < 0) "nell'app c'è di più" else "nell'app c'è di meno"})", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.error)
+                        result.causes.forEach { c ->
+                            Text((if (c.explainsAll) "✓ Spiega tutta la differenza: " else "• ") + c.text, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (result != null && !result.matches) TextButton(onClick = { vm.save(a.copy(openingBalance = result.suggestedOpening), a.name); onDismiss() }, Modifier.testTag("set_opening")) { Text("Imposta saldo iniziale a ${Money.eur(result.suggestedOpening)}") }
+            else TextButton(onClick = onDismiss) { Text("Chiudi") }
+        },
+        dismissButton = { if (result != null && !result.matches) TextButton(onClick = onDismiss) { Text("Chiudi") } })
 }

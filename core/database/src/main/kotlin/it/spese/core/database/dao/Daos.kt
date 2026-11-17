@@ -60,6 +60,7 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertAll(items: List<TransactionEntity>): List<Long>
     @Update suspend fun update(t: TransactionEntity)
     @Query("DELETE FROM transactions WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<Long>)
+    @Query("UPDATE transactions SET origin = :origin, dedupKey = externalId WHERE id IN (:ids)") suspend fun markProvisional(ids: List<Long>, origin: String)
     @Query("DELETE FROM transactions") suspend fun deleteAll()
     @Query("SELECT dedupKey FROM transactions WHERE accountId = :accountId") suspend fun dedupKeys(accountId: Long): List<String>
     @Query(

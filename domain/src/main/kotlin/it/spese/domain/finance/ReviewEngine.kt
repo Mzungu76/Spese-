@@ -43,6 +43,7 @@ object ReviewEngine {
             val parts = splits[t.id].orEmpty().sortedBy { it.position }
             if (parts.any { it.auto }) notes.add(ReviewNote(ReviewReason.AUTO_SPLIT, "Diviso automaticamente: " + parts.joinToString(" + ") { (names[it.categoryId] ?: "Senza categoria") + " " + Money.eur0(it.amount.abs()) }))
             if (t.origin == TxOrigin.RECURRING) notes.add(ReviewNote(ReviewReason.RECURRING, "Ricorrente: creato in automatico, confermalo quando arriva davvero (l'estratto conto lo sostituisce)"))
+            if (t.origin == TxOrigin.OCR && t.documentId != null) notes.add(ReviewNote(ReviewReason.PROVISIONAL, "Da scontrino: attende la riga dell'estratto conto che lo sostituisce (se l'hai pagato in contanti, confermalo)"))
             if (t.origin == TxOrigin.NOTIFICATION) notes.add(ReviewNote(ReviewReason.PROVISIONAL, "Da notifica: sarà sostituito dall'estratto conto"))
             if (!noAccount && !t.manualCategory && parts.isEmpty() && t.bookingDate >= recentFrom) {
                 val rule = t.ruleId?.let { rulesById[it] }

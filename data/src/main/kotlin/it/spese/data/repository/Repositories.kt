@@ -40,6 +40,7 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
         ))
     }
 
+    override suspend fun markProvisional(ids: Collection<Long>) { db.withTransaction { ids.chunked(500).forEach { dao.markProvisional(it, TxOrigin.OCR.name) } } }
     override suspend fun delete(ids: Collection<Long>) { db.withTransaction { ids.chunked(500).forEach { dao.deleteByIds(it) } } }
 
     override suspend fun applyClassifications(updates: List<ClassificationUpdate>) {
