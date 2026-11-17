@@ -74,9 +74,17 @@ object PaceEngine {
         val tx = data.transactions.filter { (filter.accountId == null || it.accountId == filter.accountId) && it.kind != TxKind.TRASFERIMENTO }
         if (tx.isEmpty()) return null
         val cal = filter.calendar
-        val today = AlertEngine.referenceToday(realToday, tx)
         val unit = unitFor(filter.period)
         val dataMin = tx.minOf { it.bookingDate }
+        val last = tx.maxOf { it.bookingDate }
+        var today = AlertEngine.referenceToday(realToday, tx)
+        // come i filtri «Sett./Mese»: se nel periodo di oggi non c'è ancora nessun movimento, il periodo in corso è quello dell'ultimo movimento
+        val currentStart = when (unit) {
+            PaceUnit.WEEK -> today.with(MON)
+            PaceUnit.MONTH -> cal.start(cal.monthOf(today))
+            PaceUnit.QUARTER -> cal.start(cal.monthOf(today).minusMonths(2))
+        }
+        if (last.isBefore(currentStart) && unit != PaceUnit.QUARTER) today = last
         val ym = cal.monthOf(today)
 
         val current: Win; val past: List<Win>

@@ -72,4 +72,12 @@ class PaceTest {
         // entrate attese 2.000, risparmio medio 1.000, già speso 800 → restano 200 € per 20 giorni
         assertEquals(0, BigDecimal("10.00").compareTo(r.dailyAllowance)); assertEquals(0, BigDecimal(1000).compareTo(r.averageMargin))
     }
+
+    @Test fun `se nella settimana di oggi non c e ancora nessun movimento il periodo in corso e quello dell ultimo movimento`() {
+        val l = ArrayList<Transaction>()
+        var day = d("2026-09-21"); while (day <= d("2026-11-15")) { l.add(tx(day, -10)); day = day.plusDays(1) }       // fino a domenica 15 novembre
+        // oggi è martedì 17: la settimana corrente non ha movimenti, quella dell'ultimo movimento (9–15 nov) sì
+        val r = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentWeek), d("2026-11-17"))!!
+        assertEquals(d("2026-11-09"), r.start); assertEquals(6, r.dayIndex); assertEquals(0, BigDecimal(70).compareTo(r.spentToDate)); assertEquals(PaceVerdict.IN_LINE, r.verdict)
+    }
 }
