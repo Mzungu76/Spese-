@@ -45,7 +45,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {},
+    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onOpenReport: () -> Unit = {}, onOpenSetup: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -77,6 +77,8 @@ fun DashboardScreen(
         val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
         var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
+            m.daily?.let { dly -> item(key = "daily") { DailyBudgetCard(dly, m.lastTransaction, onOpenSetup, onImport, Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp)) } }
+            if (!st.setupDone && m.daily?.status != it.spese.domain.finance.DailyStatus.SETUP) item(key = "setup") { SetupPromptCard(onOpenSetup, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             item(key = "hero") {
                 Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
                     Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")
@@ -109,6 +111,7 @@ fun DashboardScreen(
                     Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            item(key = "coach") { CoachCard(m.insights.take(3), onOpenReport, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
             val watch = SavingsOpportunities.surging(m.categories)
             val opps = SavingsOpportunities.compute(m.categories, 20)
             if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }

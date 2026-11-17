@@ -19,6 +19,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import it.spese.app.MainActivity
 import it.spese.app.R
 import it.spese.domain.finance.AlertEngine
+import it.spese.domain.finance.DailyBudgetEngine
+import it.spese.domain.finance.Digest
 import it.spese.domain.finance.AlertKind
 import it.spese.domain.finance.RecurringDetector
 import it.spese.domain.repository.*
@@ -67,7 +69,8 @@ class AlertsWorker @AssistedInject constructor(
         if (!s.notificationsEnabled) return Result.success()
         val d = data.first { it.loaded }
         if (d.transactions.isEmpty() && d.dues.isEmpty()) return Result.success()
-        val today = AlertEngine.referenceToday(java.time.LocalDate.now(), d.transactions)
+        val realToday = java.time.LocalDate.now()
+        val today = AlertEngine.referenceToday(realToday, d.transactions)
         val alerts = AlertEngine.compute(d.transactions, d.categories, d.goal, d.dues, today, RecurringDetector.defaultExclusions(d.categories))
             .filter { a ->
                 when (a.kind) {
@@ -82,6 +85,15 @@ class AlertsWorker @AssistedInject constructor(
             val critical = alerts.count { it.level >= 2 }
             val title = if (critical > 0) "$critical avvisi importanti" else "${alerts.size} avvisi da controllare"
             notifier.post(1001, title, alerts.first().message, alerts.take(6).joinToString("\n") { "• " + it.message })
+        }
+        val daily = DailyBudgetEngine.compute(d.transactions, d.categories, d.goal, d.dues, today, realToday)
+        if (s.notifyDaily && daily != null) {
+            // con dati fermi da giorni il numero del giorno non sarebbe affidabile: meglio ricordare di aggiornarli
+            if (daily.staleDays > 7) notifier.post(1002, "Aggiorna i tuoi movimenti", "L'ultimo movimento risale a ${daily.staleDays} giorni fa: importa l'estratto conto per avere un consiglio affidabile sulla spesa di oggi.")
+            else Digest.daily(daily)?.let { (t, text) -> notifier.post(1002, t, text) }
+        }
+        if (s.notifyWeekly && realToday.dayOfWeek == java.time.DayOfWeek.MONDAY && (daily?.staleDays ?: 0) <= 7) {
+            Digest.weekly(d.transactions, today, daily)?.let { (t, text) -> notifier.post(1003, t, text) }
         }
         return Result.success()
     }

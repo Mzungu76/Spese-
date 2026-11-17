@@ -32,7 +32,10 @@ class SettingsViewModel @Inject constructor(
     private val store: DocumentStore, private val deleteDoc: DeleteDocumentUseCase, private val inspect: InspectBackupUseCase, private val restoreUc: RestoreBackupUseCase,
     private val exporter: ExportTransactionsUseCase, val data: StateFlow<AppData>, private val scheduler: WorkScheduler, val notifier: Notifier,
     private val messenger: UiMessenger, private val reclassify: ReclassifyAllUseCase, private val incoming: it.spese.app.common.IncomingFile,
+    captureLog: it.spese.app.capture.CaptureLog,
 ) : AndroidViewModel(app) {
+    /** App che hanno appena mandato notifiche di pagamento riconoscibili (da proporre per l'abilitazione). */
+    val seenApps: StateFlow<List<String>> = captureLog.seen
     val state: StateFlow<AppSettings> = settings.observe().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
     private val _pending = MutableStateFlow<RestorePrompt?>(null)
     val pending: StateFlow<RestorePrompt?> = _pending.asStateFlow()

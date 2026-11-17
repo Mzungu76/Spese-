@@ -2,6 +2,7 @@ package it.spese.domain.usecase
 
 import it.spese.core.model.TxOrigin
 import it.spese.domain.backup.*
+import it.spese.domain.capture.NotificationReconciler
 import it.spese.domain.classification.Classifier
 import it.spese.domain.classification.Duplicates
 import it.spese.domain.export.Exporters
@@ -46,12 +47,18 @@ class CommitImportUseCase @Inject constructor(
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val fresh = preview.rows.filter { !it.duplicate }
         val batch = tx.createImportBatch(table.fileName, fresh.size)
-        val items = fresh.map { p ->
+        // i movimenti letti dalle notifiche vengono sostituiti da quelli dell'estratto conto (stesso importo, date vicine)
+        val pending = tx.getAll().filter { it.accountId == acc.id && it.origin == TxOrigin.NOTIFICATION }
+        val matched = if (pending.isEmpty()) emptyMap() else NotificationReconciler.match(pending, fresh.map { it.row.date to it.row.amount })
+        val items = fresh.mapIndexed { idx, p ->
             val r = p.row; val c = classifier.classify(r.text, r.amount, null)
+            // se avevi corretto a mano la categoria della notifica, la scelta si conserva
+            val kept = matched[idx]?.takeIf { it.manualCategory }
             NewTransaction(Duplicates.key(name, r.date, r.valueDate, r.amount, r.text) + "#" + p.occurrence, p.key, acc.id, r.date, r.valueDate, r.text,
-                r.amount, c.kind, c.categoryId, false, c.ruleId, null, "", TxOrigin.IMPORT_FILE, null, batch)
+                r.amount, kept?.kind ?: c.kind, kept?.categoryId ?: c.categoryId, kept != null, if (kept != null) null else c.ruleId, null, "", TxOrigin.IMPORT_FILE, null, batch)
         }
         val added = tx.insertAll(items)
+        if (matched.isNotEmpty()) tx.delete(matched.values.map { it.id })
         settings.update { it.copy(lastUndo = "batch:$batch") }
         return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch)
     }
@@ -107,4 +114,25 @@ class ImportProfilesUseCase @Inject constructor(private val repo: ImportProfileR
 
     suspend fun remember(name: String, table: StatementTable, roles: List<ColumnRole>, options: ImportOptions, headerRow: Int) =
         repo.save(ImportProfile(name.ifBlank { "Formato personalizzato" }, TableAnalyzer.signature(table.rows, headerRow, roles.size), roles, options, headerRow))
+}
+
+/**
+ * Registra un pagamento letto da una notifica come movimento, classificato con le regole esistenti.
+ * Ritorna false se il testo non è un pagamento riconoscibile o se la stessa notifica era già stata registrata.
+ */
+class CaptureNotificationUseCase @Inject constructor(
+    private val tx: TransactionRepository, private val accounts: AccountRepository,
+    private val categories: CategoryRepository, private val rules: RuleRepository, private val settings: SettingsRepository,
+) {
+    suspend operator fun invoke(pkg: String, title: String?, text: String?, date: java.time.LocalDate): Boolean {
+        val p = it.spese.domain.capture.BankNotificationParser.parse(title, text) ?: return false
+        val s = settings.get()
+        val acc = if (s.captureAccount.isNotBlank()) accounts.getOrCreate(s.captureAccount.trim())
+            else accounts.getAll().firstOrNull { !it.archived } ?: accounts.getOrCreate("Conto principale")
+        val desc = p.description
+        val c = Classifier(categories.getAll(), rules.getAll()).classify(desc, p.amount, null)
+        val id = "ntf|$pkg|$date|${p.amount.toPlainString()}|${(title.orEmpty() + "|" + text.orEmpty()).hashCode()}"
+        return tx.insertAll(listOf(NewTransaction(id, id, acc.id, date, date, desc, p.amount, c.kind, c.categoryId, false, c.ruleId, null,
+            "Letto dalla notifica di $pkg", TxOrigin.NOTIFICATION))) > 0
+    }
 }

@@ -15,17 +15,18 @@ import kotlinx.coroutines.withContext
 
 data class DashboardState(
     val data: AppData = AppData(), val model: DashboardModel? = null, val filter: TxFilter = TxFilter(), val buckets: List<Bucket> = emptyList(),
+    val setupDone: Boolean = true,
 )
 
 @HiltViewModel
 @OptIn(ExperimentalCoroutinesApi::class)
-class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger) : ViewModel() {
-    val state: StateFlow<DashboardState> = combine(data, filters.filter) { d, f -> d to f }
-        .mapLatest { (d, f) ->
+class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private val filters: FilterStore, settings: it.spese.domain.repository.SettingsRepository, private val categories: it.spese.domain.repository.CategoryRepository, private val messenger: it.spese.app.common.UiMessenger) : ViewModel() {
+    val state: StateFlow<DashboardState> = combine(data, filters.filter, settings.observe().map { it.setupDone }.distinctUntilChanged()) { d, f, setup -> Triple(d, f, setup) }
+        .mapLatest { (d, f, setup) ->
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)
-                DashboardState(d, m, f, TrendBuckets.compute(m.filtered))
+                DashboardState(d, m, f, TrendBuckets.compute(m.filtered), setup)
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())

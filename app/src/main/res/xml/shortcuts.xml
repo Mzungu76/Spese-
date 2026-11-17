@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_expense"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_new_expense"
+        android:shortcutLongLabel="@string/shortcut_new_expense_long">
+        <intent
+            android:action="it.spese.app.NEW_EXPENSE"
+            android:targetPackage="it.spese.gestione"
+            android:targetClass="it.spese.app.MainActivity" />
+    </shortcut>
+</shortcuts>

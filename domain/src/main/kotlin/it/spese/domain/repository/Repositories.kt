@@ -143,6 +143,17 @@ data class AppSettings(
     /** File condiviso collegato per la sincronizzazione (URI SAF) e ultimo allineamento. */
     val syncUri: String = "",
     val lastSyncAt: Long = 0,
+    /** Riepilogo giornaliero "oggi puoi spendere…" e riepilogo del lunedì. */
+    val notifyDaily: Boolean = false,
+    val notifyWeekly: Boolean = false,
+    /** Lettura delle notifiche di pagamento (banche e wallet): solo sul dispositivo, solo dalle app indicate. */
+    val captureEnabled: Boolean = false,
+    /** Pacchetti delle app abilitate, separati da virgola. */
+    val capturePackages: String = "",
+    /** Conto a cui assegnare i movimenti letti dalle notifiche (vuoto = il primo conto). */
+    val captureAccount: String = "",
+    /** Configurazione guidata del piano completata (o saltata). */
+    val setupDone: Boolean = false,
 )
 
 interface SettingsRepository {

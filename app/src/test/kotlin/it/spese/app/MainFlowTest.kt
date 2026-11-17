@@ -153,6 +153,35 @@ class MainFlowTest {
         openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
     }
 
+    @Test fun la_home_risponde_a_quanto_puoi_spendere_oggi_e_apre_il_report() {
+        val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
+        runBlocking { restore(env, RestoreMode.Replace) }
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 223 }
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("daily_card").fetchSemanticsNodes().isNotEmpty() }
+        // il calcolo è spiegato: entrate attese, obiettivo, uscite fisse
+        compose.onNodeWithText("Come è calcolato").performClick(); compose.waitForIdle()
+        waitText("Per le spese variabili"); waitText("Obiettivo di risparmio")
+        // consigli e "Il tuo mese"
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("open_report"))
+        compose.onNodeWithTag("open_report").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        waitText("Il tuo mese"); waitText("Rivedi entrate, obiettivo e budget")
+    }
+
+    @Test fun la_configurazione_guidata_propone_e_salva_entrate_e_obiettivo() {
+        val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
+        runBlocking { restore(env, RestoreMode.Replace) }
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 223 }
+        compose.waitUntil(10000) { compose.onAllNodesWithTag("setup_prompt").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("setup_prompt"))
+        compose.onNodeWithTag("setup_prompt").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        waitText("1 · Quanto entra ogni mese"); waitText("3 · Quanto vuoi mettere da parte")
+        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("setup_save"))
+        compose.onNodeWithTag("setup_save").assertIsEnabled().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(20); data.value.goal.expectedIncome != null }
+        assertTrue(data.value.goal.expectedIncome!!.signum() > 0)
+        assertEquals(it.spese.core.model.GoalMode.MONTHLY, data.value.goal.mode)
+    }
+
     @Test fun il_pulsante_piu_apre_le_quattro_azioni() {
         compose.waitForIdle()
         compose.onNodeWithTag("fab_add").performClick()

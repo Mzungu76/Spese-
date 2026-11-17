@@ -25,12 +25,17 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
         val ab = booleanPreferencesKey("ab"); val abDays = intPreferencesKey("ab_days"); val abKeep = intPreferencesKey("ab_keep")
         val abLast = longPreferencesKey("ab_last"); val onb = booleanPreferencesKey("onb"); val undo = stringPreferencesKey("undo")
         val syncUri = stringPreferencesKey("sync_uri"); val syncAt = longPreferencesKey("sync_at")
+        val nDaily = booleanPreferencesKey("n_daily"); val nWeekly = booleanPreferencesKey("n_weekly")
+        val capOn = booleanPreferencesKey("cap_on"); val capPkgs = stringPreferencesKey("cap_pkgs"); val capAcc = stringPreferencesKey("cap_acc")
+        val setup = booleanPreferencesKey("setup_done")
     }
 
     private fun Preferences.toSettings() = AppSettings(
         runCatching { ThemeMode.valueOf(this[K.theme] ?: "DARK") }.getOrDefault(ThemeMode.DARK),
         this[K.notif] ?: false, this[K.nBud] ?: true, this[K.nDue] ?: true, this[K.nRec] ?: true, this[K.nUnx] ?: true, this[K.hour] ?: 9,
         this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0,
+        notifyDaily = this[K.nDaily] ?: false, notifyWeekly = this[K.nWeekly] ?: false,
+        captureEnabled = this[K.capOn] ?: false, capturePackages = this[K.capPkgs] ?: "", captureAccount = this[K.capAcc] ?: "", setupDone = this[K.setup] ?: false,
     )
 
     override fun observe(): Flow<AppSettings> = context.store.data.map { it.toSettings() }
@@ -42,6 +47,8 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
             p[K.theme] = n.themeMode.name; p[K.notif] = n.notificationsEnabled; p[K.nBud] = n.notifyBudgets; p[K.nDue] = n.notifyDues
             p[K.nRec] = n.notifyRecurring; p[K.nUnx] = n.notifyUnexpected; p[K.hour] = n.notifyHour; p[K.ab] = n.autoBackupEnabled
             p[K.abDays] = n.autoBackupEveryDays; p[K.abKeep] = n.autoBackupKeep; p[K.abLast] = n.lastAutoBackupAt; p[K.onb] = n.onboardingDone; p[K.undo] = n.lastUndo; p[K.syncUri] = n.syncUri; p[K.syncAt] = n.lastSyncAt
+            p[K.nDaily] = n.notifyDaily; p[K.nWeekly] = n.notifyWeekly
+            p[K.capOn] = n.captureEnabled; p[K.capPkgs] = n.capturePackages; p[K.capAcc] = n.captureAccount; p[K.setup] = n.setupDone
         }
     }
 }

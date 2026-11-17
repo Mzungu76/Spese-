@@ -15,6 +15,8 @@ domain/                  (Kotlin JVM) motori e casi d'uso, senza Android
   importing/               CSV, lettore/scrittore XLSX, intestazioni, date, pianificazione import
   backup/                  codec e unione del formato HTML, mapper stato↔dominio
   export/  ocr/            CSV/XLSX, interpretazione testo di scontrini/fatture
+  capture/                 lettura delle notifiche di pagamento e riconciliazione con l'estratto conto
+  (finance/ include anche) DailyBudget, AnnualAccruals, SurplusPlanner, Coach, MonthlyReport/Digest, SetupAdvisor
   repository/  usecase/    contratti dei repository e casi d'uso
 core/database/           (Android) Room: entità, DAO, migrazioni, schemi esportati
 core/designsystem/       (Android) tema Material 3, componenti, grafici (Vico + Canvas)
@@ -65,3 +67,14 @@ basta aggiungere un parser per tabelle di testo e un `ScanDocumentUseCase` che c
 - Le euristiche OCR sono basate su regole: funzionano su scontrini nitidi; i campi non riconosciuti restano vuoti e vanno compilati a mano.
 - I test UI girano su JVM (Robolectric), non su un emulatore/dispositivo reale: la prima verifica su telefono (fotocamera, permessi, SAF) è manuale.
 - Non è implementata la cifratura del database a riposo (affidata alla cifratura del dispositivo); si può aggiungere SQLCipher senza toccare il dominio.
+
+## Assistente quotidiano
+
+Tutta la logica sta nel dominio (JVM puro, `AssistantTest`): `DailyBudgetEngine` ("quanto posso spendere oggi"), `AnnualAccruals` (spese annuali /12),
+`SurplusPlanner` (fondo di emergenza 3–6 mesi di spese essenziali e destinazione del surplus), `Coach`/`Lessons` (consigli), `MonthlyReportBuilder`/`Digest`
+(riepiloghi e notifiche), `SetupAdvisor` (proposta di piano). `DashboardCalculator` li espone nel `DashboardModel`; le schermate non calcolano nulla.
+
+Notifiche di pagamento: `BankNotificationListener` (NotificationListenerService) → `BankNotificationParser` → `CaptureNotificationUseCase` (origine `NOTIFICATION`).
+Funziona solo con il consenso esplicito di Android e solo per i pacchetti scelti dall'utente. All'importazione dell'estratto conto `NotificationReconciler`
+sostituisce il movimento letto dalla notifica (stesso importo, date entro 4 giorni) con quello della banca, conservando la categoria scelta a mano.
+Limite noto: due notifiche identiche nello stesso giorno (stesso testo e importo) sono considerate la stessa.

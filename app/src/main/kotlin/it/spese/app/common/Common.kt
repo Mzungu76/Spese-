@@ -66,3 +66,13 @@ class IncomingFile @Inject constructor() {
     fun offer(u: Uri?) { _uri.value = u }
     fun consume() { _uri.value = null }
 }
+
+/** Comandi di avvio dall'esterno (scorciatoia "Nuova spesa" dell'icona): la schermata radice li esegue una volta e li consuma. */
+@Singleton
+class LaunchCommands @Inject constructor() {
+    private val _command = MutableStateFlow<String?>(null)
+    val command: StateFlow<String?> = _command.asStateFlow()
+    fun offer(c: String?) { _command.value = c }
+    fun consume() { _command.value = null }
+    companion object { const val NEW_EXPENSE = "new_expense"; const val ACTION_NEW_EXPENSE = "it.spese.app.NEW_EXPENSE" }
+}

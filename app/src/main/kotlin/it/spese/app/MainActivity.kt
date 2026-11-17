@@ -19,6 +19,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var incoming: it.spese.app.common.IncomingFile
+    @Inject lateinit var commands: it.spese.app.common.LaunchCommands
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,5 +34,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) { super.onNewIntent(intent); handle(intent) }
 
-    private fun handle(i: android.content.Intent?) { if (i?.action == android.content.Intent.ACTION_VIEW) incoming.offer(i.data) }
+    private fun handle(i: android.content.Intent?) {
+        if (i?.action == android.content.Intent.ACTION_VIEW) incoming.offer(i.data)
+        if (i?.action == it.spese.app.common.LaunchCommands.ACTION_NEW_EXPENSE) commands.offer(it.spese.app.common.LaunchCommands.NEW_EXPENSE)
+    }
 }

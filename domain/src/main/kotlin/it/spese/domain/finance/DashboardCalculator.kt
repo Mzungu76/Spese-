@@ -73,6 +73,18 @@ data class DashboardModel(
     val natureTotals: Map<SpendNature?, BigDecimal> = emptyMap(),
     /** Natura proposta per le categorie di spesa (per id). */
     val natureSuggestions: Map<Long, NatureSuggestion> = emptyMap(),
+    /** "Quanto posso spendere oggi?" (null se non ci sono movimenti). */
+    val daily: DailyBudget? = null,
+    /** Spese annuali da spalmare sui mesi. */
+    val accruals: AccrualPlan = AccrualPlan(emptyList()),
+    /** Fondo di emergenza e destinazione di ciò che avanza. */
+    val surplusPlan: SurplusPlan? = null,
+    /** Consigli e riconoscimenti basati sui dati. */
+    val insights: List<Insight> = emptyList(),
+    val lesson: Lesson? = null,
+    /** Data dell'ultimo movimento registrato e giorni trascorsi rispetto a oggi. */
+    val lastTransaction: LocalDate? = null,
+    val staleDays: Int = 0,
 ) {
     /** Variazioni percentuali rispetto al periodo precedente (null se non confrontabile). */
     val incomeChange: BigDecimal? get() = previous?.let { Trends.changePercent(it.income, stats.income) }
@@ -128,6 +140,19 @@ object DashboardCalculator {
             rec.map { UpcomingItem(it.merchant, it.mean, it.next, ChronoUnit.DAYS.between(today, it.next).toInt(), false) })
             .filter { it.daysLeft in -3..30 }.sortedBy { it.date }
         val goalM = PlanEngine.goalMonthly(data.goal)
+        val daily = DailyBudgetEngine.compute(accTx, data.categories, data.goal, data.dues, today, realToday)
+        val accruals = AnnualAccruals.plan(data.dues, accTx, today, RecurringDetector.defaultExclusions(data.categories))
+        val natureSug = NatureSuggester.suggest(data.categories, accTx, rec)
+        val all = StatsEngine.compute(accTx)
+        val lastClosed = MonthlyReportBuilder.lastCompleteMonth(accTx, today)
+        val surplusAmount = (lastClosed?.let { all.byMonth[it]?.net } ?: BigDecimal.ZERO).max(BigDecimal.ZERO)
+        val surplus = SurplusPlanner.compute(data, accTx, natureSug, surplusAmount)
+        val unclassified = data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO }
+        val natureTotals = NatureSuggester.breakdown(s.byCategory, byId)
+        val last = accTx.maxOfOrNull { it.bookingDate }
+        val stale = last?.let { ChronoUnit.DAYS.between(it, realToday).toInt().coerceAtLeast(0) } ?: 0
+        val insights = Coach.insights(CoachInput(accTx, data.categories, data.goal, rec, natureTotals, unclassified, surplus, accruals, stale, today))
+        val monthlySaving = if (all.byMonth.isEmpty()) BigDecimal.ZERO else all.net.divide(StatsEngine.monthsSpan(accTx), 2, RoundingMode.HALF_UP)
         return DashboardModel(
             filtered, s, mo, s.expense.divide(mo, 10, RoundingMode.HALF_UP), cats,
             StatsEngine.biggestExpenses(filtered, 10), StatsEngine.topMerchants(s, 12), accRows, alerts,
@@ -135,10 +160,12 @@ object DashboardCalculator {
             previous = previous, monthPace = pace, upcoming = upcomingAll.take(5), upcoming30 = upcomingAll.filter { it.daysLeft >= 0 }.fold(BigDecimal.ZERO) { a, b -> a + b.amount },
             budgets = AlertEngine.budgetUsage(accTx, data.categories, ym).sortedByDescending { it.percent }, goalMonthly = goalM,
             savingsPerMonth = s.net.divide(mo, 10, RoundingMode.HALF_UP),
-            unclassified = data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO },
+            unclassified = unclassified,
             topChanges = if (previous == null) emptyList() else Trends.categoryVariation(previous.byCategory, s.byCategory).take(3),
             incomeCategories = incomeCats, previousLabel = prevLabel,
-            natureTotals = NatureSuggester.breakdown(s.byCategory, byId), natureSuggestions = NatureSuggester.suggest(data.categories, accTx, rec),
+            natureTotals = natureTotals, natureSuggestions = natureSug,
+            daily = daily, accruals = accruals, surplusPlan = surplus, insights = insights,
+            lesson = Lessons.forToday(today, surplus?.stage, monthlySaving), lastTransaction = last, staleDays = stale,
         )
     }
 

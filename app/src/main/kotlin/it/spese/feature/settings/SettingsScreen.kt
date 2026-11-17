@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +24,7 @@ import it.spese.app.common.Share
 import it.spese.app.common.SubTopBar
 import it.spese.app.common.stamp
 import it.spese.core.designsystem.component.*
+import it.spese.domain.repository.AppSettings
 import it.spese.domain.repository.ThemeMode
 import kotlinx.coroutines.launch
 
@@ -112,10 +114,13 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) 
                         LabeledSwitch("Scadenze imminenti o in ritardo", s.notifyDues, { v -> vm.update { it.copy(notifyDues = v) } })
                         LabeledSwitch("Addebiti ricorrenti attesi", s.notifyRecurring, { v -> vm.update { it.copy(notifyRecurring = v) } })
                         LabeledSwitch("Spese non previste", s.notifyUnexpected, { v -> vm.update { it.copy(notifyUnexpected = v) } })
+                        LabeledSwitch("Quanto puoi spendere oggi", s.notifyDaily, { v -> vm.update { it.copy(notifyDaily = v) } }, supporting = "Ogni giorno, il tuo margine di spesa fino a fine mese")
+                        LabeledSwitch("Riepilogo della settimana", s.notifyWeekly, { v -> vm.update { it.copy(notifyWeekly = v) } }, supporting = "Il lunedì: quanto hai speso negli ultimi 7 giorni")
                         DropdownField("Ora del controllo", s.notifyHour, (6..22).toList(), { "%02d:00".format(it) }, { h -> vm.update { it.copy(notifyHour = h) } })
                     }
                 }
             }
+            item { CaptureCard(s, vm) }
             item {
                 SectionCard(title = "Documenti e spazio") {
                     Text("${storage.documents} foto · ${"%.1f".format(java.util.Locale.ITALY, storage.bytes / 1048576.0)} MB nella memoria privata dell'app. Non sono visibili ad altre app né inviate online.", style = MaterialTheme.typography.bodyMedium)
@@ -142,6 +147,54 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) 
     if (confirmDocs) ConfirmDialog("Eliminare tutte le foto?", "I movimenti restano, ma perdono il documento allegato.", "Elimina", vm::deleteAllDocuments, { confirmDocs = false }, destructive = true)
     if (autoList) AlertDialog(onDismissRequest = { autoList = false }, title = { Text("Backup automatici") }, confirmButton = {}, dismissButton = { TextButton(onClick = { autoList = false }) { Text("Chiudi") } },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) { vm.autoBackups().forEach { f -> ListRow(f.name.removePrefix("auto-").removeSuffix(".json"), subtitle = "${f.length() / 1024} KB", onClick = { autoList = false; vm.inspectFile(f) }) } } })
+}
+
+private val CAPTURE_PRESETS = listOf(
+    "Revolut" to "com.revolut.revolut", "N26" to "de.number26.android", "PayPal" to "com.paypal.android.p2pmobile", "Google Wallet" to "com.google.android.apps.walletnfcrel",
+)
+
+/** Registrazione automatica dei pagamenti dalle notifiche di banca/wallet: consenso esplicito, app scelte una per una, tutto sul telefono. */
+@Composable
+private fun CaptureCard(s: AppSettings, vm: SettingsViewModel) {
+    val ctx = LocalContext.current
+    val seen by vm.seenApps.collectAsStateWithLifecycle()
+    fun granted() = androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(ctx).contains(ctx.packageName)
+    var listenerOn by remember { mutableStateOf(granted()) }
+    val owner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) listenerOn = granted() }
+        owner.lifecycle.addObserver(obs)
+        onDispose { owner.lifecycle.removeObserver(obs) }
+    }
+    val openAccess = { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)) }
+    val pkgs = s.capturePackages.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+    fun setPkgs(l: List<String>) = vm.update { it.copy(capturePackages = l.distinct().joinToString(",")) }
+    SectionCard(title = "Spese dalle notifiche") {
+        Text("Se la banca o il wallet ti notifica ogni pagamento, l'app può registrarlo da sola e mantenere aggiornato il \"quanto posso spendere oggi\". " +
+            "La lettura avviene solo su questo telefono e solo per le app che scegli qui sotto; nessun dato esce (l'app non ha accesso a Internet). " +
+            "Quando importi l'estratto conto, i movimenti letti dalle notifiche vengono sostituiti da quelli della banca, senza duplicati.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        LabeledSwitch("Registra i pagamenti dalle notifiche", s.captureEnabled, { on -> vm.update { it.copy(captureEnabled = on) }; if (on && !listenerOn) openAccess() })
+        if (s.captureEnabled) {
+            if (!listenerOn) {
+                Text("Manca il consenso di Android: abilita \"Gestione spese\" tra gli accessi alle notifiche.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                Button(onClick = openAccess) { Text("Apri le impostazioni di Android") }
+            }
+            Text("App abilitate", style = MaterialTheme.typography.titleSmall)
+            if (pkgs.isEmpty()) Text("Nessuna: scegline una qui sotto.", style = MaterialTheme.typography.bodySmall)
+            pkgs.forEach { p -> ListRow(p, trailing = { TextButton(onClick = { setPkgs(pkgs - p) }) { Text("Togli") } }) }
+            val suggestions = CAPTURE_PRESETS.filter { it.second !in pkgs }.map { it.first to it.second } + seen.filter { p -> p !in pkgs && CAPTURE_PRESETS.none { it.second == p } }.map { it to it }
+            if (suggestions.isNotEmpty()) {
+                Text("Aggiungi", style = MaterialTheme.typography.titleSmall)
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    suggestions.forEach { (label, pkg) -> AssistChip(onClick = { setPkgs(pkgs + pkg) }, label = { Text(label) }) }
+                }
+                Text("Le app che mandano una notifica di pagamento compaiono qui da sole: fai un acquisto di prova e torna in questa schermata.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            var acc by remember(s.captureAccount) { mutableStateOf(s.captureAccount) }
+            OutlinedTextField(acc, { acc = it; vm.update { st -> st.copy(captureAccount = it) } }, label = { Text("Conto (vuoto = il primo)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+        }
+    }
 }
 
 @Composable

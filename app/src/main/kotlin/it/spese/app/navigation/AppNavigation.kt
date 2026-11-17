@@ -42,7 +42,9 @@ import it.spese.feature.categories.ManageScreen
 import it.spese.feature.dashboard.DashboardScreen
 import it.spese.feature.importer.ImportScreen
 import it.spese.feature.ocr.ScanScreen
+import it.spese.feature.report.ReportScreen
 import it.spese.feature.settings.SettingsScreen
+import it.spese.feature.setup.SetupScreen
 import it.spese.feature.simulation.PlanScreen
 import it.spese.feature.transactions.TransactionEditScreen
 import it.spese.feature.transactions.TransactionsScreen
@@ -50,6 +52,7 @@ import it.spese.feature.transactions.TransactionsScreen
 object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
+    const val SETUP = "setup"; const val REPORT = "report"
     const val EDIT = "edit/{id}"
     const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"
     fun edit(id: Long) = "edit/$id"
@@ -118,6 +121,9 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     var addOpen by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
+    // scorciatoia "Nuova spesa" dell'icona: apre direttamente il modulo di inserimento
+    val command by vm.commands.command.collectAsStateWithLifecycle()
+    LaunchedEffect(command) { if (command == it.spese.app.common.LaunchCommands.NEW_EXPENSE) { nav.navigate(Routes.edit(0)); vm.commands.consume() } }
 
     val menu = DataMenu(
         onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) },
@@ -134,7 +140,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
-                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, contentPadding = pad)
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) },
+                    onOpenReport = { nav.navigate(Routes.REPORT) }, onOpenSetup = { nav.navigate(Routes.SETUP) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, bottomPadding = pad) }
@@ -154,6 +161,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SETUP) { SetupScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.REPORT) { ReportScreen(onBack = { nav.popBackStack() }, onOpenSetup = { nav.navigate(Routes.SETUP) }) }
         }
     }
     if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) })

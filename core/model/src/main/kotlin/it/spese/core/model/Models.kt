@@ -44,7 +44,7 @@ enum class SpendNature(val key: String, val label: String, val hint: String) {
     }
 }
 
-enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR }
+enum class TxOrigin { MANUAL, IMPORT_FILE, BACKUP, OCR, NOTIFICATION }
 
 enum class AccountType(val label: String) {
     CONTO("Conto corrente"), CARTA("Carta"), CONTANTI("Contanti"), INVESTIMENTO("Investimenti"), ALTRO("Altro")

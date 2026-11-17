@@ -144,6 +144,28 @@ class DatabaseTest {
         assertEquals(2, tr.size)
     }
 
+    @Test fun `un pagamento letto da una notifica diventa un movimento e l'estratto conto lo sostituisce senza duplicati`() = runBlocking<Unit> {
+        env.settings.update { it.copy(captureAccount = "Revolut") }
+        val day = LocalDate.of(2024, 4, 1)
+        assertTrue(env.capture("com.revolut.revolut", "Revolut", "Pagamento di 45,50 € presso AMAZON PRIME con carta *1234", day))
+        // la stessa notifica ripetuta non crea un secondo movimento
+        assertFalse(env.capture("com.revolut.revolut", "Revolut", "Pagamento di 45,50 € presso AMAZON PRIME con carta *1234", day))
+        // un testo che non è un pagamento viene ignorato
+        assertFalse(env.capture("com.revolut.revolut", "Offerta", "Prestito fino a 30.000 € a tasso agevolato", day))
+        val n = env.tx.getAll().single()
+        assertEquals(TxOrigin.NOTIFICATION, n.origin)
+        assertEquals("-45.50", n.amount.toPlainString())
+        assertEquals("Revolut", env.accounts.getAll().first { it.id == n.accountId }.name)
+        // la banca registra lo stesso importo il 2/4: la notifica (1/4) viene sostituita dalla riga dell'estratto conto
+        val t = ReadStatementUseCase().invoke(env.resource("revolut.csv"), "revolut.csv").first()
+        val before = env.tx.getAll().size
+        val out = env.commit(t, t.detected!!.headerRow, t.detected!!.mapping, "Revolut")
+        val all = env.tx.getAll()
+        assertTrue(all.none { it.origin == TxOrigin.NOTIFICATION })
+        assertEquals(before - 1 + out.added, all.size)
+        assertEquals(1, all.count { it.amount.toPlainString() == "-45.50" })
+    }
+
     @Test fun `inserimento manuale, modifica, duplicazione ed eliminazione`() = runBlocking<Unit> {
         val acc = env.accounts.getAll().first()
         val save = SaveTransactionUseCase(env.tx, env.accounts, env.cats, env.rules)
