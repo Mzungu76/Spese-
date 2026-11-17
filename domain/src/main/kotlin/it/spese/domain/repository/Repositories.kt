@@ -193,6 +193,15 @@ interface GoalRepository {
     suspend fun setAll(goals: List<it.spese.core.model.Goal>)
 }
 
+/** Valori dei conti di investimento (preferenze dell'app, nel backup). Una sola riga per conto e data. */
+interface ValuationRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.Valuation>>
+    suspend fun getAll(): List<it.spese.core.model.Valuation>
+    suspend fun save(v: it.spese.core.model.Valuation)
+    suspend fun delete(accountId: Long, date: java.time.LocalDate)
+    suspend fun setAll(values: List<it.spese.core.model.Valuation>)
+}
+
 /** Entrate e spese ricorrenti. */
 interface RecurringRepository {
     fun observeAll(): Flow<List<it.spese.core.model.RecurringRule>>

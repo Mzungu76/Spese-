@@ -74,6 +74,7 @@ class BackupRepositoryImpl @Inject constructor(
     private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
     private val goalsRepo = it.spese.data.settings.GoalRepositoryImpl(context)
+    private val valuationsRepo = it.spese.data.settings.ValuationRepositoryImpl(context)
 
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
@@ -84,6 +85,7 @@ class BackupRepositoryImpl @Inject constructor(
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
             subIgnored = subReview.getIgnored().toList(),
+            valuations = valuationsRepo.getAll().mapNotNull { v -> s.accounts.firstOrNull { it.id == v.accountId }?.let { NativeValuation(it.name, v.date, v.value) } },
             goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
             itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
@@ -142,6 +144,15 @@ class BackupRepositoryImpl @Inject constructor(
         }
         env.extras?.let { x ->
             if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
+        }
+        // valori dei conti di investimento (DataStore, conti per nome): con Sostituisci si riparte dal backup, con Unisci si aggiornano le stesse date
+        env.extras?.let { x ->
+            if (x.valuations.isNotEmpty() || mode == RestoreMode.Replace) {
+                val ids = db.accounts().getAll().associate { it.name.lowercase() to it.id }
+                val incoming = x.valuations.mapNotNull { v -> ids[v.account.lowercase()]?.let { id -> it.spese.core.model.Valuation(id, v.date, v.value) } }
+                val base = if (mode == RestoreMode.Replace) emptyList() else valuationsRepo.getAll().filter { b -> incoming.none { it.accountId == b.accountId && it.date == b.date } }
+                valuationsRepo.setAll(base + incoming)
+            }
         }
         // obiettivi di risparmio (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelli con un nome nuovo
         env.extras?.let { x ->
@@ -328,7 +339,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList())
+        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList())
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {

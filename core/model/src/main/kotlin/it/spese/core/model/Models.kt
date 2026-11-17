@@ -249,3 +249,6 @@ data class Goal(
     val priority: Int = 0,
     val enabled: Boolean = true,
 )
+
+/** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */
+data class Valuation(val accountId: Long, val date: LocalDate, val value: BigDecimal)

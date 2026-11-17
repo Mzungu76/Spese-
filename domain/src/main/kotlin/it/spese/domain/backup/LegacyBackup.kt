@@ -71,6 +71,8 @@ data class NativeRecurring(
 data class NativeItemMemory(val key: String, val category: String)
 /** Obiettivo di risparmio (scadenza e quota possono mancare). */
 data class NativeGoal(val name: String, val target: BigDecimal, val saved: BigDecimal, val deadline: java.time.LocalDate?, val monthly: BigDecimal?, val priority: Int, val enabled: Boolean)
+/** Valore di un conto di investimento a una data (conto per nome). */
+data class NativeValuation(val account: String, val date: java.time.LocalDate, val value: BigDecimal)
 data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
@@ -83,6 +85,7 @@ data class NativeExtras(
     /** Esercenti che l'utente non vuole vedere come abbonamenti o rate. */
     val subIgnored: List<String> = emptyList(),
     val goals: List<NativeGoal> = emptyList(),
+    val valuations: List<NativeValuation> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -190,6 +193,9 @@ object LegacyBackupCodec {
             NativeGoal(g["n"].str()?.takeIf { it.isNotBlank() } ?: return@let null, g["t"].dec() ?: return@let null, g["s"].dec() ?: BigDecimal.ZERO,
                 g["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) }, g["m"].dec(), g["p"].dec()?.toInt() ?: 0, g["on"]?.let { flag(it) } ?: true)
         } } ?: emptyList(),
+        valuations = o["vals"].arr()?.mapNotNull { e -> e.obj()?.let { v ->
+            NativeValuation(v["a"].str()?.takeIf { it.isNotBlank() } ?: return@let null, v["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) } ?: return@let null, v["v"].dec() ?: return@let null)
+        } } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -266,6 +272,7 @@ object LegacyBackupCodec {
                 if (x.goals.isNotEmpty()) putJsonArray("goals") { x.goals.forEach { g -> add(buildJsonObject {
                     put("n", g.name); put("t", jnum(g.target)); put("s", jnum(g.saved)); g.deadline?.let { put("d", it.toEpochDay()) }; g.monthly?.let { put("m", jnum(it)) }; put("p", g.priority); put("on", if (g.enabled) 1 else 0)
                 }) } }
+                if (x.valuations.isNotEmpty()) putJsonArray("vals") { x.valuations.forEach { v -> add(buildJsonObject { put("a", v.account); put("d", v.date.toEpochDay()); put("v", jnum(v.value)) }) } }
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)

@@ -42,6 +42,7 @@ abstract class RepositoryModule {
     @Binds abstract fun scen(i: ScenarioRepositoryImpl): ScenarioRepository
     @Binds abstract fun quotas(i: CashQuotaRepositoryImpl): CashQuotaRepository
     @Binds abstract fun recurring(i: RecurringRepositoryImpl): RecurringRepository
+    @Binds abstract fun valuations(i: it.spese.data.settings.ValuationRepositoryImpl): it.spese.domain.repository.ValuationRepository
     @Binds abstract fun goals(i: it.spese.data.settings.GoalRepositoryImpl): it.spese.domain.repository.GoalRepository
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore
