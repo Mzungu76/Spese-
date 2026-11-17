@@ -61,7 +61,10 @@ private fun fmtAxis(v: Double): String {
 }
 
 /** Etichette dell'asse X: usa l'indice come posizione. */
-private fun labelFormatter(labels: List<String>) = CartesianValueFormatter { _, x, _ -> labels.getOrElse(x.toInt()) { "" } }
+/** Vico vieta le etichette vuote (lancia un'eccezione): fuori dall'intervallo vale l'etichetta più vicina, e un testo vuoto diventa uno spazio. */
+private fun labelFormatter(labels: List<String>) = CartesianValueFormatter { _, x, _ ->
+    (if (labels.isEmpty()) "" else labels[x.toInt().coerceIn(0, labels.lastIndex)]).ifEmpty { " " }
+}
 
 /**
  * Grafico a barre (raggruppate o impilate) con linee opzionali sovrapposte (es. saldo, medie).
