@@ -282,7 +282,8 @@ class MainFlowTest {
     @Test fun entrata_ricorrente_in_elenco_e_movimento_generato_alla_ripresa() {
         // (la finestra di modifica con i campi di testo non si può aprire nei test Robolectric: va in ciclo di layout; la logica è provata in :data)
         val today = java.time.LocalDate.now()
-        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), null, null, 1, today.dayOfMonth, today)) }
+        val acc = runBlocking { accountRepo.getAll().first() }          // la ricorrenza ha il suo conto: il movimento entra nella contabilità
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), acc.id, null, 1, today.dayOfMonth, today)) }
         compose.waitForIdle()
         compose.onNodeWithTag("fab_add").performClick()
         compose.onNodeWithTag("add_recurring").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
@@ -291,5 +292,14 @@ class MainFlowTest {
         // il movimento di oggi viene creato come provvisorio (all'avvio o alla ripresa dell'app)
         compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
         compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.ledger.any { t -> t.description == "Stipendio ACME" && t.origin == it.spese.core.model.TxOrigin.RECURRING } }
+    }
+
+    @Test fun una_ricorrenza_senza_conto_genera_un_movimento_senza_conto_in_verifica() {
+        val today = java.time.LocalDate.now()
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Affitto senza conto", it.spese.core.model.TxKind.SPESA, java.math.BigDecimal(500), null, null, 1, today.dayOfMonth, today)) }
+        compose.waitForIdle()
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.unassigned.any { t -> t.description == "Affitto senza conto" } }
+        assertTrue(data.value.ledger.none { it.description == "Affitto senza conto" })           // fuori dalla contabilità finché non ha un conto
     }
 }
