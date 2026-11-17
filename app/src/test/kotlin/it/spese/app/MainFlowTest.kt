@@ -88,6 +88,42 @@ class MainFlowTest {
         compose.waitUntil(5000) { compose.onAllNodesWithText("COOP ALLEANZA", substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    @Test fun il_filtro_settimana_con_movimenti_recenti_non_fa_crollare_panoramica_e_categorie() {
+        // movimenti fino a oggi (il periodo di riferimento è la data reale, non l'ultimo movimento)
+        val acc = runBlocking { data.first { it.loaded }.accounts.firstOrNull()?.id ?: 1L }
+        val cats = runBlocking { data.first { it.loaded }.categories }
+        val super_ = cats.first { it.name == "Supermercato e alimentari" }
+        val today = java.time.LocalDate.now()
+        val items = (0 until 160).map { k ->
+            val d = today.minusDays(k.toLong()); val spend = it.spese.domain.repository.NewTransaction("t$k", "t$k", acc, d, d, "COOP $k", java.math.BigDecimal("-${10 + k % 37}.50"), it.spese.core.model.TxKind.SPESA, super_.id, true, null, null, "", it.spese.core.model.TxOrigin.MANUAL)
+            if (k % 28 == 0) listOf(spend, it.spese.domain.repository.NewTransaction("i$k", "i$k", acc, d, d, "Stipendio", java.math.BigDecimal("1800.00"), it.spese.core.model.TxKind.ENTRATA, null, false, null, null, "", it.spese.core.model.TxOrigin.MANUAL)) else listOf(spend)
+        }.flatten()
+        runBlocking { txRepo.insertAll(items) }
+        compose.waitUntil(10000) { data.value.transactions.size >= 160 }
+        waitText("Entrate"); waitText("Spese")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
+        compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true)); waitText("Ritmo di spesa", substring = true)
+        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        waitText("Supermercato e alimentari")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
+        compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        waitText("Speso nel periodo")
+    }
+
+    @Test fun il_filtro_settimana_e_gli_altri_periodi_non_fanno_crollare_la_panoramica() {
+        val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
+        runBlocking { restore(env, RestoreMode.Replace) }
+        compose.waitUntil(10000) { data.value.transactions.size == 223 }
+        waitText("Entrate"); waitText("Spese")
+        listOf("Sett.", "3 mesi", "Anno", "Tutto", "Mese", "Sett.").forEach { p ->
+            compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(p))
+            compose.onNodeWithText(p).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+            compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true))
+            waitText("Ritmo di spesa", substring = true)
+        }
+    }
+
     @Test fun backup_della_versione_html_ripristinato_e_mostrato_nella_panoramica() {
         val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
         runBlocking { restore(env, RestoreMode.Replace) }

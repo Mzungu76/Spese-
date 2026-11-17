@@ -46,12 +46,14 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
         when (tab) {
             0 -> {
                 val labels = (0 until r.days).map { i -> if (r.unit == PaceUnit.WEEK) listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")[i % 7] else "${i + 1}" }
-                LineChart(labels, listOf(
+                val series = listOf(
                     ChartSeries("Massimo storico", MaterialTheme.colorScheme.outlineVariant, r.high),
                     ChartSeries("Minimo storico", MaterialTheme.colorScheme.outlineVariant, r.low),
                     ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, r.average),
                     ChartSeries("Questo $unitName", verdictColor.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.primary, r.current),
-                ), height = 220.dp, interactive = false)
+                ).filter { it.values.size >= 2 }          // una serie con un solo punto non si disegna (lunedì: oggi è il primo giorno)
+                if (series.isEmpty() || series.all { s -> s.values.all { it.signum() == 0 } }) Text("Ancora nessuna spesa da confrontare.", style = MaterialTheme.typography.bodyMedium)
+                else LineChart(labels, series, height = 220.dp, interactive = false)
                 Text("La linea colorata è la spesa cumulata di ora; la grigia è la media dei periodi passati; la fascia chiara va dal minimo al massimo storico.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             1 -> {

@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -130,6 +132,16 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             try { android.service.notification.NotificationListenerService.requestRebind(android.content.ComponentName(appCtx, it.spese.app.capture.CaptureListenerService::class.java)) } catch (_: Exception) { }
     }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
+    // errore dell'ultima volta: si mostra una volta, con il pulsante per copiarlo
+    val crashFile = remember { java.io.File(appCtx.filesDir, it.spese.app.SpeseApplication.CRASH_FILE) }
+    var crash by remember { mutableStateOf(runCatching { crashFile.takeIf { it.exists() }?.readText() }.getOrNull()) }
+    crash?.let { text ->
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(onDismissRequest = { crashFile.delete(); crash = null }, title = { Text("L'app si è chiusa l'ultima volta") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text("Ecco il dettaglio dell'errore (resta sul telefono). Copialo e mandalo per farlo correggere.", style = MaterialTheme.typography.bodySmall); Text(text.take(1800), style = MaterialTheme.typography.labelSmall) } },
+            confirmButton = { TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(text)) }) { Text("Copia l'errore") } },
+            dismissButton = { TextButton(onClick = { crashFile.delete(); crash = null }) { Text("Chiudi") } })
+    }
     val launchRoute by vm.incoming.route.collectAsStateWithLifecycle()
     LaunchedEffect(launchRoute) { launchRoute?.let { r -> nav.navigate(r) { launchSingleTop = true }; vm.incoming.consumeRoute() } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
