@@ -2,6 +2,8 @@ package it.spese.feature.setup
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +28,7 @@ fun SetupScreen(onBack: () -> Unit, vm: SetupViewModel = hiltViewModel()) {
         val p = st.proposal
         when {
             !st.loaded -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-            p == null -> EmptyState(androidx.compose.material.icons.Icons.Default.AccountBalanceWallet, "Servono dei movimenti", "Importa un estratto conto o registra qualche spesa: poi ti propongo un piano costruito sui tuoi dati.")
+            p == null -> EmptyState(Icons.Default.AccountBalanceWallet, "Servono dei movimenti", "Importa un estratto conto o registra qualche spesa: poi ti propongo un piano costruito sui tuoi dati.")
             else -> SetupForm(p, onBack, vm)
         }
     }
