@@ -19,7 +19,7 @@ import it.spese.core.designsystem.component.SectionHeader
 /** Tutto il resto, raggruppato: analisi, gestione dei dati e impostazioni. Le sezioni di tutti i giorni stanno nella barra in basso. */
 class MoreActions(
     val onCategories: () -> Unit, val onPlan: () -> Unit, val onTrends: () -> Unit, val onAdvice: () -> Unit, val onReview: () -> Unit, val onAlerts: () -> Unit,
-    val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit,
+    val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit, val onTransfers: () -> Unit,
     val onImport: () -> Unit, val onScan: () -> Unit, val onSettings: () -> Unit,
 )
 
@@ -39,6 +39,7 @@ fun MoreScreen(menu: DataMenu, a: MoreActions, bottomPadding: PaddingValues = Pa
             item { MoreRow("recurring", Icons.Default.Autorenew, "Ricorrenti", "Stipendio, affitto incassato, abbonamenti", a.onRecurring) }
             item { MoreRow("subscriptions", Icons.Default.Subscriptions, "Abbonamenti e rate", "Riconosciuti dai movimenti", a.onSubscriptions) }
             item { SectionHeader("Dati", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
+            item { MoreRow("transfers", Icons.Default.SwapHoriz, "Giroconti probabili", "Spostamenti tra i tuoi conti da confermare", a.onTransfers) }
             item { MoreRow("import", Icons.Default.UploadFile, "Importa estratto conto", "Excel, CSV o TXT dalla banca", a.onImport) }
             item { MoreRow("scan", Icons.Default.DocumentScanner, "Scansiona uno scontrino", "Importo, data ed esercente", a.onScan) }
             item { MoreRow("reports", Icons.Default.PictureAsPdf, "Report PDF", "Riepiloghi pronti o personalizzati", a.onReports) }

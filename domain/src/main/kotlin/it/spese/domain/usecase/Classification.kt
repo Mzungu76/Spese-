@@ -156,3 +156,13 @@ class SaveCategoryUseCase @Inject constructor(private val categories: CategoryRe
 
     fun nextColor(count: Int): Long = DefaultData.PALETTE[count % DefaultData.PALETTE.size]
 }
+
+/** Conferma i giroconti proposti: entrambe le metà passano alla categoria dei trasferimenti (assegnazione manuale) e escono da entrate e spese. */
+class ConfirmTransfersUseCase @Inject constructor(private val assign: AssignCategoryUseCase, private val categories: CategoryRepository) {
+    suspend operator fun invoke(pairs: Collection<it.spese.domain.classification.TransferDetector.Pair>): Int {
+        if (pairs.isEmpty()) return 0
+        val cat = it.spese.domain.classification.TransferSuggestions.transferCategory(categories.getAll()) ?: throw IllegalStateException("Manca la categoria «Trasferimenti»: creala in Categorie.")
+        assign(pairs.flatMap { listOf(it.outgoing.id, it.incoming.id) }.distinct(), cat.id)
+        return pairs.size
+    }
+}

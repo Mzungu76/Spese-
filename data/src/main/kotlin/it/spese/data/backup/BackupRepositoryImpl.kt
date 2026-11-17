@@ -73,6 +73,7 @@ class BackupRepositoryImpl @Inject constructor(
     private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
     private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
+    private val transferReview = it.spese.data.settings.TransferReviewRepositoryImpl(context)
     private val goalsRepo = it.spese.data.settings.GoalRepositoryImpl(context)
     private val valuationsRepo = it.spese.data.settings.ValuationRepositoryImpl(context)
 
@@ -85,6 +86,7 @@ class BackupRepositoryImpl @Inject constructor(
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
             subIgnored = subReview.getIgnored().toList(),
+            transferIgnored = transferReview.getIgnored().toList(),
             valuations = valuationsRepo.getAll().mapNotNull { v -> s.accounts.firstOrNull { it.id == v.accountId }?.let { NativeValuation(it.name, v.date, v.value) } },
             goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
@@ -144,6 +146,10 @@ class BackupRepositoryImpl @Inject constructor(
         }
         env.extras?.let { x ->
             if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
+        }
+        // giroconti scartati (DataStore, identificativi dei movimenti)
+        env.extras?.let { x ->
+            if (x.transferIgnored.isNotEmpty() || mode == RestoreMode.Replace) transferReview.setIgnored(if (mode == RestoreMode.Replace) x.transferIgnored.toSet() else transferReview.getIgnored() + x.transferIgnored)
         }
         // valori dei conti di investimento (DataStore, conti per nome): con Sostituisci si riparte dal backup, con Unisci si aggiornano le stesse date
         env.extras?.let { x ->

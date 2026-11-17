@@ -30,7 +30,10 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     captureConfig: it.spese.domain.repository.CaptureConfigRepository,
     review: it.spese.domain.finance.SubscriptionReviewRepository,
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
-    valuations: it.spese.domain.repository.ValuationRepository) : ViewModel() {
+    valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository) : ViewModel() {
+    /** Quanti giroconti probabili (uscita e entrata dello stesso importo su due conti) aspettano una conferma. */
+    val transferPairs: StateFlow<Int> = combine(data, transferReview.observeIgnored()) { d, ign -> runCatching { it.spese.domain.classification.TransferSuggestions.compute(d, ign).size }.getOrDefault(0) }
+        .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     /** «Disponibile oggi»: quanto si può spendere ancora nel mese, tenendo conto di risparmio e uscite note (conto del filtro, se scelto). */
     val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll()) { d, rules, ign, f, g ->
         runCatching { SafeToSpendEngine.forApp(d, rules, ign, f.accountId, goals = g) }.getOrNull()
