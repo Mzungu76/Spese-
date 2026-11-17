@@ -19,8 +19,14 @@ fun RuleEntity.toDomain() = Rule(id, keyword, categoryId, AmountSign.fromKey(sig
 
 fun TransactionEntity.toDomain() = Transaction(
     id, externalId, accountId, LocalDate.ofEpochDay(bookingDate), LocalDate.ofEpochDay(valueDate), description, Money.fromCents(amountCents),
-    TxKind.fromKey(kind) ?: TxKind.SPESA, categoryId, manualCategory, ruleId, merchantOverride, notes, enumOr(origin, TxOrigin.MANUAL), documentId, createdAt,
+    TxKind.fromKey(kind) ?: TxKind.SPESA, categoryId, manualCategory, ruleId, merchantOverride, notes, enumOr(origin, TxOrigin.MANUAL), documentId, createdAt, reviewed,
 )
+
+fun SplitEntity.toDomain() = TransactionSplit(id, txId, categoryId, Money.fromCents(amountCents), position, auto, quotaId)
+fun RecurringEntity.toDomain() = RecurringRule(id, name, TxKind.fromKey(kind) ?: TxKind.ENTRATA, Money.fromCents(amountCents), accountId, categoryId, everyMonths, dayOfMonth,
+    LocalDate.ofEpochDay(startDate), endDate?.let { LocalDate.ofEpochDay(it) }, enabled, autoConfirm, lastGenerated?.let { LocalDate.ofEpochDay(it) })
+
+fun CashQuotaEntity.toDomain() = CashQuota(id, name, categoryId, Money.fromCents(amountCents), enabled, QuotaMode.fromKey(mode), Money.fromCents(toleranceCents), everyMonths, dayFrom, dayTo)
 
 fun NewTransaction.toEntity(now: Long) = TransactionEntity(
     externalId = externalId, dedupKey = dedupKey, accountId = accountId, bookingDate = bookingDate.toEpochDay(), valueDate = valueDate.toEpochDay(),

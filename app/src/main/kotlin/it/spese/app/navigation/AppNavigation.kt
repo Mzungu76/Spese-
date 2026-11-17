@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -35,6 +37,11 @@ import it.spese.app.common.RootViewModel
 import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
+import it.spese.feature.capture.CaptureScreen
+import it.spese.feature.recurring.RecurringScreen
+import it.spese.feature.subscriptions.SubscriptionsScreen
+import it.spese.feature.reports.ReportsScreen
+import it.spese.feature.trends.TrendsScreen
 import it.spese.feature.categories.CategoriesScreen
 import it.spese.feature.categories.CategoryDetailScreen
 import it.spese.feature.categories.CategoryDetailViewModel
@@ -51,7 +58,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -87,7 +94,7 @@ private fun SpeseBottomBar(route: String?, onTab: (String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onRestore: () -> Unit) {
+private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> Unit, onImport: () -> Unit, onRestore: () -> Unit, onRecurring: () -> Unit = {}) {
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 28.dp)) {
             Text("Cosa vuoi aggiungere?", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 8.dp))
@@ -100,6 +107,7 @@ private fun AddSheet(onDismiss: () -> Unit, onManual: () -> Unit, onScan: () -> 
                 }
             }
             opt(Icons.Filled.Add, "Movimento a mano", "Importo, descrizione e categoria", Color(0xFF9FC0FF), Color(0xFF16315F), "add_manual", onManual)
+            opt(Icons.Filled.Autorenew, "Entrata o spesa ricorrente", "Stipendio, affitto incassato, abbonamenti: si creano da soli", Color(0xFF9FC0FF), Color(0xFF16315F), "add_recurring", onRecurring)
             opt(Icons.Filled.DocumentScanner, "Scansiona uno scontrino", "Riconosco importo, data ed esercente", Color(0xFF34D399), Color(0xFF12332A), "add_scan", onScan)
             opt(Icons.Filled.UploadFile, "Importa estratto conto", "Excel, CSV o TXT dalla tua banca", Color(0xFFFFB020), Color(0xFF3A2A08), "add_import", onImport)
             opt(Icons.Filled.Restore, "Ripristina un backup", "Dalla versione web o da un altro telefono", Color(0xFFC792F0), Color(0xFF2A1E3D), "add_restore", onRestore)
@@ -116,12 +124,31 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     val incoming by vm.incoming.uri.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var addOpen by remember { mutableStateOf(false) }
+    val appCtx = androidx.compose.ui.platform.LocalContext.current
+    androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        vm.generateRecurring()
+        // dopo un aggiornamento dell'app Android a volte non ricollega l'ascolto delle notifiche: lo si richiede a ogni apertura
+        if (androidx.core.app.NotificationManagerCompat.getEnabledListenerPackages(appCtx).contains(appCtx.packageName))
+            try { android.service.notification.NotificationListenerService.requestRebind(android.content.ComponentName(appCtx, it.spese.app.capture.CaptureListenerService::class.java)) } catch (_: Exception) { }
+    }
     LaunchedEffect(Unit) { vm.messenger.messages.collect { snackbar.showSnackbar(it, duration = SnackbarDuration.Short) } }
+    // errore dell'ultima volta: si mostra una volta, con il pulsante per copiarlo
+    val crashFile = remember { java.io.File(appCtx.filesDir, it.spese.app.SpeseApplication.CRASH_FILE) }
+    var crash by remember { mutableStateOf(runCatching { crashFile.takeIf { it.exists() }?.readText() }.getOrNull()) }
+    crash?.let { text ->
+        val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+        AlertDialog(onDismissRequest = { crashFile.delete(); crash = null }, title = { Text("L'app si è chiusa l'ultima volta") },
+            text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text("Ecco il dettaglio dell'errore (resta sul telefono). Copialo e mandalo per farlo correggere.", style = MaterialTheme.typography.bodySmall); Text(text.take(1800), style = MaterialTheme.typography.labelSmall) } },
+            confirmButton = { TextButton(onClick = { clip.setText(androidx.compose.ui.text.AnnotatedString(text)) }) { Text("Copia l'errore") } },
+            dismissButton = { TextButton(onClick = { crashFile.delete(); crash = null }) { Text("Chiudi") } })
+    }
+    val launchRoute by vm.incoming.route.collectAsStateWithLifecycle()
+    LaunchedEffect(launchRoute) { launchRoute?.let { r -> nav.navigate(r) { launchSingleTop = true }; vm.incoming.consumeRoute() } }
     LaunchedEffect(incoming) { if (incoming != null) nav.navigate(Routes.SETTINGS) { launchSingleTop = true } }
 
     val menu = DataMenu(
         onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onAnalytics = { nav.navigate(Routes.ANALYTICS) },
-        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast,
+        onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast, onReports = { nav.navigate(Routes.REPORTS) }, onRecurring = { nav.navigate(Routes.RECURRING) },
     )
     fun goTab(r: String) = nav.navigate(r) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true }
 
@@ -131,13 +158,13 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
+                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
-                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, contentPadding = pad)
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, contentPadding = pad)
             }
             composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, bottomPadding = pad) }
-            composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, bottomPadding = pad) }
+            composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, bottomPadding = pad) }
             composable(Routes.CATEGORY, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val catVm: CategoryDetailViewModel = hiltViewModel()
                 CategoryDetailScreen(onBack = { nav.popBackStack() }, onOpenTransaction = { nav.navigate(Routes.edit(it)) }, onOpenMovements = { catVm.showInMovements(); goTab(Routes.TRANSACTIONS) },
@@ -147,14 +174,19 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 ManageScreen(initialTab = entry.arguments?.getInt("tab") ?: 0, onBack = { nav.popBackStack() })
             }
             composable(Routes.PLAN) { PlanScreen(menu, bottomPadding = pad) }
-            composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }) }
+            composable(Routes.ALERTS) { AlertsScreen(onBack = { nav.popBackStack() }, onOpenSettings = { nav.navigate(Routes.SETTINGS) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }) }
             composable(Routes.EDIT, arguments = listOf(navArgument("id") { type = NavType.LongType; defaultValue = 0L })) { TransactionEditScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.IMPORT) { ImportScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.SCAN) { ScanScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.ANALYTICS) { AnalyticsScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SETTINGS) { SettingsScreen(onBack = { nav.popBackStack() }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }) }
+            composable(Routes.CAPTURE) { CaptureScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.RECURRING) { RecurringScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SUBSCRIPTIONS) { SubscriptionsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
         }
     }
-    if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) })
+    if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) }, { nav.navigate(Routes.RECURRING) })
 }

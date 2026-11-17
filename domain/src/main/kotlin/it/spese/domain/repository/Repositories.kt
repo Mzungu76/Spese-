@@ -51,6 +51,20 @@ interface TransactionRepository {
     suspend fun setDocument(txId: Long, documentId: Long?)
     suspend fun createImportBatch(label: String, count: Int): Long
     suspend fun deleteImportBatch(batchId: Long): Int
+
+    fun observeSplits(): Flow<List<it.spese.core.model.TransactionSplit>>
+    suspend fun getSplits(): List<it.spese.core.model.TransactionSplit>
+    /** Sostituisce le parti di un movimento (lista vuota = movimento non più diviso). */
+    suspend fun replaceSplits(txId: Long, parts: List<it.spese.core.model.TransactionSplit>)
+    suspend fun setReviewed(ids: Collection<Long>, reviewed: Boolean)
+}
+
+interface CashQuotaRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.CashQuota>>
+    suspend fun getAll(): List<it.spese.core.model.CashQuota>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(q: it.spese.core.model.CashQuota): Long
+    suspend fun delete(id: Long)
 }
 
 interface CategoryRepository {
@@ -114,6 +128,8 @@ interface DocumentRepository {
 interface DocumentStore {
     /** Copia/comprime l'immagine nella memoria privata e restituisce metadati (id = 0). */
     suspend fun saveImage(source: String): DocumentRef
+    /** Compone più foto (dall'alto verso il basso) in un'unica immagine lunga e restituisce i metadati (id = 0). Non elimina le foto di partenza. */
+    suspend fun stitch(pages: List<DocumentRef>): DocumentRef
     suspend fun deleteFile(fileName: String)
     suspend fun totalBytes(): Long
     fun pathOf(fileName: String): String
@@ -122,7 +138,11 @@ interface DocumentStore {
 /** Motore OCR sostituibile (oggi ML Kit on-device; domani anche estratti conto fotografati e documenti multipagina). */
 interface TextRecognizer {
     suspend fun recognize(imagePath: String): String
+    /** Come [recognize], più le righe lette con poca sicurezza (da far controllare all'utente). */
+    suspend fun recognizePage(imagePath: String): OcrPage = OcrPage(recognize(imagePath))
 }
+
+data class OcrPage(val text: String, val weakRows: List<String> = emptyList())
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
@@ -143,12 +163,38 @@ data class AppSettings(
     /** File condiviso collegato per la sincronizzazione (URI SAF) e ultimo allineamento. */
     val syncUri: String = "",
     val lastSyncAt: Long = 0,
+    /** Giorno in cui inizia il mese contabile (1 = mese di calendario). */
+    val monthStartDay: Int = 1,
 )
 
 interface SettingsRepository {
     fun observe(): Flow<AppSettings>
     suspend fun get(): AppSettings
     suspend fun update(transform: (AppSettings) -> AppSettings)
+}
+
+/** Impostazioni della cattura automatica da notifiche (fonti attive, conti, mittenti SMS, notifiche non riconosciute). */
+interface CaptureConfigRepository {
+    fun observe(): Flow<it.spese.domain.capture.CaptureConfig>
+    suspend fun get(): it.spese.domain.capture.CaptureConfig
+    suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
+}
+
+/** Entrate e spese ricorrenti. */
+interface RecurringRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.RecurringRule>>
+    suspend fun getAll(): List<it.spese.core.model.RecurringRule>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(r: it.spese.core.model.RecurringRule): Long
+    suspend fun delete(id: Long)
+    suspend fun markGenerated(id: Long, day: java.time.LocalDate)
+}
+
+/** Modelli di report personalizzati salvati dall'utente (solo sul telefono). */
+interface ReportPresetRepository {
+    fun observe(): Flow<List<it.spese.domain.report.SavedReport>>
+    suspend fun save(r: it.spese.domain.report.SavedReport)
+    suspend fun delete(id: String)
 }
 
 sealed interface RestoreMode { data object Merge : RestoreMode; data object Replace : RestoreMode }

@@ -46,7 +46,7 @@ fun FilterHeader(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.h
     val f by vm.filter.collectAsState()
     val data by vm.data.collectAsState()
     var sheet by remember { mutableStateOf(false) }
-    val months = remember(data.transactions.size) { data.transactions.map { YearMonth.from(it.bookingDate) }.distinct().sortedDescending().take(18) }
+    val months = remember(data.transactions.size) { data.transactions.map { data.calendar.monthOf(it.bookingDate) }.distinct().sortedDescending().take(18) }
     Column(modifier) {
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             AssistChip(onClick = { sheet = true }, label = { Text(if (f.activeCount > 0) "Filtri (${f.activeCount})" else "Filtri") },
@@ -66,13 +66,13 @@ fun FilterSheet(f: TxFilter, data: AppData, onChange: ((TxFilter) -> TxFilter) -
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 24.dp).verticalScrollCompat(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("Filtri", style = MaterialTheme.typography.titleLarge)
-            val dr = if (data.transactions.isEmpty()) null else PeriodResolver.resolve(f.period, data.transactions.minOf { it.bookingDate }, data.transactions.maxOf { it.bookingDate })
+            val dr = if (data.transactions.isEmpty()) null else PeriodResolver.resolve(f.period, data.transactions.minOf { it.bookingDate }, data.transactions.maxOf { it.bookingDate }, f.calendar)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DateField(dr?.from, { d -> onChange { it.copy(period = Period.Custom(d, dr?.to)) } }, "Dal", Modifier.weight(1f))
                 DateField(dr?.to, { d -> onChange { it.copy(period = Period.Custom(dr?.from, d)) } }, "Al", Modifier.weight(1f))
             }
             DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts, { it.name }, { a -> onChange { it.copy(accountId = a.id) } }, nullLabel = "Tutti (aggregato)", onNull = { onChange { it.copy(accountId = null) } })
-            DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories, { it.name }, { c -> onChange { it.copy(categoryId = c.id) } }, nullLabel = "Tutte", onNull = { onChange { it.copy(categoryId = null) } })
+            CategoryField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }, data.categories, { c -> onChange { it.copy(categoryId = c.id) } }, nullLabel = "Tutte", onNull = { onChange { it.copy(categoryId = null) } }, allowNew = false)
             Text("Tipo", style = MaterialTheme.typography.labelLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(f.kind == null, { onChange { it.copy(kind = null) } }, { Text("Tutti") })
@@ -100,10 +100,10 @@ fun Modifier.verticalScrollCompat(): Modifier = this.then(Modifier.verticalScrol
 fun FilterPills(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.hilt.navigation.compose.hiltViewModel()) {
     val f by vm.filter.collectAsState()
     val data by vm.data.collectAsState()
-    val months = remember(data.transactions.size) { data.transactions.map { YearMonth.from(it.bookingDate) }.distinct().sortedDescending().take(12) }
+    val months = remember(data.transactions.size) { data.transactions.map { data.calendar.monthOf(it.bookingDate) }.distinct().sortedDescending().take(12) }
     val periodLabel = when (val p = f.period) {
         Period.All -> "Tutto il periodo"; Period.YearToDate -> "Quest'anno"; Period.Last3Months -> "Ultimi 3 mesi"; Period.Last6Months -> "Ultimi 6 mesi"
-        Period.CurrentMonth -> "Mese corrente"; is Period.Month -> Dates.monthLabelLong(p.month); is Period.Custom -> "Intervallo"
+        Period.CurrentMonth -> "Mese corrente"; Period.CurrentWeek -> "Settimana corrente"; is Period.Month -> Dates.monthLabelLong(p.month); is Period.Custom -> "Intervallo"
     }
     Row(modifier.padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         var pm by remember { mutableStateOf(false) }
@@ -111,7 +111,7 @@ fun FilterPills(modifier: Modifier = Modifier, vm: FilterViewModel = androidx.hi
         Box {
             Pill(periodLabel) { pm = true }
             DropdownMenu(pm, { pm = false }) {
-                listOf(Period.All to "Tutto il periodo", Period.YearToDate to "Quest'anno", Period.Last6Months to "Ultimi 6 mesi", Period.Last3Months to "Ultimi 3 mesi", Period.CurrentMonth to "Mese corrente").forEach { (p, l) ->
+                listOf(Period.All to "Tutto il periodo", Period.YearToDate to "Quest'anno", Period.Last6Months to "Ultimi 6 mesi", Period.Last3Months to "Ultimi 3 mesi", Period.CurrentMonth to "Mese corrente", Period.CurrentWeek to "Settimana corrente").forEach { (p, l) ->
                     DropdownMenuItem({ Text(l) }, { vm.update { it.copy(period = p) }; pm = false })
                 }
                 HorizontalDivider()

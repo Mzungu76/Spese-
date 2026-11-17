@@ -4,10 +4,15 @@
 
 | File | Quando | Cosa fa |
 |---|---|---|
-| `.github/workflows/android-build.yml` | ogni `push`, `pull_request`, manuale | JDK 17 → Android SDK → Gradle (con cache) → **test** (dominio, database, dati, UI/Robolectric) → **APK debug** → carica gli artifact `gestione-spese-debug-apk` e `test-reports` |
+| `.github/workflows/android-build.yml` | ogni `push`, `pull_request`, manuale | JDK 17 → Android SDK → Gradle (con cache) → **test** (dominio, database, dati, UI/Robolectric) → **APK debug** → carica gli artifact `gestione-spese-debug-apk-<numero build>` (prendi sempre quello col numero più alto) e `test-reports` |
 | `.github/workflows/android-release.yml` | manuale (Run workflow) o tag `v*` | verifica i segreti → test → **APK release firmato** → verifica la firma con `apksigner` → artifact `gestione-spese-release-apk` (e GitHub Release se è un tag) |
 
-L'APK debug usa `applicationId` `it.spese.gestione.debug` e la chiave di debug di Android: si installa accanto alla versione release.
+L'APK debug usa `applicationId` `it.spese.gestione.debug` e si installa accanto alla versione release.
+
+**Aggiornamenti dell'APK debug.** Android sostituisce un'app già installata solo se il `versionCode` è maggiore e la firma è la stessa. Per questo:
+- il `versionCode` è il numero progressivo dell'esecuzione su GitHub (`GITHUB_RUN_NUMBER`), quindi cresce a ogni build (e `versionName` è `1.0.<numero>-debug`);
+- le build debug sono firmate con una chiave di debug **condivisa e versionata** (`app/debug.keystore`, password `android`), uguale su ogni runner. Non è una chiave di rilascio: protegge solo l'APK debug.
+La prima volta che si passa dalla vecchia chiave (diversa a ogni build) alla nuova serve disinstallare l'app una volta: salva prima un backup da *Backup e impostazioni*.
 
 ## Configurare la firma (una tantum)
 

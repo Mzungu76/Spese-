@@ -57,12 +57,13 @@ object CategoryDetailCalculator {
 
     fun compute(data: AppData, categoryId: Long, filter: TxFilter, realToday: LocalDate = LocalDate.now()): CategoryDetail? {
         val cat = data.categoriesById[categoryId] ?: return null
+        val cal = filter.calendar
         val kids = CategoryTree.children(categoryId, data.categories)
         val ids = kids.map { it.id }.toSet() + categoryId
         val base = filter.copy(categoryId = null, kind = null, query = "", minAmount = null, maxAmount = null)
         val all = data.transactions
-        val range = if (all.isEmpty()) null else PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate })
-        val prevRange = if (filter.period == Period.All || range?.from == null || range.to == null) null else DashboardCalculator.previousRange(filter.period, range.from, range.to)
+        val range = if (all.isEmpty()) null else PeriodResolver.resolve(filter.period, all.minOf { it.bookingDate }, all.maxOf { it.bookingDate }, cal)
+        val prevRange = if (filter.period == Period.All || range?.from == null || range.to == null) null else DashboardCalculator.previousRange(filter.period, range.from, range.to, cal)
         val periodAll = FilterEngine.apply(all, base, data.categoriesById)
         val cur = periodAll.filter { it.categoryId in ids }
         val prev = prevRange?.let { r -> FilterEngine.apply(all, base.copy(period = Period.Custom(r.first, r.second)), data.categoriesById).filter { it.categoryId in ids } }
@@ -89,8 +90,8 @@ object CategoryDetailCalculator {
 
         // andamento mensile sull'intero storico (filtrato per conto), ultimi 12 mesi
         val own = all.filter { it.categoryId in ids && (filter.accountId == null || it.accountId == filter.accountId) }
-        val lastMonth = if (all.isEmpty()) YearMonth.from(realToday) else YearMonth.from(all.maxOf { it.bookingDate })
-        val byMonth = own.groupBy { YearMonth.from(it.bookingDate) }.mapValues { (_, l) -> l.fold(BigDecimal.ZERO) { a, t -> a + magnitude(t, cat.kind) } }
+        val lastMonth = if (all.isEmpty()) cal.monthOf(realToday) else cal.monthOf(all.maxOf { it.bookingDate })
+        val byMonth = own.groupBy { cal.monthOf(it.bookingDate) }.mapValues { (_, l) -> l.fold(BigDecimal.ZERO) { a, t -> a + magnitude(t, cat.kind) } }
         val months = if (byMonth.isEmpty()) emptyList() else {
             val start = maxOf(byMonth.keys.min(), lastMonth.minusMonths(11))
             generateSequence(start) { it.plusMonths(1) }.takeWhile { !it.isAfter(lastMonth) }.map { it to (byMonth[it] ?: BigDecimal.ZERO) }.toList()
@@ -98,9 +99,9 @@ object CategoryDetailCalculator {
         val avg = if (months.isEmpty()) BigDecimal.ZERO else months.fold(BigDecimal.ZERO) { a, m -> a + m.second }.divide(BigDecimal(months.size), 2, RoundingMode.HALF_UP)
 
         val accTx = all.filter { filter.accountId == null || it.accountId == filter.accountId }
-        val ref = YearMonth.from(AlertEngine.referenceToday(realToday, accTx))
+        val ref = cal.monthOf(AlertEngine.referenceToday(realToday, accTx))
         val budget = cat.budgetMonthly?.takeIf { it.signum() > 0 }?.let { b ->
-            BudgetUsage(cat, AlertEngine.spentWithChildren(AlertEngine.monthlySpending(accTx, ref), cat, data.categories), b)
+            BudgetUsage(cat, AlertEngine.spentWithChildren(AlertEngine.monthlySpending(accTx, ref, cal), cat, data.categories), b)
         }
         val complete = months.filter { it.first.isBefore(ref) }.takeLast(3).ifEmpty { months.takeLast(3) }
         val suggested = if (cat.kind != TxKind.SPESA || complete.isEmpty()) null else
@@ -108,7 +109,8 @@ object CategoryDetailCalculator {
 
         val prevLabel = when {
             prevRange == null -> null
-            filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + it.spese.core.common.Dates.monthLabelLong(YearMonth.from(prevRange.first))
+            filter.period == Period.CurrentWeek -> "rispetto alla settimana scorsa"
+            filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + cal.label(cal.monthOf(prevRange.first))
             else -> "rispetto al periodo precedente"
         }
         val suggestedNature = if (cat.kind != TxKind.SPESA) null

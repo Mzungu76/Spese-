@@ -51,8 +51,8 @@ class AnalyticsViewModel @Inject constructor(data: StateFlow<AppData>, filters: 
     private fun compareWindow(d: AppData, f: TxFilter): CompareWindow? {
         if (d.transactions.isEmpty()) return null
         val mn = d.transactions.minOf { it.bookingDate }; val mx = d.transactions.maxOf { it.bookingDate }
-        var r = PeriodResolver.resolve(f.period, mn, mx)
-        if (f.period == Period.All) r = PeriodResolver.resolve(Period.Last3Months, mn, mx)
+        var r = PeriodResolver.resolve(f.period, mn, mx, f.calendar)
+        if (f.period == Period.All) r = PeriodResolver.resolve(Period.Last3Months, mn, mx, f.calendar)
         val from = r.from ?: return null; val to = r.to ?: return null
         val days = ChronoUnit.DAYS.between(from, to) + 1
         val pFrom = from.minusDays(days); val pTo = from.minusDays(1)

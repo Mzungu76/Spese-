@@ -1,6 +1,8 @@
 package it.spese.domain.repository
 
 import it.spese.core.model.Account
+import it.spese.core.model.CashQuota
+import it.spese.core.model.TransactionSplit
 import it.spese.core.model.Category
 import it.spese.core.model.Due
 import it.spese.core.model.Rule
@@ -9,9 +11,12 @@ import it.spese.core.model.Scenario
 import it.spese.core.model.Transaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 
 /** Fotografia coerente di tutti i dati osservabili; le schermate la combinano con i filtri correnti. */
 data class AppData(
+    /** Movimenti per le analisi: quelli divisi sono sostituiti dalle loro parti (stesso id, importo e categoria della parte). */
     val transactions: List<Transaction> = emptyList(),
     val categories: List<Category> = emptyList(),
     val accounts: List<Account> = emptyList(),
@@ -19,6 +24,12 @@ data class AppData(
     val dues: List<Due> = emptyList(),
     val scenarios: List<Scenario> = emptyList(),
     val loaded: Boolean = false,
+    /** Movimenti così come sono (importo intero, anche se divisi): per elenco, modifica ed esportazione. */
+    val ledger: List<Transaction> = transactions,
+    val splits: Map<Long, List<TransactionSplit>> = emptyMap(),
+    val quotas: List<CashQuota> = emptyList(),
+    /** Mese contabile scelto dall'utente (calendario di default). */
+    val calendar: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR,
 ) {
     val categoriesById: Map<Long, Category> by lazy { categories.associateBy { it.id } }
     val accountsById: Map<Long, Account> by lazy { accounts.associateBy { it.id } }
@@ -37,14 +48,22 @@ class AppDataSource(
     private val rules: RuleRepository,
     private val dues: DueRepository,
     private val scenarios: ScenarioRepository,
+    private val quotas: CashQuotaRepository,
+    private val settings: SettingsRepository? = null,
 ) {
     fun observe(): Flow<AppData> = combine(
         tx.observeAll(), cats.observeAll(), accounts.observeAll(), rules.observeAll(), dues.observeAll(), scenarios.observeAll(),
+        tx.observeSplits(), quotas.observeAll(),
+        (settings?.observe() ?: kotlinx.coroutines.flow.flowOf(AppSettings())).map { it.monthStartDay }.distinctUntilChanged(),
     ) { values ->
         @Suppress("UNCHECKED_CAST")
+        val raw = values[0] as List<Transaction>
+        val categories = values[1] as List<Category>
+        val splits = (values[6] as List<TransactionSplit>).groupBy { it.txId }
         AppData(
-            values[0] as List<Transaction>, values[1] as List<Category>, values[2] as List<Account>,
+            it.spese.domain.finance.SplitExpander.expand(raw, splits, categories.associateBy { it.id }), categories, values[2] as List<Account>,
             values[3] as List<Rule>, values[4] as List<Due>, values[5] as List<Scenario>, true,
+            raw, splits, values[7] as List<CashQuota>, it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28)),
         )
     }
 }

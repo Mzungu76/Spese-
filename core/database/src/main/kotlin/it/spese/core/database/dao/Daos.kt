@@ -69,6 +69,7 @@ interface TransactionDao {
     suspend fun updateClassification(id: Long, categoryId: Long?, kind: String, manual: Boolean, ruleId: Long?, now: Long)
     @Query("UPDATE transactions SET documentId = :docId WHERE id = :id") suspend fun setDocument(id: Long, docId: Long?)
     @Query("DELETE FROM transactions WHERE importBatchId = :batchId") suspend fun deleteByBatch(batchId: Long): Int
+    @Query("UPDATE transactions SET reviewed = :reviewed WHERE id IN (:ids)") suspend fun setReviewed(ids: List<Long>, reviewed: Boolean)
     @Query("SELECT COUNT(*) FROM transactions") suspend fun count(): Int
 }
 
@@ -117,4 +118,33 @@ interface ScenarioDao {
     @Query("DELETE FROM scenario_cuts WHERE scenarioId = :id") suspend fun clearCuts(id: Long)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun insertRemoved(r: List<ScenarioRemovedEntity>)
     @Query("DELETE FROM scenario_removed WHERE scenarioId = :id") suspend fun clearRemoved(id: Long)
+}
+
+@Dao
+interface SplitDao {
+    @Query("SELECT * FROM transaction_splits ORDER BY txId, position, id") fun observeAll(): Flow<List<SplitEntity>>
+    @Query("SELECT * FROM transaction_splits ORDER BY txId, position, id") suspend fun getAll(): List<SplitEntity>
+    @Query("DELETE FROM transaction_splits WHERE txId = :txId") suspend fun deleteForTx(txId: Long)
+    @Insert suspend fun insertAll(items: List<SplitEntity>): List<Long>
+    @Query("DELETE FROM transaction_splits") suspend fun deleteAll()
+}
+
+@Dao
+interface CashQuotaDao {
+    @Query("SELECT * FROM cash_quotas ORDER BY id") fun observeAll(): Flow<List<CashQuotaEntity>>
+    @Query("SELECT * FROM cash_quotas ORDER BY id") suspend fun getAll(): List<CashQuotaEntity>
+    @Insert suspend fun insert(q: CashQuotaEntity): Long
+    @Update suspend fun update(q: CashQuotaEntity)
+    @Query("DELETE FROM cash_quotas WHERE id = :id") suspend fun delete(id: Long)
+}
+
+@Dao
+interface RecurringDao {
+    @Query("SELECT * FROM recurring_rules ORDER BY id") fun observeAll(): Flow<List<RecurringEntity>>
+    @Query("SELECT * FROM recurring_rules ORDER BY id") suspend fun getAll(): List<RecurringEntity>
+    @Insert suspend fun insert(r: RecurringEntity): Long
+    @Update suspend fun update(r: RecurringEntity)
+    @Query("DELETE FROM recurring_rules WHERE id = :id") suspend fun delete(id: Long)
+    @Query("UPDATE recurring_rules SET lastGenerated = :day WHERE id = :id") suspend fun setLastGenerated(id: Long, day: Long)
+    @Query("DELETE FROM recurring_rules") suspend fun deleteAll()
 }

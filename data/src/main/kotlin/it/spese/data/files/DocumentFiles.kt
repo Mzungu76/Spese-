@@ -20,7 +20,7 @@ import kotlinx.coroutines.withContext
 /**
  * Archivio locale delle fotografie dei documenti, nella memoria privata dell'app (`filesDir/documents`):
  * non sono visibili ad altre app, non vengono inviate online e vengono rimosse con la disinstallazione.
- * Le immagini sono ridimensionate (lato massimo 2000 px) e compresse in JPEG per risparmiare spazio.
+ * Le immagini sono ridimensionate (lato massimo 2800 px, abbastanza per leggere i caratteri piccoli degli scontrini) e compresse in JPEG per risparmiare spazio.
  */
 @Singleton
 class DocumentFiles @Inject constructor(@ApplicationContext private val context: Context) : DocumentStore {
@@ -43,7 +43,7 @@ class DocumentFiles @Inject constructor(@ApplicationContext private val context:
             }
         } catch (e: Exception) { 0f }
         val maxSide = maxOf(bmp.width, bmp.height)
-        val scale = if (maxSide > 2000) 2000f / maxSide else 1f
+        val scale = if (maxSide > 2800) 2800f / maxSide else 1f
         if (rotation != 0f || scale != 1f) {
             val m = Matrix().apply { postRotate(rotation); postScale(scale, scale) }
             bmp = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
@@ -52,6 +52,33 @@ class DocumentFiles @Inject constructor(@ApplicationContext private val context:
         val f = File(dir, name)
         FileOutputStream(f).use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }
         DocumentRef(0, name, "image/jpeg", f.length(), System.currentTimeMillis())
+    }
+
+    /** Compone le foto in un'unica immagine lunga (larghezza max 1200 px, altezza max 7000 px per non esaurire la memoria). */
+    override suspend fun stitch(pages: List<DocumentRef>): DocumentRef = withContext(Dispatchers.IO) {
+        val bitmaps = pages.map { BitmapFactory.decodeFile(File(dir, it.fileName).path) ?: error("Immagine non valida") }
+        try {
+            val width = bitmaps.maxOf { it.width }.coerceAtMost(1200)
+            val heights = bitmaps.map { (it.height * width.toFloat() / it.width).toInt() }
+            val gap = 6
+            val total = heights.sum() + gap * (bitmaps.size - 1)
+            val k = if (total > 7000) 7000f / total else 1f
+            val outW = (width * k).toInt().coerceAtLeast(1); val outH = (total * k).toInt().coerceAtLeast(1)
+            val out = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(out)
+            canvas.drawColor(android.graphics.Color.WHITE)
+            var y = 0f
+            bitmaps.forEachIndexed { i, b ->
+                val h = heights[i] * k
+                canvas.drawBitmap(b, null, android.graphics.RectF(0f, y, outW.toFloat(), y + h), null)
+                y += h + gap * k
+            }
+            val name = "doc_${System.currentTimeMillis()}_${(Math.random() * 1000).toInt()}.jpg"
+            val f = File(dir, name)
+            FileOutputStream(f).use { out.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+            out.recycle()
+            DocumentRef(0, name, "image/jpeg", f.length(), System.currentTimeMillis())
+        } finally { bitmaps.forEach { it.recycle() } }
     }
 
     /** Scrive un file ricevuto da un backup completo. */

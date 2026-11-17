@@ -40,11 +40,17 @@ abstract class RepositoryModule {
     @Binds abstract fun acc(i: AccountRepositoryImpl): AccountRepository
     @Binds abstract fun due(i: DueRepositoryImpl): DueRepository
     @Binds abstract fun scen(i: ScenarioRepositoryImpl): ScenarioRepository
+    @Binds abstract fun quotas(i: CashQuotaRepositoryImpl): CashQuotaRepository
+    @Binds abstract fun recurring(i: RecurringRepositoryImpl): RecurringRepository
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore
     @Binds abstract fun settings(i: SettingsRepositoryImpl): SettingsRepository
     @Binds abstract fun importProfiles(i: it.spese.data.settings.ImportProfileRepositoryImpl): ImportProfileRepository
     @Binds abstract fun backup(i: BackupRepositoryImpl): BackupRepository
+    @Binds abstract fun reportPresets(i: it.spese.data.settings.ReportPresetRepositoryImpl): ReportPresetRepository
+    @Binds abstract fun captureConfig(i: it.spese.data.settings.CaptureConfigRepositoryImpl): CaptureConfigRepository
+    @Binds abstract fun subscriptionReview(i: it.spese.data.settings.SubscriptionReviewRepositoryImpl): it.spese.domain.finance.SubscriptionReviewRepository
+    @Binds abstract fun itemMemory(i: it.spese.data.settings.ItemMemoryRepositoryImpl): it.spese.domain.ocr.ItemMemoryRepository
 }
 
 /** Unica sottoscrizione condivisa ai dati: tutte le schermate leggono da qui. */
@@ -52,8 +58,8 @@ abstract class RepositoryModule {
 @InstallIn(SingletonComponent::class)
 object AppDataModule {
     @Provides @Singleton
-    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository) =
-        AppDataSource(tx, c, a, r, d, s)
+    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository, q: CashQuotaRepository, settings: SettingsRepository) =
+        AppDataSource(tx, c, a, r, d, s, q, settings)
 
     @Provides @Singleton
     fun appData(src: AppDataSource, @ApplicationScope scope: CoroutineScope): StateFlow<AppData> = src.observe().stateIn(scope, SharingStarted.Eagerly, AppData())

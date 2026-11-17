@@ -60,8 +60,8 @@ class SettingsViewModel @Inject constructor(
     suspend fun backupJsonBytes(): ByteArray = backup.buildBackupJson().toByteArray(Charsets.UTF_8)
     fun saveBackupJson(uri: Uri) = run("Backup salvato") { withContext(Dispatchers.IO) { write(uri, backupJsonBytes()) } }
     fun saveFullBackup(uri: Uri) = run("Backup completo salvato") { withContext(Dispatchers.IO) { app.contentResolver.openOutputStream(uri, "wt")!!.use { backup.writeFullBackup(it) } } }
-    fun saveCsv(uri: Uri) = run("File CSV salvato") { withContext(Dispatchers.IO) { write(uri, exporter.csv(data.value, data.value.transactions)) } }
-    fun saveXlsx(uri: Uri) = run("File Excel salvato") { withContext(Dispatchers.IO) { write(uri, exporter.xlsx(data.value, data.value.transactions)) } }
+    fun saveCsv(uri: Uri) = run("File CSV salvato") { withContext(Dispatchers.IO) { write(uri, exporter.csv(data.value, data.value.ledger)) } }
+    fun saveXlsx(uri: Uri) = run("File Excel salvato") { withContext(Dispatchers.IO) { write(uri, exporter.xlsx(data.value, data.value.ledger)) } }
 
     // ---- ripristino con verifica, unione o sostituzione ----
     fun inspectUri(uri: Uri) = run {
@@ -85,7 +85,7 @@ class SettingsViewModel @Inject constructor(
         } else json = CsvLike.decode(bytes)
         val text = json ?: throw IllegalArgumentException("Il file non contiene un backup.")
         val r = try { inspect(text) } catch (e: it.spese.domain.backup.BackupFormatException) { throw IllegalArgumentException(e.message) }
-        _pending.value = RestorePrompt(name, r.envelope, r.issues, r.plan, files, data.value.transactions.size)
+        _pending.value = RestorePrompt(name, r.envelope, r.issues, r.plan, files, data.value.ledger.size)
     }
 
     fun cancelRestore() { _pending.value = null }

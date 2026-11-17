@@ -21,7 +21,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 
 @Composable
-fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: AlertsViewModel = hiltViewModel()) {
+fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, onOpenSubscriptions: () -> Unit = {}, vm: AlertsViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
     var add by remember { mutableStateOf(false) }
     Scaffold(topBar = { SubTopBar("Avvisi e scadenze", onBack) }, contentWindowInsets = WindowInsets.safeDrawing,
@@ -31,7 +31,7 @@ fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: AlertsViewM
                 SectionCard(title = "Avvisi") {
                     if (st.alerts.isEmpty()) Text("Nessun avviso. Imposta dei budget nel Piano per ricevere avvisi di superamento.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     st.alerts.forEach { a -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) { Box(Modifier.padding(top = 6.dp)) { SeverityDot(a.level) }; Text(a.message, style = MaterialTheme.typography.bodyMedium) } }
-                    Text("Calcolati sull'ultimo mese (${Dates.monthLabel(YearMonth.from(st.today))})${st.accountName?.let { " del conto $it" } ?: " di tutti i conti"}, riferimento al ${Dates.fmt(st.today)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Calcolati sull'ultimo mese (${Dates.monthLabel(st.data.calendar.monthOf(st.today))})${st.accountName?.let { " del conto $it" } ?: " di tutti i conti"}, riferimento al ${Dates.fmt(st.today)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = onOpenSettings) { Icon(Icons.Default.NotificationsActive, null); Spacer(Modifier.width(6.dp)); Text("Configura le notifiche") }
                 }
             }
@@ -51,6 +51,7 @@ fun AlertsScreen(onBack: () -> Unit, onOpenSettings: () -> Unit, vm: AlertsViewM
             }
             item {
                 SectionCard(title = "Scadenze e spese ricorrenti") {
+                    OutlinedButton(onClick = onOpenSubscriptions, Modifier.fillMaxWidth()) { Icon(Icons.Default.Autorenew, null); Spacer(Modifier.width(8.dp)); Text("Abbonamenti e rate: costi, aumenti, rate residue") }
                     Text("Ricorrenze rilevate in automatico (stesso esercente, ogni mese, importo simile) più le tue scadenze. Prossimi 30 giorni: ${Money.eur0(st.next30)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     if (st.schedule.isEmpty()) Text("Nessuna scadenza.")
                     st.schedule.forEach { r ->

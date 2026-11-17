@@ -67,10 +67,21 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
 
+      - name: Rinomina l'APK con il numero di build e mostra versione e firma
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          AAPT=$(ls "$ANDROID_HOME"/build-tools/*/aapt2 | tail -1)
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | tail -1)
+          VC=$("$AAPT" dump badging "$APK" | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
+          SIG=$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          mv "$APK" "app/build/outputs/apk/debug/gestione-spese-build-$VC.apk"
+          echo "### APK debug: build $VC" >> "$GITHUB_STEP_SUMMARY"
+          echo "Per aggiornare l'app installata scarica SEMPRE la build col numero più alto (Android rifiuta numeri più bassi). Firma SHA-256: \`$SIG\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Pubblica l'APK debug
         uses: actions/upload-artifact@v4
         with:
-          name: gestione-spese-debug-apk
+          name: gestione-spese-debug-apk-${{ github.run_number }}
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
           if-no-files-found: error

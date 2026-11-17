@@ -7,6 +7,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +67,10 @@ private fun fmtAxis(v: Double): String {
 }
 
 /** Etichette dell'asse X: usa l'indice come posizione. */
-private fun labelFormatter(labels: List<String>) = CartesianValueFormatter { _, x, _ -> labels.getOrElse(x.toInt()) { "" } }
+/** Vico vieta le etichette vuote (lancia un'eccezione): fuori dall'intervallo vale l'etichetta più vicina, e un testo vuoto diventa uno spazio. */
+private fun labelFormatter(labels: List<String>) = CartesianValueFormatter { _, x, _ ->
+    (if (labels.isEmpty()) "" else labels[x.toInt().coerceIn(0, labels.lastIndex)]).ifEmpty { " " }
+}
 
 /**
  * Grafico a barre (raggruppate o impilate) con linee opzionali sovrapposte (es. saldo, medie).
@@ -123,8 +132,8 @@ fun BarLineChart(
             chart = chart, modelProducer = producer, modifier = Modifier.fillMaxWidth().height(height),
             scrollState = rememberVicoScrollState(scrollEnabled = interactive),
             zoomState = if (interactive) rememberVicoZoomState() else rememberVicoZoomState(zoomEnabled = false, initialZoom = com.patrykandpatrick.vico.core.cartesian.Zoom.Content),
-            animationSpec = if (interactive) androidx.compose.animation.core.tween(250) else null,
-            animateIn = interactive,
+            animationSpec = androidx.compose.animation.core.tween(if (interactive) 250 else 450),
+            animateIn = true,
         )
         Legend((bars + lines).map { it.name to it.color })
     }
@@ -158,6 +167,10 @@ fun DonutChart(slices: List<Slice>, modifier: Modifier = Modifier, size: Dp = 20
     val surface = MaterialTheme.colorScheme.surfaceContainerLow
     if (total.signum() <= 0) { Box(modifier.height(size), contentAlignment = Alignment.Center) { Text("Nessuna spesa nel periodo", color = MaterialTheme.colorScheme.onSurfaceVariant) }; return }
     val sweeps = slices.map { (it.value.toDouble() / total.toDouble() * 360.0).toFloat() }
+    val open = remember(slices) { Animatable(0f) }
+    LaunchedEffect(slices) { open.snapTo(0f); open.animateTo(1f, tween(900, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
+    val pop = remember { Animatable(0f) }
+    LaunchedEffect(selected) { pop.snapTo(0f); pop.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium)) }
     val stroke = with(LocalDensity.current) { 34.dp.toPx() }
     Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(size), contentAlignment = Alignment.Center) {
@@ -177,12 +190,12 @@ fun DonutChart(slices: List<Slice>, modifier: Modifier = Modifier, size: Dp = 20
                 val tl = Offset(half, half); val sz = Size(this.size.width - stroke, this.size.height - stroke)
                 var start = -90f
                 slices.forEachIndexed { i, s ->
-                    val w = if (i == selected) stroke + 10f else stroke
-                    drawArc(s.color, start, (sweeps[i] - 1f).coerceAtLeast(0.5f), false, tl, sz, style = Stroke(w, cap = StrokeCap.Butt))
-                    start += sweeps[i]
+                    val w = if (i == selected) stroke + 12f * pop.value else stroke
+                    drawArc(s.color, start, ((sweeps[i] - 1f).coerceAtLeast(0.5f)) * open.value, false, tl, sz, style = Stroke(w, cap = StrokeCap.Butt))
+                    start += sweeps[i] * open.value
                 }
             }
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(40.dp)) {
+            Crossfade(selected, animationSpec = tween(200), label = "donut-centre", modifier = Modifier.padding(40.dp)) { selected -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 if (selected in slices.indices) {
                     val s = slices[selected]
                     Text(s.label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2)
@@ -192,7 +205,7 @@ fun DonutChart(slices: List<Slice>, modifier: Modifier = Modifier, size: Dp = 20
                     Text(centerTitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(Money.eur0(total), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-            }
+            } }
         }
         Legend(slices.take(10).map { it.label to it.color })
     }
@@ -205,14 +218,16 @@ data class BarItem(val label: String, val value: BigDecimal, val color: Color, v
 fun HorizontalBars(items: List<BarItem>, modifier: Modifier = Modifier) {
     val max = items.maxOfOrNull { it.value.abs() }?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items.forEach { b ->
+        items.forEachIndexed { idx, b ->
+            val grow = remember(b.value, b.label) { Animatable(0f) }
+            LaunchedEffect(b.value, b.label) { grow.snapTo(0f); kotlinx.coroutines.delay(idx * 70L); grow.animateTo(1f, tween(650, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
             Column {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(b.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     Text(Money.eur0(b.value) + (b.detail?.let { " · $it" } ?: ""), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
                 }
                 Box(Modifier.fillMaxWidth().height(8.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)) {
-                    Box(Modifier.fillMaxWidth((b.value.abs().toDouble() / max.toDouble()).toFloat().coerceIn(0.01f, 1f)).height(8.dp).background(b.color, CircleShape))
+                    Box(Modifier.fillMaxWidth(((b.value.abs().toDouble() / max.toDouble()).toFloat().coerceIn(0.01f, 1f)) * grow.value.coerceAtLeast(0.001f)).height(8.dp).background(b.color, CircleShape))
                 }
             }
         }
@@ -223,11 +238,12 @@ fun HorizontalBars(items: List<BarItem>, modifier: Modifier = Modifier) {
 @Composable
 fun ProgressRing(progress: Float, modifier: Modifier = Modifier, size: Dp = 72.dp, color: Color = MaterialTheme.colorScheme.primary, label: String = "") {
     val track = MaterialTheme.colorScheme.surfaceVariant
+    val shown by androidx.compose.animation.core.animateFloatAsState(progress.coerceIn(0f, 1f), tween(900, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f)), label = "ring")
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val w = 9.dp.toPx()
             drawArc(track, 0f, 360f, false, Offset(w / 2, w / 2), Size(this.size.width - w, this.size.height - w), style = Stroke(w))
-            drawArc(color, -90f, 360f * progress.coerceIn(0f, 1f), false, Offset(w / 2, w / 2), Size(this.size.width - w, this.size.height - w), style = Stroke(w, cap = StrokeCap.Round))
+            drawArc(color, -90f, 360f * shown, false, Offset(w / 2, w / 2), Size(this.size.width - w, this.size.height - w), style = Stroke(w, cap = StrokeCap.Round))
         }
         if (label.isNotEmpty()) Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
     }

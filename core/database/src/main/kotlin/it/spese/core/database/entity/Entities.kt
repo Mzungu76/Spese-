@@ -113,6 +113,46 @@ data class TransactionEntity(
     val documentId: Long? = null,
     val importBatchId: Long? = null,
     val createdAt: Long = 0,
+    /** 1 = controllato dall'utente (esce da Verifica). Schema 5. */
+    @ColumnInfo(defaultValue = "0") val reviewed: Boolean = false,
+)
+
+/** Parti di un movimento diviso su più categorie. Eliminando il movimento si eliminano anche le parti. Schema 5. */
+@Entity(
+    tableName = "transaction_splits",
+    foreignKeys = [
+        ForeignKey(TransactionEntity::class, ["id"], ["txId"], onDelete = ForeignKey.CASCADE),
+        ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.SET_NULL),
+    ],
+    indices = [Index("txId"), Index("categoryId")],
+)
+data class SplitEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val txId: Long,
+    val categoryId: Long? = null,
+    val amountCents: Long,
+    val position: Int = 0,
+    val auto: Boolean = false,
+    val quotaId: Long? = null,
+)
+
+/** Quote fisse pagate in contanti (es. affitto). Schema 5. */
+@Entity(
+    tableName = "cash_quotas",
+    foreignKeys = [ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("categoryId")],
+)
+data class CashQuotaEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val categoryId: Long,
+    val amountCents: Long,
+    val enabled: Boolean = true,
+    @ColumnInfo(defaultValue = "'c'") val mode: String = "c",
+    @ColumnInfo(defaultValue = "0") val toleranceCents: Long = 0,
+    @ColumnInfo(defaultValue = "1") val everyMonths: Int = 1,
+    @ColumnInfo(defaultValue = "0") val dayFrom: Int = 0,
+    @ColumnInfo(defaultValue = "0") val dayTo: Int = 0,
 )
 
 @Entity(tableName = "dues", indices = [Index(value = ["legacyId"], unique = true), Index("nextDate")])
@@ -156,3 +196,25 @@ data class ScenarioCutEntity(val scenarioId: Long, val categoryId: Long, val per
     foreignKeys = [ForeignKey(ScenarioEntity::class, ["id"], ["scenarioId"], onDelete = ForeignKey.CASCADE)],
 )
 data class ScenarioRemovedEntity(val scenarioId: Long, @ColumnInfo(name = "itemKey") val itemKey: String)
+
+/** Entrate e spese ricorrenti: generano movimenti alla data giusta. Schema 7. */
+@Entity(
+    tableName = "recurring_rules",
+    foreignKeys = [ForeignKey(CategoryEntity::class, ["id"], ["categoryId"], onDelete = ForeignKey.SET_NULL)],
+    indices = [Index("categoryId")],
+)
+data class RecurringEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val kind: String,
+    val amountCents: Long,
+    val accountId: Long? = null,
+    val categoryId: Long? = null,
+    val everyMonths: Int = 1,
+    val dayOfMonth: Int = 1,
+    val startDate: Long,
+    val endDate: Long? = null,
+    val enabled: Boolean = true,
+    val autoConfirm: Boolean = false,
+    val lastGenerated: Long? = null,
+)

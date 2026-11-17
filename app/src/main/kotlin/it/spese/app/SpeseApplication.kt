@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 
 @HiltAndroidApp
 class SpeseApplication : Application(), Configuration.Provider {
+    companion object { const val CRASH_FILE = "last_crash.txt" }
     @Inject lateinit var workerFactory: HiltWorkerFactory
     @Inject lateinit var seeder: DatabaseSeeder
     @Inject lateinit var settings: SettingsRepository
@@ -27,6 +28,12 @@ class SpeseApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        // se l'app si chiude per un errore, il dettaglio resta sul telefono e alla prossima apertura si può leggere e copiare
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            try { java.io.File(filesDir, CRASH_FILE).writeText(java.util.Date().toString() + " · thread " + t.name + "\n" + android.util.Log.getStackTraceString(e).take(6000)) } catch (_: Throwable) { }
+            previous?.uncaughtException(t, e)
+        }
         notifier.ensureChannel()
         scope.launch {
             seeder.ensureSeeded()

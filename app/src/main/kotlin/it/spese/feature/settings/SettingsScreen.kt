@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 private val ANY_MIME = arrayOf("application/json", "application/zip", "application/octet-stream", "text/plain", "*/*")
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: SettingsViewModel = hiltViewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
     val pending by vm.pending.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
@@ -54,13 +54,35 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) 
         LazyColumn(Modifier.fillMaxSize().padding(pad), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (busy) item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
             item {
+                SectionCard(title = "Movimenti automatici") {
+                    Text("Aggiungi i movimenti dalle notifiche e dagli SMS di Revolut, Google Wallet, Postepay, Hype e delle altre app che scegli.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(onClick = onOpenCapture) { Text("Imposta") }
+                }
+            }
+            item {
+                SectionCard(title = "Mese contabile") {
+                    LabeledSwitch("Mese che non segue il calendario", s.monthStartDay > 1, { on -> vm.update { it.copy(monthStartDay = if (on) 20 else 1) } },
+                        supporting = "Utile se lo stipendio arriva a metà mese: tutta la contabilità (periodi, confronti, budget, tendenze, report) va da quel giorno al giorno prima del mese successivo.")
+                    if (s.monthStartDay > 1) {
+                        Text("Il mese inizia il giorno", style = MaterialTheme.typography.labelLarge)
+                        ChipChoice(listOf(5, 10, 15, 20, 25, 27).map { it to "$it" }, s.monthStartDay, { d -> vm.update { it.copy(monthStartDay = d) } })
+                        var text by remember(s.monthStartDay) { mutableStateOf(s.monthStartDay.toString()) }
+                        OutlinedTextField(text, { v -> text = v.filter { c -> c.isDigit() }.take(2); text.toIntOrNull()?.takeIf { it in 2..28 }?.let { d -> vm.update { it.copy(monthStartDay = d) } } },
+                            label = { Text("Giorno (2–28)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                        val cal = it.spese.core.common.MonthCalendar(s.monthStartDay)
+                        val ex = java.time.YearMonth.of(2026, 1)
+                        Text("Esempio: «gennaio» va dal ${it.spese.core.common.Dates.fmt(cal.start(ex))} al ${it.spese.core.common.Dates.fmt(cal.end(ex))}. Ogni mese prende il nome da quello in cui inizia.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
                 SectionCard(title = "Aspetto") {
                     ChipChoice(listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Chiaro", ThemeMode.DARK to "Scuro"), s.themeMode, { m -> vm.update { it.copy(themeMode = m) } })
                 }
             }
             item {
                 SectionCard(title = "Backup e ripristino") {
-                    Text("${data.transactions.size} movimenti · il backup contiene movimenti, categorie, regole, budget, scadenze, obiettivi e scenari (formato compatibile con la versione web).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${data.ledger.size} movimenti · il backup contiene movimenti, categorie, regole, budget, scadenze, obiettivi e scenari (formato compatibile con la versione web).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(onClick = { createJson.launch("spese-backup-${stamp()}.json") }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(8.dp)); Text("Salva backup (JSON)") }
                     OutlinedButton(onClick = { scope.launch { Share.shareBytes(ctx, "spese-backup-${stamp()}.json", "application/json", vm.backupJsonBytes(), "Condividi backup") } }, Modifier.fillMaxWidth()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(8.dp)); Text("Condividi backup…") }
                     OutlinedButton(onClick = { createZip.launch("spese-backup-completo-${stamp()}.zip") }, Modifier.fillMaxWidth()) { Icon(Icons.Default.FolderZip, null); Spacer(Modifier.width(8.dp)); Text("Backup completo con foto (ZIP)") }
@@ -99,7 +121,7 @@ fun SettingsScreen(onBack: () -> Unit, vm: SettingsViewModel = hiltViewModel()) 
                         OutlinedButton(onClick = { createCsv.launch("movimenti-${stamp()}.csv") }) { Text("CSV") }
                         OutlinedButton(onClick = { createXlsx.launch("movimenti-${stamp()}.xlsx") }) { Text("Excel") }
                     }
-                    Text("Esporta tutti i ${data.transactions.size} movimenti. Per esportare solo quelli filtrati usa il menu nella scheda Movimenti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Esporta tutti i ${data.ledger.size} movimenti. Per esportare solo quelli filtrati usa il menu nella scheda Movimenti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item {

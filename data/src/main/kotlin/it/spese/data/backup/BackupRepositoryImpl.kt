@@ -70,19 +70,39 @@ class BackupRepositoryImpl @Inject constructor(
 
     private suspend fun currentLegacy(): LegacyState { val (s, mt, d) = loadSnapshot(); return LegacyMapper.fromDomain(s, mt, d) }
 
+    private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
+    private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
+    private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
+
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
         val legacy = LegacyMapper.fromDomain(s, mt, docs)
         val catName = s.categories.associate { it.id to it.name }
+        val catIdName = catName
         val scenarioE = db.scenarios().getScenarios().filter { !it.isBase }
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
+            subIgnored = subReview.getIgnored().toList(),
+            ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
+            itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
             scenarios = scenarioE.map { e ->
                 NativeScenario(e.name, LegacyGoal(GoalMode.fromKey(e.goalMode), Money.fromCents(e.goalValueCents), e.goalMonths, e.expectedIncomeCents?.let { Money.fromCents(it) }),
                     cuts[e.id].orEmpty().mapNotNull { c -> catName[c.categoryId]?.let { it to c.percent } }.toMap(), Money.fromCents(e.incomeDeltaCents), removed[e.id].orEmpty().map { it.itemKey })
             },
             documents = db.documents().getAll().map { NativeDocument(it.fileName, it.mimeType, it.sizeBytes, it.createdAt, it.ocrText) },
+            splits = run {
+                val txExt = db.transactions().getAll().associate { it.id to it.externalId }
+                val quotaName = db.quotas().getAll().associate { it.id to it.name }
+                db.splits().getAll().mapNotNull { sp -> txExt[sp.txId]?.let { NativeSplit(it, sp.categoryId?.let { c -> catName[c] }, Money.fromCents(sp.amountCents), sp.position, sp.auto, sp.quotaId?.let { q -> quotaName[q] }) } }
+            },
+            quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled, q.mode, Money.fromCents(q.toleranceCents), q.everyMonths, q.dayFrom, q.dayTo) } },
+            reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
+            recurring = run {
+                val accName = db.accounts().getAll().associate { it.id to it.name }
+                db.recurring().getAll().map { r -> NativeRecurring(r.name, r.kind, Money.fromCents(r.amountCents), r.accountId?.let { accName[it] }, r.categoryId?.let { catName[it] }, r.everyMonths, r.dayOfMonth,
+                    java.time.LocalDate.ofEpochDay(r.startDate), r.endDate?.let { java.time.LocalDate.ofEpochDay(it) }, r.enabled, r.autoConfirm, r.lastGenerated?.let { java.time.LocalDate.ofEpochDay(it) }) }
+            },
         )
         return BackupEnvelope(Instant.now().toString(), Build.MODEL ?: "Android", legacy, extras)
     }
@@ -118,11 +138,28 @@ class BackupRepositoryImpl @Inject constructor(
             if (mode == RestoreMode.Replace) wipeInTransaction()
             added = writeState(target, env.extras, mode == RestoreMode.Replace, extraFiles)
         }
+        env.extras?.let { x ->
+            if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
+        }
+        // notifiche da ignorare (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle mancanti
+        env.extras?.let { x ->
+            if (x.ignoreRules.isNotEmpty() || mode == RestoreMode.Replace) captureConfig.update { c ->
+                val incoming = x.ignoreRules.map { r -> it.spese.domain.capture.IgnoreRule(r.source, r.phrase, r.createdMs, r.enabled) }
+                val base = if (mode == RestoreMode.Replace) emptyList() else c.ignoreRules
+                c.copy(ignoreRules = base + incoming.filter { n -> base.none { it.source == n.source && it.phrase == n.phrase } })
+            }
+        }
+        // memoria delle voci di scontrino (DataStore, fuori dal database): le categorie si ritrovano per nome
+        env.extras?.itemMemory?.takeIf { it.isNotEmpty() }?.let { items ->
+            val idByName = db.categories().getAll().associate { it.name to it.id }
+            if (mode == RestoreMode.Replace) itemMemory.clear()
+            itemMemory.learn(items.mapNotNull { m -> idByName[m.category]?.let { m.key to it } }.toMap())
+        } ?: if (mode == RestoreMode.Replace) itemMemory.clear() else Unit
         return RestoreResult(plan?.summary() ?: listOf("Dati sostituiti dal backup (${env.state.tx.size} movimenti)"), added)
     }
 
     private suspend fun wipeInTransaction() {
-        db.transactions().deleteAll(); db.importBatches().deleteAll(); db.dues().deleteAll(); db.scenarios().deleteAll()
+        db.recurring().deleteAll(); db.transactions().deleteAll(); db.importBatches().deleteAll(); db.dues().deleteAll(); db.scenarios().deleteAll()
         db.rules().deleteAll(); db.categories().deleteAll(); db.documents().deleteAll(); db.accounts().deleteAll()
     }
 
@@ -238,6 +275,31 @@ class BackupRepositoryImpl @Inject constructor(
             val c = classifier.classify(t.description, Money.fromCents(t.amountCents), null)
             if (c.categoryId != t.categoryId || c.kind.key != t.kind || c.ruleId != t.ruleId) td.updateClassification(t.id, c.categoryId, c.kind.key, false, c.ruleId, 0)
         }
+        // estensioni native: quote in contanti, movimenti divisi e movimenti già controllati
+        if (extras != null) {
+            val quotaIds = HashMap<String, Long>()
+            extras.quotas.forEach { q ->
+                val cid = cd.findByName(q.category)?.id ?: return@forEach
+                val old = db.quotas().getAll().firstOrNull { it.name == q.name }
+                quotaIds[q.name] = old?.id ?: db.quotas().insert(CashQuotaEntity(name = q.name, categoryId = cid, amountCents = Money.toCents(q.amount), enabled = q.enabled, mode = q.mode, toleranceCents = Money.toCents(q.tolerance), everyMonths = q.everyMonths, dayFrom = q.dayFrom, dayTo = q.dayTo))
+            }
+            db.quotas().getAll().forEach { quotaIds.putIfAbsent(it.name, it.id) }
+            val haveSplits = db.splits().getAll().map { it.txId }.toHashSet()
+            extras.splits.groupBy { it.txId }.forEach { (ext, parts) ->
+                val t = td.findByExternalId(ext) ?: return@forEach
+                if (t.id in haveSplits) return@forEach
+                db.splits().insertAll(parts.sortedBy { it.position }.mapIndexed { i, p -> SplitEntity(0, t.id, p.category?.let { cd.findByName(it)?.id }, Money.toCents(p.amount), i, p.auto, p.quota?.let { quotaIds[it] }) })
+            }
+            val haveRec = db.recurring().getAll().map { it.name to it.amountCents }.toHashSet()
+            extras.recurring.forEach { r ->
+                if ((r.name to Money.toCents(r.amount)) in haveRec) return@forEach
+                db.recurring().insert(RecurringEntity(name = r.name, kind = r.kind, amountCents = Money.toCents(r.amount), accountId = r.account?.let { ad.findByName(it)?.id },
+                    categoryId = r.category?.let { cd.findByName(it)?.id }, everyMonths = r.everyMonths, dayOfMonth = r.day, startDate = r.start.toEpochDay(), endDate = r.end?.toEpochDay(),
+                    enabled = r.enabled, autoConfirm = r.autoConfirm, lastGenerated = r.last?.toEpochDay()))
+            }
+            val reviewedIds = extras.reviewed.mapNotNull { td.findByExternalId(it)?.id }
+            if (reviewedIds.isNotEmpty()) reviewedIds.chunked(500).forEach { td.setReviewed(it, true) }
+        }
         return added
     }
 
@@ -256,7 +318,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed()
+        seeder.wipeAndSeed(); itemMemory.clear()
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {

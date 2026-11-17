@@ -1,5 +1,6 @@
 package it.spese.domain.backup
 
+import it.spese.core.common.Dates
 import it.spese.core.common.Money
 import it.spese.core.common.NumberParser
 import it.spese.core.model.AmountSign
@@ -55,7 +56,31 @@ data class LegacyState(
 data class NativeAccount(val name: String, val type: String, val opening: BigDecimal, val archived: Boolean)
 data class NativeScenario(val name: String, val goal: LegacyGoal, val cuts: Map<String, Int>, val incomeDelta: BigDecimal, val removed: List<String>)
 data class NativeDocument(val fileName: String, val mime: String, val size: Long, val createdAt: Long, val ocrText: String?)
-data class NativeExtras(val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList())
+/** Parte di un movimento diviso (il movimento è indicato dal suo identificativo stabile, la categoria dal nome). */
+data class NativeSplit(val txId: String, val category: String?, val amount: BigDecimal, val position: Int, val auto: Boolean, val quota: String?)
+data class NativeQuota(
+    val name: String, val category: String, val amount: BigDecimal, val enabled: Boolean,
+    val mode: String = "c", val tolerance: BigDecimal = BigDecimal.ZERO, val everyMonths: Int = 1, val dayFrom: Int = 0, val dayTo: Int = 0,
+)
+/** Entrata o spesa ricorrente (conto e categoria per nome). */
+data class NativeRecurring(
+    val name: String, val kind: String, val amount: BigDecimal, val account: String?, val category: String?, val everyMonths: Int, val day: Int,
+    val start: java.time.LocalDate, val end: java.time.LocalDate?, val enabled: Boolean, val autoConfirm: Boolean, val last: java.time.LocalDate?,
+)
+/** Voce di scontrino ricordata e categoria (per nome). */
+data class NativeItemMemory(val key: String, val category: String)
+data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
+data class NativeExtras(
+    val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
+    val splits: List<NativeSplit> = emptyList(), val quotas: List<NativeQuota> = emptyList(),
+    /** Identificativi dei movimenti già controllati (esclusi dalla sezione Verifica). */
+    val reviewed: List<String> = emptyList(),
+    val recurring: List<NativeRecurring> = emptyList(),
+    val itemMemory: List<NativeItemMemory> = emptyList(),
+    val ignoreRules: List<NativeIgnoreRule> = emptyList(),
+    /** Esercenti che l'utente non vuole vedere come abbonamenti o rate. */
+    val subIgnored: List<String> = emptyList(),
+)
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
 
@@ -146,6 +171,18 @@ object LegacyBackupCodec {
                 s["incomeDelta"].dec() ?: BigDecimal.ZERO, s["removed"].arr()?.mapNotNull { it.str() } ?: emptyList()) } } ?: emptyList(),
         documents = o["documents"].arr()?.mapNotNull { e -> e.obj()?.let { d ->
             NativeDocument(d["file"].str() ?: return@let null, d["mime"].str() ?: "image/jpeg", d["size"].dec()?.toLong() ?: 0, d["created"].dec()?.toLong() ?: 0, d["ocr"].str()) } } ?: emptyList(),
+        splits = o["splits"].arr()?.mapNotNull { e -> e.obj()?.let { s ->
+            NativeSplit(s["tx"].str() ?: return@let null, s["cat"].str()?.takeIf { it.isNotBlank() }, s["amt"].dec() ?: return@let null, s["pos"].dec()?.toInt() ?: 0, flag(s["auto"]), s["quota"].str()?.takeIf { it.isNotBlank() }) } } ?: emptyList(),
+        quotas = o["quotas"].arr()?.mapNotNull { e -> e.obj()?.let { q ->
+            NativeQuota(q["name"].str() ?: return@let null, q["cat"].str() ?: return@let null, q["amt"].dec() ?: return@let null, q["on"]?.let { flag(it) } ?: true,
+                q["mode"].str() ?: "c", q["tol"].dec() ?: BigDecimal.ZERO, q["every"].dec()?.toInt() ?: 1, q["from"].dec()?.toInt() ?: 0, q["to"].dec()?.toInt() ?: 0) } } ?: emptyList(),
+        reviewed = o["reviewed"].arr()?.mapNotNull { it.str() } ?: emptyList(),
+        recurring = o["recurring"].arr()?.mapNotNull { e -> e.obj()?.let { r ->
+            NativeRecurring(r["name"].str() ?: return@let null, r["kind"].str() ?: "entrata", r["amt"].dec() ?: return@let null, r["acc"].str()?.takeIf { it.isNotBlank() }, r["cat"].str()?.takeIf { it.isNotBlank() },
+                r["every"].dec()?.toInt() ?: 1, r["day"].dec()?.toInt() ?: 1, Dates.parseIso(r["start"].str()) ?: return@let null, Dates.parseIso(r["end"].str()), r["on"]?.let { flag(it) } ?: true, flag(r["auto"]), Dates.parseIso(r["last"].str())) } } ?: emptyList(),
+        itemMemory = o["items"].arr()?.mapNotNull { e -> e.obj()?.let { m -> NativeItemMemory(m["k"].str()?.takeIf { it.isNotBlank() } ?: return@let null, m["cat"].str()?.takeIf { it.isNotBlank() } ?: return@let null) } } ?: emptyList(),
+        ignoreRules = o["ignore"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIgnoreRule(r["src"].str() ?: "", r["p"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["t"].dec()?.toLong() ?: 0L, r["on"]?.let { flag(it) } ?: true) } } ?: emptyList(),
+        subIgnored = o["subIgnored"].arr()?.mapNotNull { it.str() } ?: emptyList(),
     )
 
     /** Verifica di coerenza dei dati prima del ripristino. */
@@ -207,6 +244,18 @@ object LegacyBackupCodec {
                     put("incomeDelta", jnum(sc.incomeDelta)); putJsonArray("removed") { sc.removed.forEach { add(JsonPrimitive(it)) } } }) } })
                 put("documents", buildJsonArray { x.documents.forEach { d -> add(buildJsonObject {
                     put("file", d.fileName); put("mime", d.mime); put("size", d.size); put("created", d.createdAt); d.ocrText?.let { put("ocr", it) } }) } })
+                if (x.splits.isNotEmpty()) put("splits", buildJsonArray { x.splits.forEach { s -> add(buildJsonObject {
+                    put("tx", s.txId); s.category?.let { put("cat", it) }; put("amt", jnum(s.amount)); put("pos", s.position); put("auto", if (s.auto) 1 else 0); s.quota?.let { put("quota", it) } }) } })
+                if (x.quotas.isNotEmpty()) put("quotas", buildJsonArray { x.quotas.forEach { q -> add(buildJsonObject {
+                    put("name", q.name); put("cat", q.category); put("amt", jnum(q.amount)); put("on", if (q.enabled) 1 else 0)
+                    put("mode", q.mode); put("tol", jnum(q.tolerance)); put("every", q.everyMonths); put("from", q.dayFrom); put("to", q.dayTo) }) } })
+                if (x.reviewed.isNotEmpty()) putJsonArray("reviewed") { x.reviewed.forEach { add(JsonPrimitive(it)) } }
+                if (x.recurring.isNotEmpty()) put("recurring", buildJsonArray { x.recurring.forEach { r -> add(buildJsonObject {
+                    put("name", r.name); put("kind", r.kind); put("amt", jnum(r.amount)); r.account?.let { put("acc", it) }; r.category?.let { put("cat", it) }
+                    put("every", r.everyMonths); put("day", r.day); put("start", r.start.toString()); r.end?.let { put("end", it.toString()) }; put("on", if (r.enabled) 1 else 0); put("auto", if (r.autoConfirm) 1 else 0); r.last?.let { put("last", it.toString()) } }) } })
+                if (x.itemMemory.isNotEmpty()) put("items", buildJsonArray { x.itemMemory.forEach { m -> add(buildJsonObject { put("k", m.key); put("cat", m.category) }) } })
+                if (x.ignoreRules.isNotEmpty()) put("ignore", buildJsonArray { x.ignoreRules.forEach { r -> add(buildJsonObject { put("src", r.source); put("p", r.phrase); put("t", r.createdMs); put("on", if (r.enabled) 1 else 0) }) } })
+                if (x.subIgnored.isNotEmpty()) putJsonArray("subIgnored") { x.subIgnored.forEach { add(JsonPrimitive(it)) } }
             }) }
         }
         return json.encodeToString(JsonElement.serializer(), root)

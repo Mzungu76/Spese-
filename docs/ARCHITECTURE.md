@@ -54,6 +54,34 @@ Flusso dati: `Room → repository (Flow) → AppDataSource (una sola sottoscrizi
 con euristiche per scontrini e fatture italiane; l'utente rivede **sempre** i dati prima del salvataggio. Per estratti conto fotografati o documenti multipagina
 basta aggiungere un parser per tabelle di testo e un `ScanDocumentUseCase` che concateni le pagine: il contratto `TextRecognizer.recognize(path)` e l'archivio documenti non cambiano.
 
+## Cattura da notifiche
+
+`CaptureListenerService` (NotificationListenerService) instrada ogni notifica con `CaptureRouting`: solo fonti attive, pacchetti noti o aggiunti, e per gli SMS solo i mittenti scelti; il resto è scartato prima di leggerne il testo.
+`NotificationParser` ricava importo in euro e direzione (se dubbi, la notifica va tra le non riconosciute); `CaptureNotificationUseCase` crea un movimento con `origin = NOTIFICATION` (provvisorio), classificato dalle regole, e registra una sola volta lo stesso pagamento notificato da due app.
+`CommitImportUseCase` sostituisce i provvisori con le righe dell'estratto (`NotificationReconciler`: stesso importo, data entro 3 giorni), conservando categoria manuale e note. L'app resta senza permesso `INTERNET`.
+
+## Movimenti divisi, quote e verifica
+
+Un movimento resta una riga sola (importo intero, coerente con l'estratto); le sue **parti** stanno in `transaction_splits` (categoria e importo, stessa somma). `AppDataSource` le espande con `SplitExpander`: `AppData.transactions` contiene le parti (le analisi non cambiano), `AppData.ledger` i movimenti interi (elenco, modifica, esportazione).
+`CashQuotaEngine` applica le **quote fisse in contanti** (`cash_quotas`): una volta al mese il primo prelievo che copre l'importo viene diviso in quota + resto (in "Contanti"); mai su movimenti già divisi o controllati. `ReviewEngine` costruisce la sezione **Verifica** (divisioni automatiche, provvisori da notifica, regole con soglia, importi insoliti negli ultimi 60 giorni); il flag `reviewed` li chiude. Parti, quote e movimenti controllati sono salvati nelle estensioni native del backup.
+
+## Confronto, tendenze e ricerca
+
+`CategoryComparisonEngine` costruisce il confronto di categorie della Home (una serie per categoria accanto alle entrate del periodo, con le quote sulle entrate; le sottocategorie confluiscono nella principale). `CategoryTrendEngine` calcola per ogni categoria la media del periodo contro lo storico, la retta ai minimi quadrati sugli ultimi 12 mesi completi e le proiezioni a 1/3/6 mesi (mai sotto zero) con l'effetto cumulato sul bilancio; dichiara la fiducia della stima.
+`SearchMatcher` normalizza (minuscole, senza accenti) e richiede tutte le parole; `FilterEngine` con un testo di ricerca ignora il periodo. `CashQuotaEngine` supporta modalità (primo che copre, ogni, esatto con tolleranza), periodicità in mesi, finestra di giorni e più quote nello stesso prelievo (la quota porta il suo `quotaId`, il resto no).
+
+## Report PDF
+
+`ReportBuilder` (dominio) trasforma dati e scelte (`ReportSpec`: periodo, conto, categorie, sezioni ordinate, opzioni) in un `ReportDocument` di blocchi (titoli, indicatori, tabelle, barre, colonne) riusando gli stessi motori della Panoramica, delle Tendenze e della Verifica. `ReportLayout` (dominio, puro) impagina i blocchi in pagine A4 come operazioni di disegno (testo, rettangoli, linee) con intestazione, piè di pagina numerato e righe di tabella ripetute: si prova con JUnit e si può disegnare su immagine. `PdfReportRenderer` (app) esegue le operazioni con `PdfDocument` di Android: PDF vettoriale, senza librerie esterne. I modelli personalizzati sono salvati in DataStore (`ReportSpecCodec`).
+
+## Movimenti ricorrenti
+
+`RecurringRule` (tabella `recurring_rules`, schema 7) descrive un'entrata o spesa che si ripete: ogni N mesi, giorno del mese (l'ultimo giorno se il mese è più corto), inizio e fine, conto e categoria opzionali. `RecurringEngine` calcola le date dovute; `GenerateRecurringUseCase` (all'avvio, a ogni ripresa e dopo il salvataggio) crea i movimenti con origine `RECURRING` e identificativo `rec|regola|data`, e la regola ricorda l'ultima data creata (ciò che l'utente elimina non viene ricreato). I movimenti passano da Verifica, salvo «registra senza verifica»; `NotificationReconciler` li sostituisce con la riga dell'estratto (stesso importo, fino a 5 giorni di distanza).
+
+## Mese contabile
+
+`MonthCalendar(startDay)` (core:common) definisce un mese che inizia nel giorno scelto (1–28) e prende il nome dal mese in cui inizia (calendario di default). Il valore sta nelle impostazioni (`monthStartDay`), arriva ai motori in `AppData.calendar` e in `TxFilter.calendar` (`FilterStore` lo combina col filtro, così ogni schermata lo riceve). `PeriodResolver`, `StatsEngine` (mesi), `TrendBuckets`, `AlertEngine` (budget e ritmo), `DashboardCalculator` (confronto sul mese prima), `CategoryDetail`, `CategoryTrendEngine`, `CategoryComparisonEngine`, `CashQuotaEngine` e `ReportBuilder` ragionano in mesi contabili; con il calendario il comportamento è identico a prima.
+
 ## Sicurezza e privacy
 
 - Database e foto nella memoria privata dell'app (`filesDir`), non leggibili da altre app; nessun dato inviato a server.

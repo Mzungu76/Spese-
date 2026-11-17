@@ -1,5 +1,6 @@
 package it.spese.domain.finance
 
+import it.spese.core.common.MonthCalendar
 import it.spese.core.common.Money
 import it.spese.core.model.Transaction
 import it.spese.core.model.TxKind
@@ -54,7 +55,7 @@ data class PeriodStats(
 object StatsEngine {
     val EMPTY = compute(emptyList())
 
-    fun compute(list: List<Transaction>): PeriodStats {
+    fun compute(list: List<Transaction>, cal: MonthCalendar = MonthCalendar.SOLAR): PeriodStats {
         var inc = BigDecimal.ZERO; var exp = BigDecimal.ZERO; var tr = BigDecimal.ZERO
         val byCat = HashMap<Long?, BigDecimal>()
         val incCat = HashMap<Long?, BigDecimal>()
@@ -63,7 +64,7 @@ object StatsEngine {
         class MM { var n = 0; var t = BigDecimal.ZERO }
         val merch = HashMap<String, MM>()
         for (x in list) {
-            val ym = YearMonth.from(x.bookingDate)
+            val ym = cal.monthOf(x.bookingDate)
             val bm = months.getOrPut(ym) { MB() }
             when (x.kind) {
                 TxKind.TRASFERIMENTO -> tr += x.amount

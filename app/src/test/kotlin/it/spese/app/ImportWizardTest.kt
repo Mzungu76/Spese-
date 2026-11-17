@@ -44,13 +44,14 @@ class ImportWizardTest {
     @Inject lateinit var read: ReadStatementUseCase
     @Inject lateinit var preview: PreviewImportUseCase
     @Inject lateinit var commit: CommitImportUseCase
+    @Inject lateinit var resolvePending: it.spese.domain.usecase.ResolvePendingAmountsUseCase
     @Inject lateinit var profiles: ImportProfilesUseCase
     @Inject lateinit var messenger: UiMessenger
     @Inject lateinit var profileRepo: it.spese.domain.repository.ImportProfileRepository
 
     @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded(); profileRepo.all().forEach { profileRepo.delete(it.signature) } } }
 
-    private fun vm() = ImportViewModel(ApplicationProvider.getApplicationContext<Application>(), data, read, preview, commit, profiles, messenger)
+    private fun vm() = ImportViewModel(ApplicationProvider.getApplicationContext<Application>(), data, read, preview, commit, resolvePending, profiles, messenger)
     private fun file(name: String, text: String): Uri = Uri.fromFile(File(ApplicationProvider.getApplicationContext<Application>().cacheDir, name).also { it.writeText(text) })
     private fun idle(cond: () -> Boolean) = compose.waitUntil(10000) { ShadowLooper.idleMainLooper(); Thread.sleep(20); cond() }
     private fun waitText(t: String, sub: Boolean = false) = compose.waitUntil(10000) { ShadowLooper.idleMainLooper(); compose.onAllNodesWithText(t, substring = sub).fetchSemanticsNodes().isNotEmpty() }

@@ -1,5 +1,6 @@
 package it.spese.feature.categories
 
+import it.spese.domain.finance.SubcategoryTemplates
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,6 +26,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.app.common.DataMenu
 import it.spese.app.common.BackHeader
+import it.spese.app.common.SearchField
+import it.spese.domain.finance.SearchMatcher
 import it.spese.app.common.RoundIconButton
 import it.spese.core.common.Money
 import it.spese.core.designsystem.component.*
@@ -38,26 +41,35 @@ import java.math.BigDecimal
 fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = hiltViewModel()) {
     val st by vm.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableIntStateOf(initialTab) }
+    var q by remember { mutableStateOf("") }
     var editCat by remember { mutableStateOf<Category?>(null) }
+    val expandedCats = remember { mutableStateListOf<Long>() }     // le sottocategorie stanno nel sottomenu della loro categoria: si aprono col chevron
     var editRule by remember { mutableStateOf<Rule?>(null) }
     var assign by remember { mutableStateOf<UnclassifiedRow?>(null) }
+    var editQuota by remember { mutableStateOf<CashQuota?>(null) }
     val d = st.data
     val spendMax = remember(st.txTotal, d.categories) { d.categories.filter { it.kind == TxKind.SPESA }.maxOfOrNull { (st.txTotal[it.id] ?: BigDecimal.ZERO).abs() }?.takeIf { it.signum() > 0 } ?: BigDecimal.ONE }
     Column(Modifier.fillMaxSize()) {
         BackHeader("Gestione", onBack, actions = {
-            if (tab < 2) RoundIconButton(Icons.Default.Add, if (tab == 0) "Nuova categoria" else "Nuova regola", {
+            if (tab != 2) RoundIconButton(Icons.Default.Add, when (tab) { 0 -> "Nuova categoria"; 1 -> "Nuova regola"; else -> "Nuova quota" }, {
                 if (tab == 0) editCat = Category(0, "", TxKind.SPESA, true, vm.nextColor(d.categories.size), null, true, d.categories.size)
+                else if (tab == 3) editQuota = CashQuota(0, "Affitto", d.categories.firstOrNull { it.kind == TxKind.SPESA && it.active && it.systemKey == null }?.id ?: 0, BigDecimal.ZERO)
                 else editRule = Rule(0, "", d.categories.firstOrNull { it.active }?.id ?: 0, AmountSign.ANY, BigDecimal.ZERO, BigDecimal.ZERO, 0)
             })
         })
-        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare"), tab, { tab = it }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
+        PillSegmented(listOf(0 to "Categorie", 1 to "Regole · ${d.rules.size}", 2 to if (st.unclassified.isNotEmpty()) "Da fare · ${st.unclassified.size}" else "Da fare", 3 to "Quote"), tab, { tab = it; q = "" }, Modifier.padding(horizontal = 24.dp, vertical = 14.dp))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            if (tab in 0..2) item(key = "search-$tab") { SearchField(q, { q = it }, when (tab) { 0 -> "Cerca categoria…"; 1 -> "Cerca regola o categoria…"; else -> "Cerca esercente…" }, Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) }
             when (tab) {
                 0 -> {
+                    item(key = "subs-hint") {
+                        Text("Per vedere la spesa nel dettaglio (es. Supermercato → frutta e verdura, pulizia casa, bevande) tocca ⊕ accanto a una categoria per aggiungere una sottocategoria; con la freccia ▾ apri o chiudi le sottocategorie di una categoria. Nei totali restano dentro la categoria principale.",
+                            Modifier.padding(horizontal = 24.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate", TxKind.TRASFERIMENTO to "Giroconti (esclusi dai totali)").forEach { (kind, title) ->
-                        val ofKind = d.categories.filter { it.kind == kind }
+                        val ofKind = d.categories.filter { it.kind == kind && SearchMatcher.matches(q, it.name) }
                         // le sottocategorie stanno sotto la loro principale
-                        val list = ofKind.filter { it.parentId == null || ofKind.none { p -> p.id == it.parentId } }.flatMap { p -> listOf(p) + ofKind.filter { it.parentId == p.id } }
+                        val list = ofKind.filter { it.parentId == null || ofKind.none { p -> p.id == it.parentId } }.flatMap { p -> listOf(p) + (if (q.isNotBlank() || p.id in expandedCats) ofKind.filter { it.parentId == p.id } else emptyList()) }
                         if (list.isEmpty()) return@forEach
                         item(key = "h$kind") { Text(title.uppercase(), Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 6.dp), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         items(list, key = { it.id }) { c ->
@@ -72,16 +84,23 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                                     if (c.kind == TxKind.SPESA) Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
                                         Box(Modifier.fillMaxWidth((total.abs().toFloat() / spendMax.toFloat()).coerceIn(0.02f, 1f)).height(4.dp).background(c.color.toColor()))
                                     }
-                                    Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
+                                    Text(buildString { append("${st.txCount[c.id] ?: 0} movimenti"); if (c.parentId == null) ofKind.count { it.parentId == c.id }.takeIf { it > 0 }?.let { append(" · $it sottocategorie") }; c.budgetMonthly?.let { append(" · budget ").append(Money.eur0(it)).append(" al mese") }; if (c.flexible) append(" · comprimibile"); if (!c.active) append(" · disattivata") },
                                         Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                                 }
+                                if (c.parentId == null && ofKind.any { it.parentId == c.id }) IconButton(onClick = { if (c.id in expandedCats) expandedCats.remove(c.id) else expandedCats.add(c.id) }) {
+                                    Icon(if (c.id in expandedCats) Icons.Default.ExpandLess else Icons.Default.ExpandMore, if (c.id in expandedCats) "Nascondi le sottocategorie di ${c.name}" else "Mostra le sottocategorie di ${c.name}")
+                                }
+                                if (c.parentId == null && c.kind != TxKind.TRASFERIMENTO && c.systemKey == null)
+                                    IconButton(onClick = { editCat = Category(0, "", c.kind, true, c.color, null, true, d.categories.size, parentId = c.id, nature = c.nature) }) {
+                                        Icon(Icons.Default.AddCircleOutline, "Aggiungi sottocategoria a ${c.name}")
+                                    }
                             }
                         }
                     }
                 }
                 1 -> {
                     item { Text("Vince la prima regola della lista che corrisponde. Testo semplice = \"contiene\"; con prefisso re: è un'espressione regolare. Le assegnazioni manuali prevalgono sempre.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                    items(d.rules, key = { it.id }) { r ->
+                    items(d.rules.filter { r -> SearchMatcher.matches(q, r.keyword, d.categoryName(r.categoryId)) }, key = { it.id }) { r ->
                         Row(Modifier.fillMaxWidth().clickable { editRule = r }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             CategoryAvatar(d.categoriesById[r.categoryId], size = 44)
                             Column(Modifier.weight(1f)) {
@@ -96,11 +115,11 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                         }
                     }
                 }
-                else -> {
+                2 -> {
                     if (st.unclassified.isEmpty()) item { EmptyState(Icons.Default.CheckCircle, "Tutto classificato", "Ogni movimento ha una categoria da una regola o assegnata a mano.") }
                     else {
                         item { Text("Movimenti senza regola: finiscono in \"Altro\" / \"Altre entrate\". Tocca un esercente per creare una regola.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        items(st.unclassified, key = { it.merchant }) { u ->
+                        items(st.unclassified.filter { SearchMatcher.matches(q, it.merchant, it.sampleDescription) }, key = { it.merchant }) { u ->
                             Row(Modifier.fillMaxWidth().clickable { assign = u }.padding(horizontal = 24.dp).heightIn(min = 72.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Column(Modifier.weight(1f)) { Text(u.merchant, style = MaterialTheme.typography.titleMedium, maxLines = 1); Text("${u.count} movimenti", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                 MoneyText(u.total, decimals = false, style = MaterialTheme.typography.titleMedium)
@@ -108,11 +127,32 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
                         }
                     }
                 }
+                else -> {
+                    item { Text("Quote fisse pagate in contanti, come l'affitto. Quando un prelievo contiene la quota, questa va alla categoria scelta e il resto resta com'è; il prelievo compare in Movimenti › Verifica per un controllo. Puoi scegliere ogni quanto si applica, in quali giorni del mese e se serve un importo esatto; più quote possono convivere nello stesso prelievo.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    if (d.quotas.isEmpty()) item { EmptyState(Icons.Default.Payments, "Nessuna quota", "Tocca + per aggiungere, ad esempio, un affitto da 500 € pagato in contanti.") }
+                    items(d.quotas, key = { it.id }) { q ->
+                        val c = d.categoriesById[q.categoryId]
+                        Row(Modifier.fillMaxWidth().clickable { editQuota = q }.padding(horizontal = 24.dp).heightIn(min = 76.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            CategoryAvatar(c, size = 48)
+                            Column(Modifier.weight(1f)) {
+                                Text(q.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                Text(buildString {
+                                    append(Money.eur0(q.amount)).append(" → ").append(c?.name ?: "?").append(" · ").append(q.mode.label.lowercase())
+                                    if (q.mode != QuotaMode.EVERY && q.everyMonths > 1) append(", ogni ").append(q.everyMonths).append(" mesi")
+                                    if (q.dayFrom > 0 || q.dayTo > 0) append(", giorni ").append(if (q.dayFrom > 0) q.dayFrom else 1).append("–").append(if (q.dayTo > 0) q.dayTo else 31)
+                                }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            Switch(q.enabled, { on -> vm.saveQuota(q.copy(enabled = on)) })
+                        }
+                    }
+                    if (d.quotas.any { it.enabled }) item { OutlinedButton(onClick = vm::applyQuotasNow, Modifier.padding(horizontal = 24.dp, vertical = 12.dp)) { Text("Applica ai prelievi esistenti") } }
+                }
             }
         }
     }
     editCat?.let { c -> CategoryDialog(c, d.categories.indexOfFirst { it.id == c.id }, d.categories.size, d.categories, { editCat = null }, vm) }
     editRule?.let { r -> RuleDialog(r, d, { editRule = null }, vm) }
+    editQuota?.let { q -> QuotaDialog(q, d.categories.filter { it.kind == TxKind.SPESA && it.active }, { editQuota = null }, vm) }
     assign?.let { u ->
         var kw by remember(u) { mutableStateOf(u.keyword) }
         var cat by remember(u) { mutableStateOf<Long?>(null) }
@@ -120,7 +160,7 @@ fun ManageScreen(initialTab: Int, onBack: () -> Unit, vm: CategoriesViewModel = 
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(u.sampleDescription, style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(kw, { kw = it }, label = { Text("Parola chiave") }, singleLine = true)
-                DropdownField("Assegna a", d.categories.firstOrNull { it.id == cat }, d.categories.filter { it.active }, { it.name }, { cat = it.id })
+                it.spese.app.common.CategoryField("Assegna a", d.categories.firstOrNull { it.id == cat }, d.categories, { cat = it.id })
             } },
             confirmButton = { TextButton(enabled = kw.isNotBlank() && cat != null, onClick = { vm.assignUnclassified(kw.trim(), cat!!); assign = null }) { Text("Crea regola e assegna") } },
             dismissButton = { TextButton(onClick = { assign = null }) { Text("Annulla") } })
@@ -150,6 +190,17 @@ private fun CategoryDialog(c: Category, index: Int, total: Int, all: List<Catego
                 val parents = all.filter { it.parentId == null && it.kind == kind && it.id != c.id && it.systemKey == null }
                 if (all.none { it.parentId == c.id && c.id != 0L } && parents.isNotEmpty())
                     DropdownField("Sottocategoria di", parents.firstOrNull { it.id == parentId }, parents, { it.name }, { parentId = it.id }, nullLabel = "Nessuna (categoria principale)", onNull = { parentId = null })
+                parentId?.let { pid ->
+                    val parent = all.firstOrNull { it.id == pid }
+                    val taken = all.filter { it.parentId == pid }.map { it.name.lowercase() }
+                    val ideas = parent?.let { SubcategoryTemplates.suggest(it.name).filter { n -> n.lowercase() !in taken } }.orEmpty()
+                    if (c.id == 0L && ideas.isNotEmpty()) {
+                        Text("Suggerimenti per ${parent?.name}", style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ideas.forEach { n -> AssistChip(onClick = { name = n }, label = { Text(n) }) }
+                        }
+                    }
+                }
                 if (kind == TxKind.SPESA) {
                     Text("Natura della spesa", style = MaterialTheme.typography.labelLarge)
                     ChipChoice(listOf<Pair<SpendNature?, String>>(null to "Non definita") + SpendNature.entries.map { it to it.label }, nature, { nature = it })
@@ -213,7 +264,7 @@ private fun RuleDialog(r: Rule, d: it.spese.domain.repository.AppData, onDismiss
                     AmountField(min, { min = it }, "Importo ≥", Modifier.weight(1f)); AmountField(max, { max = it }, "Importo ≤", Modifier.weight(1f))
                 }
                 Text("Importi in valore assoluto. La parola chiave può restare vuota se usi solo l'importo.", style = MaterialTheme.typography.bodySmall)
-                DropdownField("Categoria", d.categoriesById[cat], d.categories.filter { it.active }, { it.name }, { cat = it.id })
+                it.spese.app.common.CategoryField("Categoria", d.categoriesById[cat], d.categories, { cat = it.id })
                 if (r.id != 0L) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.moveRule(r.id, -1) }) { Icon(Icons.Default.ArrowUpward, null); Text("Su") }
                     OutlinedButton(onClick = { vm.moveRule(r.id, 1) }) { Icon(Icons.Default.ArrowDownward, null); Text("Giù") }
@@ -223,5 +274,44 @@ private fun RuleDialog(r: Rule, d: it.spese.domain.repository.AppData, onDismiss
         },
         confirmButton = { TextButton(enabled = valid && cat != 0L, onClick = {
             vm.saveRule(r.copy(keyword = kw.trim(), sign = sign, min = parseAmountOrNull(min)?.abs() ?: BigDecimal.ZERO, max = parseAmountOrNull(max)?.abs() ?: BigDecimal.ZERO, categoryId = cat)); onDismiss() }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
+
+@Composable
+private fun QuotaDialog(q: CashQuota, categories: List<Category>, onDismiss: () -> Unit, vm: CategoriesViewModel) {
+    var name by remember { mutableStateOf(q.name) }
+    var amount by remember { mutableStateOf(if (q.amount.signum() > 0) q.amount.toPlainString().replace('.', ',') else "") }
+    var cat by remember { mutableStateOf(q.categoryId) }
+    var mode by remember { mutableStateOf(q.mode) }
+    var every by remember { mutableStateOf(q.everyMonths) }
+    var tol by remember { mutableStateOf(if (q.tolerance.signum() > 0) q.tolerance.toPlainString().replace('.', ',') else "") }
+    var from by remember { mutableStateOf(if (q.dayFrom > 0) q.dayFrom.toString() else "") }
+    var to by remember { mutableStateOf(if (q.dayTo > 0) q.dayTo.toString() else "") }
+    fun day(s: String) = s.trim().toIntOrNull()?.coerceIn(0, 31) ?: 0
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (q.id == 0L) "Nuova quota in contanti" else "Modifica quota") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                AmountField(amount, { amount = it }, "Importo (€)", Modifier.fillMaxWidth())
+                it.spese.app.common.CategoryField("Categoria della quota", categories.firstOrNull { it.id == cat }, categories, { cat = it.id })
+                Text("Quando si applica", style = MaterialTheme.typography.labelLarge)
+                ChipChoice(QuotaMode.entries.map { it to it.label }, mode, { mode = it })
+                Text(mode.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (mode == QuotaMode.EXACT) AmountField(tol, { tol = it }, "Tolleranza (€, facoltativa)", Modifier.fillMaxWidth(), supporting = "Es. 500 ± 5: un prelievo da 497 € vale come la quota")
+                if (mode != QuotaMode.EVERY) {
+                    Text("Ripetizione", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(1 to "Ogni mese", 2 to "Ogni 2 mesi", 3 to "Ogni 3 mesi", 6 to "Ogni 6 mesi", 12 to "Ogni anno"), every, { every = it })
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(from, { from = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Dal giorno") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(to, { to = it.filter { c -> c.isDigit() }.take(2) }, label = { Text("Al giorno") }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Text("Giorni del mese in cui cercare il prelievo (facoltativi): utile se l'affitto si paga sempre entro il 10.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (q.id != 0L) TextButton(onClick = { vm.deleteQuota(q.id); onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina quota") }
+            }
+        },
+        confirmButton = { TextButton(enabled = name.isNotBlank() && cat != 0L && (parseAmountOrNull(amount)?.signum() ?: 0) > 0, onClick = {
+            vm.saveQuota(q.copy(name = name, amount = parseAmountOrNull(amount) ?: BigDecimal.ZERO, categoryId = cat, mode = mode, tolerance = if (mode == QuotaMode.EXACT) parseAmountOrNull(tol)?.abs() ?: BigDecimal.ZERO else BigDecimal.ZERO,
+                everyMonths = if (mode == QuotaMode.EVERY) 1 else every, dayFrom = day(from), dayTo = day(to))); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

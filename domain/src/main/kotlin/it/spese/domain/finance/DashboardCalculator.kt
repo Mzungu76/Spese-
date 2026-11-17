@@ -1,6 +1,7 @@
 package it.spese.domain.finance
 
 import it.spese.core.common.Dates
+import it.spese.core.common.MonthCalendar
 import it.spese.core.common.Money
 import it.spese.core.model.SpendNature
 import it.spese.core.model.Account
@@ -23,6 +24,8 @@ import it.spese.domain.simulation.Trends
 data class CategoryRow(
     val category: Category?, val total: BigDecimal, val percentOfExpense: BigDecimal, val monthlyAvg: BigDecimal, val count: Int,
     val previousTotal: BigDecimal? = null,
+    /** Dettaglio per sottocategoria (vuoto se la categoria non ne ha o non ne usa nel periodo). */
+    val children: List<ChildRow> = emptyList(),
 ) {
     val delta: BigDecimal? get() = previousTotal?.let { total - it }
     val changePercent: BigDecimal? get() = previousTotal?.let { Trends.changePercent(it, total) }
@@ -34,6 +37,11 @@ data class CategoryRow(
         return if (p == null) total >= BigDecimal(50) else p >= BigDecimal(15)
     }
 }
+/** Parte di una categoria principale: una sua sottocategoria, oppure (`own`) i movimenti messi direttamente nella principale. */
+data class ChildRow(val category: Category, val total: BigDecimal, val percentOfParent: BigDecimal, val previousTotal: BigDecimal?, val own: Boolean = false) {
+    val delta: BigDecimal? get() = previousTotal?.let { total - it }
+}
+
 data class AccountRow(val account: Account, val income: BigDecimal, val expense: BigDecimal, val transfers: BigDecimal, val balance: BigDecimal)
 
 data class UpcomingItem(val name: String, val amount: BigDecimal, val date: LocalDate, val daysLeft: Int, val manual: Boolean)
@@ -84,15 +92,17 @@ data class DashboardModel(
 object DashboardCalculator {
     fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now()): DashboardModel {
         val filtered = FilterEngine.apply(data.transactions, filter, data.categoriesById)
-        val s = StatsEngine.compute(filtered)
+        val cal = filter.calendar
+        val s = StatsEngine.compute(filtered, cal)
         val mo = StatsEngine.monthsSpan(filtered)
         // periodo precedente: per i mesi, lo stesso tratto del mese prima; altrimenti un periodo di pari durata
-        val range = if (data.transactions.isEmpty()) null else PeriodResolver.resolve(filter.period, data.transactions.minOf { it.bookingDate }, data.transactions.maxOf { it.bookingDate })
-        val prevRange = if (filter.period == Period.All || range?.from == null || range.to == null) null else previousRange(filter.period, range.from, range.to)
+        val range = if (data.transactions.isEmpty()) null else PeriodResolver.resolve(filter.period, data.transactions.minOf { it.bookingDate }, data.transactions.maxOf { it.bookingDate }, cal)
+        val prevRange = if (filter.period == Period.All || range?.from == null || range.to == null) null else previousRange(filter.period, range.from, range.to, cal)
         val previous = prevRange?.let { StatsEngine.compute(FilterEngine.apply(data.transactions, filter.copy(period = Period.Custom(it.first, it.second)), data.categoriesById)) }
         val prevLabel = when {
             prevRange == null -> null
-            filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + Dates.monthLabelLong(YearMonth.from(prevRange.first))
+            filter.period == Period.CurrentWeek -> "rispetto alla settimana scorsa"
+            filter.period == Period.CurrentMonth || filter.period is Period.Month -> "rispetto a " + cal.label(cal.monthOf(prevRange.first))
             else -> "rispetto al periodo precedente"
         }
         // le sottocategorie confluiscono nella categoria principale
@@ -100,13 +110,23 @@ object DashboardCalculator {
         fun top(m: Map<Long?, BigDecimal>) = CategoryTree.rollup(m, byId).entries.filter { it.value.signum() > 0 }.sortedByDescending { it.value }
         val prevExp = previous?.let { CategoryTree.rollup(it.byCategory, byId) }
         val prevInc = previous?.let { CategoryTree.rollup(it.incomeByCategory, byId) }
+        fun childrenOf(id: Long?, parentTotal: BigDecimal, cur: Map<Long?, BigDecimal>, prev: Map<Long?, BigDecimal>?): List<ChildRow> {
+            val parent = byId[id] ?: return emptyList()
+            val kids = cur.filter { (cid, v) -> cid != id && v.signum() > 0 && CategoryTree.rootId(cid, byId) == id }
+            if (kids.isEmpty()) return emptyList()
+            val rows = kids.mapNotNull { (cid, v) -> byId[cid]?.let { ChildRow(it, v, Money.percent(v, parentTotal), prev?.let { p -> p[cid] ?: BigDecimal.ZERO }) } }.toMutableList()
+            cur[id]?.takeIf { it.signum() > 0 }?.let { rows += ChildRow(parent, it, Money.percent(it, parentTotal), prev?.let { p -> p[id] ?: BigDecimal.ZERO }, own = true) }
+            return rows.sortedByDescending { it.total }
+        }
         val cats = top(s.byCategory).map { (id, v) ->
             CategoryRow(byId[id], v, Money.percent(v, s.expense), v.divide(mo, 10, RoundingMode.HALF_UP),
-                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.SPESA }, prevExp?.let { it[id] ?: BigDecimal.ZERO })
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.SPESA }, prevExp?.let { it[id] ?: BigDecimal.ZERO },
+                childrenOf(id, v, s.byCategory, previous?.byCategory))
         }
         val incomeCats = top(s.incomeByCategory).map { (id, v) ->
             CategoryRow(byId[id], v, Money.percent(v, s.income), v.divide(mo, 10, RoundingMode.HALF_UP),
-                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.ENTRATA }, prevInc?.let { it[id] ?: BigDecimal.ZERO })
+                filtered.count { CategoryTree.rootId(it.categoryId, byId) == id && it.kind == TxKind.ENTRATA }, prevInc?.let { it[id] ?: BigDecimal.ZERO },
+                childrenOf(id, v, s.incomeByCategory, previous?.incomeByCategory))
         }
         val accRows = data.accounts.map { a ->
             val q = StatsEngine.compute(filtered.filter { it.accountId == a.id })
@@ -114,12 +134,12 @@ object DashboardCalculator {
         }
         val accTx = data.transactions.filter { filter.accountId == null || it.accountId == filter.accountId }
         val today = AlertEngine.referenceToday(realToday, accTx)
-        val alerts = AlertEngine.compute(accTx, data.categories, data.goal, data.dues, today, RecurringDetector.defaultExclusions(data.categories))
+        val alerts = AlertEngine.compute(accTx, data.categories, data.goal, data.dues, today, RecurringDetector.defaultExclusions(data.categories), cal)
         val opening = data.accounts.filter { filter.accountId == null || it.id == filter.accountId }.fold(BigDecimal.ZERO) { a, c -> a + c.openingBalance }
         // ritmo del mese di riferimento
-        val ym = YearMonth.from(today)
-        val spent = AlertEngine.monthlySpending(accTx, ym).values.fold(BigDecimal.ZERO) { a, b -> a + b }
-        val dd = today.dayOfMonth; val dim = ym.lengthOfMonth()
+        val ym = cal.monthOf(today)
+        val spent = AlertEngine.monthlySpending(accTx, ym, cal).values.fold(BigDecimal.ZERO) { a, b -> a + b }
+        val dd = cal.dayIndex(today); val dim = cal.length(ym)
         val pace = if (accTx.isEmpty()) null else MonthPace(ym, spent, spent.divide(BigDecimal(dd), 10, RoundingMode.HALF_UP),
             if (dd < dim) spent.multiply(BigDecimal(dim)).divide(BigDecimal(dd), 10, RoundingMode.HALF_UP) else spent, dd, dim)
         // prossime scadenze (manuali + ricorrenze rilevate)
@@ -133,7 +153,7 @@ object DashboardCalculator {
             StatsEngine.biggestExpenses(filtered, 10), StatsEngine.topMerchants(s, 12), accRows, alerts,
             StatsEngine.cumulativeNet(s), StatsEngine.balance(accTx, opening), today,
             previous = previous, monthPace = pace, upcoming = upcomingAll.take(5), upcoming30 = upcomingAll.filter { it.daysLeft >= 0 }.fold(BigDecimal.ZERO) { a, b -> a + b.amount },
-            budgets = AlertEngine.budgetUsage(accTx, data.categories, ym).sortedByDescending { it.percent }, goalMonthly = goalM,
+            budgets = AlertEngine.budgetUsage(accTx, data.categories, ym, cal).sortedByDescending { it.percent }, goalMonthly = goalM,
             savingsPerMonth = s.net.divide(mo, 10, RoundingMode.HALF_UP),
             unclassified = data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO },
             topChanges = if (previous == null) emptyList() else Trends.categoryVariation(previous.byCategory, s.byCategory).take(3),
@@ -143,10 +163,16 @@ object DashboardCalculator {
     }
 
     /** Periodo di confronto: per un mese, gli stessi giorni del mese prima; altrimenti i giorni immediatamente precedenti, in pari numero. */
-    internal fun previousRange(period: Period, from: LocalDate, to: LocalDate): Pair<LocalDate, LocalDate> =
-        if (period == Period.CurrentMonth || period is Period.Month) {
-            val pm = YearMonth.from(from).minusMonths(1)
-            pm.atDay(1) to pm.atDay(minOf(to.dayOfMonth, pm.lengthOfMonth()))
+    internal fun previousRange(period: Period, from: LocalDate, to: LocalDate, cal: MonthCalendar = MonthCalendar.SOLAR): Pair<LocalDate, LocalDate> =
+        if (period == Period.CurrentWeek) {
+            // stessi giorni della settimana scorsa (lunedì-… fino allo stesso giorno)
+            val monday = to.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+            monday.minusWeeks(1) to monday.minusWeeks(1).plusDays(ChronoUnit.DAYS.between(monday, to))
+        } else if (period == Period.CurrentMonth || period is Period.Month) {
+            val cur = cal.monthOf(from); val pm = cur.minusMonths(1)
+            val pFrom = cal.start(pm)
+            val pTo = minOf(pFrom.plusDays(to.toEpochDay() - cal.start(cur).toEpochDay()), cal.end(pm))
+            pFrom to pTo
         } else {
             val days = ChronoUnit.DAYS.between(from, to) + 1
             from.minusDays(days) to from.minusDays(1)

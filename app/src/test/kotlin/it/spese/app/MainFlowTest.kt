@@ -41,6 +41,7 @@ class MainFlowTest {
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
+    @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
 
     @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
 
@@ -87,6 +88,42 @@ class MainFlowTest {
         compose.waitUntil(5000) { compose.onAllNodesWithText("COOP ALLEANZA", substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    @Test fun il_filtro_settimana_con_movimenti_recenti_non_fa_crollare_panoramica_e_categorie() {
+        // movimenti fino a oggi (il periodo di riferimento è la data reale, non l'ultimo movimento)
+        val acc = runBlocking { data.first { it.loaded }.accounts.firstOrNull()?.id ?: 1L }
+        val cats = runBlocking { data.first { it.loaded }.categories }
+        val super_ = cats.first { it.name == "Supermercato e alimentari" }
+        val today = java.time.LocalDate.now()
+        val items = (0 until 160).map { k ->
+            val d = today.minusDays(k.toLong()); val spend = it.spese.domain.repository.NewTransaction("t$k", "t$k", acc, d, d, "COOP $k", java.math.BigDecimal("-${10 + k % 37}.50"), it.spese.core.model.TxKind.SPESA, super_.id, true, null, null, "", it.spese.core.model.TxOrigin.MANUAL)
+            if (k % 28 == 0) listOf(spend, it.spese.domain.repository.NewTransaction("i$k", "i$k", acc, d, d, "Stipendio", java.math.BigDecimal("1800.00"), it.spese.core.model.TxKind.ENTRATA, null, false, null, null, "", it.spese.core.model.TxOrigin.MANUAL)) else listOf(spend)
+        }.flatten()
+        runBlocking { txRepo.insertAll(items) }
+        compose.waitUntil(10000) { data.value.transactions.size >= 160 }
+        waitText("Entrate"); waitText("Spese")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
+        compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true)); waitText("Ritmo di spesa", substring = true)
+        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        waitText("Supermercato e alimentari")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
+        compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+        waitText("Speso nel periodo")
+    }
+
+    @Test fun il_filtro_settimana_e_gli_altri_periodi_non_fanno_crollare_la_panoramica() {
+        val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
+        runBlocking { restore(env, RestoreMode.Replace) }
+        compose.waitUntil(10000) { data.value.transactions.size == 223 }
+        waitText("Entrate"); waitText("Spese")
+        listOf("Sett.", "3 mesi", "Anno", "Tutto", "Mese", "Sett.").forEach { p ->
+            compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText(p))
+            compose.onNodeWithText(p).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
+            compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true))
+            waitText("Ritmo di spesa", substring = true)
+        }
+    }
+
     @Test fun backup_della_versione_html_ripristinato_e_mostrato_nella_panoramica() {
         val env = LegacyBackupCodec.parse(String(javaClass.getResourceAsStream("/backupA.json")!!.readBytes()))
         runBlocking { restore(env, RestoreMode.Replace) }
@@ -94,6 +131,7 @@ class MainFlowTest {
         waitText("Hai ", substring = true, ms = 10000)   // "Hai messo da parte" oppure "Hai speso in più…"
         waitText("Entrate"); waitText("Spese")
         // avvisi calcolati sui dati importati (budget superati, scadenze…)
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("da guardare", substring = true))   // la scheda del ritmo di spesa sta sopra gli avvisi
         waitText("da guardare", substring = true)
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
     }
@@ -118,21 +156,51 @@ class MainFlowTest {
         // di partenza l'app mostra il mese corrente: per contare tutti i movimenti si sceglie "Tutto"
         filters.update { f -> f.copy(period = it.spese.domain.finance.Period.All) }
         goTab("Movimenti"); waitText("223 movimenti")
+        // ricerca testuale: il campo non perde lettere e la lista si restringe
+        compose.onNodeWithContentDescription("Cerca").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.onNodeWithTag("search_field").performTextInput("coop")
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.onAllNodesWithText("223 movimenti").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("search_field").assert(hasText("coop"))
+        compose.onNodeWithContentDescription("Cancella ricerca").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("223 movimenti")
+        // sezione Verifica dei movimenti incerti
+        compose.onNodeWithTag("review_toggle").assertExists()
+        compose.onNodeWithText("Verifica", substring = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(8000) { compose.onAllNodesWithText("Tutto a posto").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("da controllare", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Tutti").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("223 movimenti")
         goTab("Categorie"); waitText("Supermercato e alimentari")
+        // tendenze per categoria con proiezioni
+        compose.onNode(hasText("Tendenze") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Bilancio mensile atteso"); waitText("Effetto cumulato")
+        compose.onNodeWithContentDescription("Indietro").performClick(); waitText("Supermercato e alimentari")
         // dettaglio di una categoria: esercenti e andamento
-        compose.onNodeWithText("Supermercato e alimentari").performClick(); waitText("Budget mensile")
+        val row = hasText("Supermercato e alimentari") and hasClickAction()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(row)      // il grafico occupa lo schermo: si scorre fino alla riga della classifica
+        compose.onNode(row).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); waitText("Budget mensile")
         // simulazione "e se la riducessi?": il taglio si salva nello scenario di base del Piano
         compose.onNode(hasScrollAction()).performScrollToNode(hasText("E se la riducessi?"))
         compose.onNode(hasText("Salva nel Piano") and hasClickAction()).assertIsEnabled().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         val superId = data.value.categories.first { it.name == "Supermercato e alimentari" }.id
         compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.cuts[superId] == 20 }
-        compose.onNodeWithContentDescription("Indietro").performClick(); waitText("Regole · 32")
+        compose.onNodeWithContentDescription("Indietro").performClick(); compose.waitForIdle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Regole · 32")); waitText("Regole · 32")
         // Gestione: regole e "Da fare"
         compose.onNodeWithText("Regole · 32").performClick(); waitText("Vince la prima regola", substring = true)
         compose.onNodeWithText("Da fare", substring = true).performClick(); compose.waitForIdle()
         compose.onNodeWithContentDescription("Indietro").performClick(); compose.waitForIdle()
         goTab("Piano"); waitText("Risultato della simulazione"); waitText("Obiettivo di risparmio", substring = true)
         goTab("Panoramica")
+        // confronto di categorie in Home: grafico e incidenza sulle entrate
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Confronta"))
+        compose.onNode(hasText("Confronta") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Fine")
+        val rankId = data.value.categories.first { it.name == "Supermercato e alimentari" }.id
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasTestTag("rank-$rankId"))
+        compose.onNodeWithTag("rank-$rankId").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        repeat(30) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); Thread.sleep(100) }   // il confronto si calcola fuori dal thread principale
+        compose.waitForIdle()
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Incidenza sulle entrate"))
+        waitText("Incidenza sulle entrate", substring = true)
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Azzera")); compose.onNode(hasText("Azzera") and hasClickAction()).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         compose.onNode(hasContentDescription("Avvisi", substring = true)).performClick()
         waitText("Budget del mese in corso"); waitText("superato", substring = true)
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
@@ -147,16 +215,48 @@ class MainFlowTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
 
-        openMenu("Backup e impostazioni"); waitText("Backup e ripristino"); waitText("Sincronizzazione con un file condiviso")
+        openMenu("Backup e impostazioni"); waitText("Backup e ripristino")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sincronizzazione con un file condiviso")); waitText("Sincronizzazione con un file condiviso")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Movimenti automatici"))
+        // Movimenti automatici: schermata di impostazione e prova del riconoscimento
+        compose.onNode(hasText("Imposta") and hasClickAction()).performScrollTo().performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Accesso alle notifiche"); waitText("Interruttore grigio", substring = true); waitText("Revolut"); waitText("Google Wallet")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Prova un testo"))
+        compose.onNodeWithText("Testo").performTextInput("Hai pagato 12,50 € a COOP SPA con carta")
+        waitText("Riconosciuta", substring = true)
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.waitForIdle()
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         compose.waitForIdle()
         openMenu("Conti"); waitText("Intesa"); waitText("Revolut")
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }; compose.waitForIdle()
+        // Report PDF: modelli, personalizzazione e creazione
+        openMenu("Report PDF"); waitText("Modelli pronti")
+        compose.onNodeWithTag("preset_monthly").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Titolo e nota")
+        compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasTestTag("report_generate"))
+        compose.onNodeWithTag("report_generate").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(20000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); compose.onAllNodesWithTag("report_save").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Il tuo report", substring = true).fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Nessun movimento nel periodo").fetchSemanticsNodes().isNotEmpty() || compose.onAllNodesWithText("Impossibile creare il report", substring = true).fetchSemanticsNodes().isNotEmpty() }   // sulla JVM di prova PdfDocument non c'è: basta che la richiesta parta e risponda
     }
 
     @Test fun il_pulsante_piu_apre_le_quattro_azioni() {
         compose.waitForIdle()
         compose.onNodeWithTag("fab_add").performClick()
-        listOf("add_manual", "add_scan", "add_import", "add_restore").forEach { compose.onNodeWithTag(it).assertExists() }
+        listOf("add_manual", "add_scan", "add_import", "add_recurring", "add_restore").forEach { compose.onNodeWithTag(it).assertExists() }
         waitText("Cosa vuoi aggiungere?")
+    }
+
+    @Test fun entrata_ricorrente_in_elenco_e_movimento_generato_alla_ripresa() {
+        // (la finestra di modifica con i campi di testo non si può aprire nei test Robolectric: va in ciclo di layout; la logica è provata in :data)
+        val today = java.time.LocalDate.now()
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), null, null, 1, today.dayOfMonth, today)) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("fab_add").performClick()
+        compose.onNodeWithTag("add_recurring").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Stipendio ACME"); waitText("ogni mese", substring = true)
+        compose.onNodeWithTag("recurring_add").assertExists()
+        // il movimento di oggi viene creato come provvisorio (all'avvio o alla ripresa dell'app)
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.ledger.any { t -> t.description == "Stipendio ACME" && t.origin == it.spese.core.model.TxOrigin.RECURRING } }
     }
 }

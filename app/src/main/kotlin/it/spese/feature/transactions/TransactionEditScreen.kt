@@ -46,7 +46,7 @@ fun TransactionEditScreen(onBack: () -> Unit, vm: TransactionEditViewModel = hil
                 DateField(f.date, { d -> vm.edit { it.copy(date = d, valueDate = if (it.valueDate == it.date) d else it.valueDate) } }, "Data contabile", Modifier.weight(1f))
                 DateField(f.valueDate, { d -> vm.edit { it.copy(valueDate = d) } }, "Data valuta", Modifier.weight(1f))
             }
-            DropdownField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }.takeIf { f.manualCategory }, data.categories.filter { it.active }, { it.name + " · " + it.kind.label },
+            it.spese.app.common.CategoryField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }.takeIf { f.manualCategory }, data.categories,
                 { c -> vm.edit { it.copy(categoryId = c.id, manualCategory = true) } }, nullLabel = if (vm.txId == 0L || !f.manualCategory) "Automatica (regole)" + (data.categoriesById[f.categoryId]?.let { " → ${it.name}" } ?: "") else "Automatica (regole)",
                 onNull = { vm.edit { it.copy(manualCategory = false, categoryId = null) } })
             Text("La categoria scelta a mano prevale sempre sulle regole automatiche.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -80,7 +80,7 @@ fun TransactionEditScreen(onBack: () -> Unit, vm: TransactionEditViewModel = hil
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Tutti i movimenti che contengono la parola chiave andranno nella categoria scelta (la regola va in cima alla lista).", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(kw, { kw = it }, label = { Text("Parola chiave") }, singleLine = true)
-                    DropdownField("Categoria", data.categories.firstOrNull { it.id == cat }, data.categories.filter { it.active }, { it.name }, { cat = it.id })
+                    it.spese.app.common.CategoryField("Categoria", data.categories.firstOrNull { it.id == cat }, data.categories, { cat = it.id })
                 }
             },
             confirmButton = { TextButton(enabled = kw.isNotBlank() && cat != null, onClick = { vm.createRule(kw.trim(), cat!!); ruleDialog = false }) { Text("Crea regola") } },

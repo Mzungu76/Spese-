@@ -109,4 +109,47 @@ class MigrationTest {
         }
         db.close()
     }
+
+    @Test fun `la migrazione 4-5 aggiunge parti, quote e il flag controllato, senza toccare i movimenti`() {
+        helper.createDatabase("test-splits", 4).apply {
+            execSQL("INSERT INTO accounts (name, type, openingCents, archived) VALUES ('Intesa', 'CONTO', 0, 0)")
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Contanti', 'spesa', 1, 4286611584, 1, 0, 0, 0)")
+            execSQL("INSERT INTO transactions (externalId, dedupKey, accountId, bookingDate, valueDate, description, amountCents, kind, categoryId, manualCategory, manualUpdatedAt, notes, origin, createdAt) VALUES ('e1', 'k1', 1, 19800, 19800, 'Prelievo', -80000, 'spesa', 1, 0, 0, '', 'IMPORT_FILE', 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-splits", 5, true, AppDatabase.MIGRATION_4_5)
+        db.query("SELECT amountCents, reviewed FROM transactions").use { c -> assertTrue(c.moveToFirst()); assertEquals(-80000L, c.getLong(0)); assertEquals(0, c.getInt(1)) }
+        db.execSQL("PRAGMA foreign_keys = ON")
+        db.execSQL("INSERT INTO transaction_splits (txId, categoryId, amountCents, position, auto, quotaId) VALUES (1, 1, -50000, 0, 1, NULL)")
+        db.execSQL("INSERT INTO cash_quotas (name, categoryId, amountCents, enabled) VALUES ('Affitto', 1, 50000, 1)")
+        db.execSQL("DELETE FROM transactions WHERE id = 1")
+        db.query("SELECT COUNT(*) FROM transaction_splits").use { c -> assertTrue(c.moveToFirst()); assertEquals(0, c.getInt(0)) }   // le parti seguono il movimento
+        db.close()
+    }
+
+    @Test fun `la migrazione 5-6 aggiunge le opzioni delle quote conservando quelle esistenti`() {
+        helper.createDatabase("test-quota", 5).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Affitto', 'spesa', 0, 4286611584, 1, 0, 0, 0)")
+            execSQL("INSERT INTO cash_quotas (name, categoryId, amountCents, enabled) VALUES ('Affitto', 1, 50000, 1)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-quota", 6, true, AppDatabase.MIGRATION_5_6)
+        db.query("SELECT name, amountCents, mode, toleranceCents, everyMonths, dayFrom, dayTo FROM cash_quotas").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Affitto", c.getString(0)); assertEquals(50000L, c.getLong(1))
+            assertEquals("c", c.getString(2)); assertEquals(0L, c.getLong(3)); assertEquals(1, c.getInt(4)); assertEquals(0, c.getInt(5)); assertEquals(0, c.getInt(6))
+        }
+        db.close()
+    }
+
+    @Test fun `la migrazione 6-7 aggiunge le regole ricorrenti senza toccare i dati`() {
+        helper.createDatabase("test-recurring", 6).apply {
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Stipendio', 'entrata', 0, 4286611584, 1, 0, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-recurring", 7, true, AppDatabase.MIGRATION_6_7)
+        db.execSQL("INSERT INTO recurring_rules (name, kind, amountCents, accountId, categoryId, everyMonths, dayOfMonth, startDate, endDate, enabled, autoConfirm, lastGenerated) VALUES ('Stipendio', 'entrata', 200000, NULL, 1, 1, 27, 20000, NULL, 1, 0, NULL)")
+        db.query("SELECT name, amountCents, everyMonths FROM recurring_rules").use { c -> assertTrue(c.moveToFirst()); assertEquals("Stipendio", c.getString(0)); assertEquals(200000L, c.getLong(1)); assertEquals(1, c.getInt(2)) }
+        db.query("SELECT COUNT(*) FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+        db.close()
+    }
 }

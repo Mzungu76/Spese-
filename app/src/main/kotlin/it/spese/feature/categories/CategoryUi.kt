@@ -2,8 +2,11 @@ package it.spese.feature.categories
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,10 +47,16 @@ fun ChangeChip(row: CategoryRow, kind: TxKind, modifier: Modifier = Modifier) {
  * Con un budget impostato mostra anche quanto ne è stato usato nel mese di riferimento.
  */
 @Composable
-fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClick: () -> Unit, modifier: Modifier = Modifier, budget: BudgetUsage? = null, showNature: Boolean = false) {
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun CategoryRankRow(
+    row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClick: () -> Unit, modifier: Modifier = Modifier, budget: BudgetUsage? = null, showNature: Boolean = false,
+    selectable: Boolean = false, selected: Boolean = false, onLongClick: (() -> Unit)? = null,
+) {
     val c = row.category
     val color = c?.color?.toColor() ?: MaterialTheme.colorScheme.outline
-    Row(modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(modifier.fillMaxWidth().background(if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else androidx.compose.ui.graphics.Color.Transparent)
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (selectable) androidx.compose.material3.Checkbox(selected, null)
         CategoryAvatar(c, size = 48)
         Column(Modifier.weight(1f)) {
             Text(c?.name ?: "Senza categoria", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -71,8 +80,8 @@ fun CategoryRankRow(row: CategoryRow, kind: TxKind, maxTotal: BigDecimal, onClic
 /** Selettore del periodo condiviso (Mese / 3 mesi / Anno / Tutto): i periodi non previsti ricadono su "Tutto". */
 @Composable
 fun PeriodPills(period: Period, onSet: (Period) -> Unit, modifier: Modifier = Modifier) {
-    val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth -> period; else -> Period.All }
-    PillSegmented(listOf<Pair<Period, String>>(Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
+    val shown: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> period; else -> Period.All }
+    PillSegmented(listOf<Pair<Period, String>>(Period.CurrentWeek to "Sett.", Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shown, onSet, modifier)
 }
 
 private fun natureColorOf(n: SpendNature?, scheme: androidx.compose.material3.ColorScheme, warn: androidx.compose.ui.graphics.Color) = when (n) {
@@ -144,6 +153,81 @@ fun OpportunitiesCard(list: List<it.spese.domain.finance.Opportunity>, onOpen: (
                     Text("spendi ${Money.eur0(o.row.monthlyAvg)} al mese", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text("−" + Money.eur0(o.monthlySaving) + "/mese", color = SpeseTheme.finance.positive, fontWeight = FontWeight.SemiBold)
+            }
+        }
+    }
+}
+
+/**
+ * Confronto di categorie nella Home: scelte (togliibili), andamento accanto alle entrate e incidenza di ciascuna
+ * (e del totale delle spese scelte) sulle entrate del periodo.
+ */
+@Composable
+fun ComparisonSection(c: it.spese.domain.finance.CategoryComparison, onRemove: (Long) -> Unit, onClear: () -> Unit, modifier: Modifier = Modifier) {
+    val fin = SpeseTheme.finance
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            c.categories.forEach { k ->
+                androidx.compose.material3.InputChip(true, { onRemove(k.category.id) }, { Text(k.category.name, maxLines = 1) },
+                    leadingIcon = { ColorDot(k.category.color.toColor()) },
+                    trailingIcon = { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Close, "Togli ${k.category.name}", Modifier.size(16.dp)) })
+            }
+            TextButton(onClick = onClear) { Text("Azzera") }
+        }
+        Column(Modifier.padding(horizontal = 24.dp)) {
+            it.spese.core.designsystem.chart.Legend(c.categories.map { it.category.name to it.category.color.toColor() } + listOf("Entrate del periodo" to fin.positive))
+            it.spese.core.designsystem.chart.BarLineChart(c.labels,
+                c.categories.map { k -> it.spese.core.designsystem.chart.ChartSeries(k.category.name, k.category.color.toColor(), k.series) },
+                lines = listOf(it.spese.core.designsystem.chart.ChartSeries("Entrate", fin.positive, c.income)), height = 260.dp, interactive = false)
+        }
+        SectionCard(Modifier.padding(horizontal = 16.dp), title = "Incidenza sulle entrate") {
+            Text("Entrate del periodo: ${Money.eur0(c.periodIncome)} · spese: ${Money.eur0(c.periodExpense)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            c.categories.forEach { k ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    CategoryAvatar(k.category, size = 36)
+                    Column(Modifier.weight(1f)) {
+                        Text(k.category.name, style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                        Text(buildString {
+                            k.percentOfIncome?.let { append(it.toPlainString().replace('.', ',')).append("% delle entrate") } ?: append("nessuna entrata nel periodo")
+                            k.percentOfExpense?.let { append(" · ").append(it.toPlainString().replace('.', ',')).append("% delle spese") }
+                        }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    MoneyText(k.total, decimals = false, colored = k.category.kind == TxKind.ENTRATA, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+            if (c.categories.count { it.category.kind == TxKind.SPESA } > 1) {
+                androidx.compose.material3.HorizontalDivider()
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Totale spese scelte", style = MaterialTheme.typography.titleSmall)
+                        Text(c.selectedExpenseOfIncome?.let { it.toPlainString().replace('.', ',') + "% delle entrate" } ?: "nessuna entrata nel periodo", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    MoneyText(c.selectedExpense, decimals = false, colored = false, style = MaterialTheme.typography.titleSmall)
+                }
+            }
+        }
+    }
+}
+
+
+/** Dettaglio per sottocategoria sotto la riga di una categoria principale (la quota "Altro" è ciò che non ha una sottocategoria). */
+@Composable
+fun ChildRows(row: CategoryRow, kind: TxKind, onOpen: (Long) -> Unit) {
+    Column(Modifier.fillMaxWidth().padding(start = 72.dp, end = 24.dp, bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        row.children.forEach { ch ->
+            Row(Modifier.fillMaxWidth().clickable { if (!ch.own) onOpen(ch.category.id) }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CategoryAvatar(ch.category, size = 32)
+                Column(Modifier.weight(1f)) {
+                    Text(if (ch.own) "Altro (senza sottocategoria)" else ch.category.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+                        Box(Modifier.fillMaxWidth((ch.percentOfParent.toFloat() / 100f).coerceIn(0.03f, 1f)).height(3.dp).background(ch.category.color.toColor()))
+                    }
+                    Text(ch.percentOfParent.toPlainString().replace('.', ',') + "% della categoria", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    MoneyText(ch.total, decimals = false, colored = kind == TxKind.ENTRATA, style = MaterialTheme.typography.titleSmall)
+                    ch.delta?.let { d -> if (d.signum() != 0) DeltaBadge(d, upIsGood = kind == TxKind.ENTRATA) }
+                }
             }
         }
     }

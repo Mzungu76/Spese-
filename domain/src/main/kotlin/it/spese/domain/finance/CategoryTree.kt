@@ -23,4 +23,15 @@ object CategoryTree {
         values.forEach { (id, v) -> out.merge(rootId(id, byId), v) { a, b -> a + b } }
         return out
     }
+
+    /** "Casa › Bollette" per le sottocategorie, il solo nome per le principali. */
+    fun label(c: Category, byId: Map<Long, Category>): String = c.parentId?.let { byId[it] }?.let { "${it.name} › ${c.name}" } ?: c.name
+
+    /** Categorie ordinate come l'albero (principale seguita dalle sue sottocategorie), solo quelle attive. */
+    fun ordered(categories: Collection<Category>): List<Category> {
+        val active = categories.filter { it.active }
+        val ids = active.map { it.id }.toSet()
+        val roots = active.filter { it.parentId == null || it.parentId !in ids }
+        return roots.flatMap { r -> listOf(r) + active.filter { it.parentId == r.id } }
+    }
 }

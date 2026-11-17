@@ -8,7 +8,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -58,13 +66,19 @@ fun GapAreaChart(points: List<GapPoint>, modifier: Modifier = Modifier, height: 
     val tm = rememberTextMeasurer()
     var sel by remember(points) { mutableIntStateOf(points.lastIndex) }
     var widthPx by remember { mutableIntStateOf(0) }
+    // all'apparizione e a ogni cambio di dati le curve si disegnano da sinistra a destra, e le aree si colorano mentre passano
+    val reveal = remember { Animatable(0f) }
+    LaunchedEffect(points) { reveal.snapTo(0f); reveal.animateTo(1f, tween(950, easing = CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) }
+    // il marcatore scivola da un punto all'altro invece di saltare
+    val selPos by animateFloatAsState(sel.toFloat(), spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow), label = "sel")
     val density = LocalDensity.current
     val maxV = (points.maxOf { maxOf(it.income, it.expense) }.toDouble() * 1.12).takeIf { it > 0 } ?: 1.0
     val labelH = with(density) { 24.dp.toPx() }
     val topPad = with(density) { 56.dp.toPx() }          // spazio per la nuvoletta
     val step = if (points.size > 12) (points.size + 8) / 9 else 1
 
-    fun xOf(i: Int, w: Float) = if (points.size == 1) w / 2f else i * (w / (points.size - 1))
+    fun xOfF(i: Float, w: Float): Float = if (points.size == 1) w / 2f else i * (w / (points.size - 1))
+    fun xOf(i: Int, w: Float): Float = xOfF(i.toFloat(), w)
     fun nearest(x: Float, w: Float) = (0 until points.size).minByOrNull { abs(xOf(it, w) - x) } ?: 0
 
     val p = points[sel]
@@ -78,6 +92,7 @@ fun GapAreaChart(points: List<GapPoint>, modifier: Modifier = Modifier, height: 
             fun y(v: BigDecimal) = topPad + h - (v.toDouble() / maxV * h).toFloat()
             // griglia
             for (i in 0..3) drawLine(line, Offset(0f, topPad + h * i / 3f), Offset(w, topPad + h * i / 3f), 1f)
+            clipRect(left = 0f, top = 0f, right = w * reveal.value + 2f, bottom = size.height) {
             // aree tra le curve, segmento per segmento (con il punto d'incrocio quando le curve si scambiano)
             for (i in 0 until points.size - 1) {
                 val x0 = xOf(i, w); val x1 = xOf(i + 1, w)
@@ -99,11 +114,17 @@ fun GapAreaChart(points: List<GapPoint>, modifier: Modifier = Modifier, height: 
                 drawPath(path, c, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
             curve({ it.income }, green); curve({ it.expense }, red)
+            }
             // selezione
-            val sx = xOf(sel, w)
-            drawLine(labelColor.copy(alpha = 0.6f), Offset(sx, topPad - 6.dp.toPx()), Offset(sx, topPad + h), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)))
-            for ((v, c) in listOf(p.income to green, p.expense to red)) {
-                drawCircle(bg, 7.dp.toPx(), Offset(sx, y(v))); drawCircle(c, 7.dp.toPx(), Offset(sx, y(v)), style = Stroke(3.dp.toPx()))
+            val sx = xOfF(selPos, w)
+            val lo = selPos.toInt().coerceIn(0, points.lastIndex); val hi = (lo + 1).coerceAtMost(points.lastIndex); val f = (selPos - lo).coerceIn(0f, 1f)
+            fun lerp(a: BigDecimal, b: BigDecimal) = a.toDouble() + (b.toDouble() - a.toDouble()) * f
+            fun yD(v: Double) = topPad + h - (v / maxV * h).toFloat()
+            val markerAlpha = ((reveal.value - 0.7f) / 0.3f).coerceIn(0f, 1f)
+            drawLine(labelColor.copy(alpha = 0.6f * markerAlpha), Offset(sx, topPad - 6.dp.toPx()), Offset(sx, topPad + h), 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f)))
+            for ((v, c) in listOf(lerp(points[lo].income, points[hi].income) to green, lerp(points[lo].expense, points[hi].expense) to red)) {
+                val cy = yD(v)
+                drawCircle(bg.copy(alpha = markerAlpha), 7.dp.toPx(), Offset(sx, cy)); drawCircle(c.copy(alpha = markerAlpha), 7.dp.toPx(), Offset(sx, cy), style = Stroke(3.dp.toPx()))
             }
             // etichette asse X
             points.forEachIndexed { i, pt ->
@@ -116,10 +137,15 @@ fun GapAreaChart(points: List<GapPoint>, modifier: Modifier = Modifier, height: 
         }
         // nuvoletta
         val bubbleW = 196.dp; val bubbleWpx = with(density) { bubbleW.toPx() }
-        val bx = (xOf(sel, widthPx.toFloat()) - bubbleWpx / 2f).coerceIn(0f, (widthPx - bubbleWpx).coerceAtLeast(0f))
+        val bx = (xOfF(selPos, widthPx.toFloat()) - bubbleWpx / 2f).coerceIn(0f, (widthPx - bubbleWpx).coerceAtLeast(0f))
         Column(Modifier.offset { IntOffset(bx.roundToInt(), 0) }.width(bubbleW).shadow(8.dp, RoundedCornerShape(16.dp)).background(MaterialTheme.colorScheme.onSurface, RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 8.dp)) {
-            Text(p.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), maxLines = 1)
-            Text(if (net.signum() >= 0) "+${Money.eur0(net)} messi da parte" else "${Money.eur0(net)} spesi in più", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.surface, maxLines = 1)
+            Crossfade(sel, animationSpec = tween(180), label = "bubble") { i ->
+                val q = points[i.coerceIn(0, points.lastIndex)]; val nn = q.income - q.expense
+                Column {
+                    Text(q.title, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f), maxLines = 1)
+            Text(if (nn.signum() >= 0) "+${Money.eur0(nn)} messi da parte" else "${Money.eur0(nn)} spesi in più", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.surface, maxLines = 1)
+                }
+            }
         }
     }
 }

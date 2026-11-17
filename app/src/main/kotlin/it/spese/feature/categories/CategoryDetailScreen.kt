@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -65,8 +66,23 @@ fun CategoryDetailScreen(onBack: () -> Unit, onOpenTransaction: (Long) -> Unit, 
                         lines = listOf(ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, d.months.map { d.monthlyAvg })), height = 200.dp, interactive = false)
                 }
             }
+            if (d.subcategories.isEmpty() && d.category.parentId == null && spese) item(key = "subs-hint") {
+                Text("Vuoi più dettaglio? In Gestione › Categorie tocca ⊕ accanto a ${d.category.name} per creare sottocategorie e assegnare ad esse i singoli movimenti.",
+                    Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (d.subcategories.isNotEmpty()) item(key = "subs") {
                 SectionCard(Modifier.padding(horizontal = 16.dp), title = "Sottocategorie") {
+                    // grafico: torta, barre o tutti e due; la quota senza sottocategoria compare come «Altro»
+                    var mode by rememberSaveable { mutableIntStateOf(2) }
+                    val own = d.total - d.subcategories.fold(BigDecimal.ZERO) { a, r -> a + r.total }
+                    val palette = it.spese.domain.classification.DefaultData.PALETTE
+                    val parts = d.subcategories.map { r -> r.category.name to r.total } + (if (own.signum() > 0) listOf("Altro (senza sottocategoria)" to own) else emptyList())
+                    val slices = parts.mapIndexed { i, (n, v) -> it.spese.core.designsystem.chart.Slice(n, v, palette[i % palette.size].toColor()) }
+                    PillSegmented(listOf(0 to "Torta", 1 to "Barre", 2 to "Entrambi"), mode, { mode = it }, Modifier.padding(bottom = 8.dp))
+                    if (mode == 0 || mode == 2) it.spese.core.designsystem.chart.DonutChart(slices, Modifier.fillMaxWidth(), centerTitle = d.category.name)
+                    if (mode == 1 || mode == 2) it.spese.core.designsystem.chart.HorizontalBars(slices.map { sl ->
+                        it.spese.core.designsystem.chart.BarItem(sl.label, sl.value, sl.color, Money.percent(sl.value, d.total).toPlainString().replace('.', ',') + "%")
+                    }, Modifier.padding(top = 12.dp))
                     d.subcategories.forEach { s ->
                         Row(Modifier.fillMaxWidth().clickable { onOpenCategory(s.category.id) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             CategoryAvatar(s.category, size = 40)

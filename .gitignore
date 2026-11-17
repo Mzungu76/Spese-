@@ -8,6 +8,7 @@ captures/
 .cxx/
 *.jks
 *.keystore
+!app/debug.keystore
 *.p12
 keystore.properties
 signing.properties

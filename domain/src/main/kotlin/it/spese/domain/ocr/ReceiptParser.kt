@@ -6,7 +6,11 @@ import it.spese.domain.importing.DateParser
 import java.math.BigDecimal
 import java.time.LocalDate
 
-data class ReceiptItem(val description: String, val amount: BigDecimal)
+/** Voce dello scontrino: `quantity` > 1 quando una riga «4 x 1.0 PZ x EUR 0.89» precede la voce. */
+data class ReceiptItem(val description: String, val amount: BigDecimal, val quantity: Int = 1, val unit: BigDecimal? = null)
+
+/** Correzione fatta dall'app sul prezzo di una voce perché la somma non tornava (con motivo, da mostrare all'utente). */
+data class Repair(val description: String, val from: BigDecimal, val to: BigDecimal, val reason: String)
 
 /** Dati estratti da uno scontrino/fattura: ogni campo è facoltativo e va confermato dall'utente. */
 data class ReceiptData(
@@ -17,7 +21,17 @@ data class ReceiptData(
     val items: List<ReceiptItem>,
     val description: String,
     val rawText: String,
-)
+    /** «SUBTOTALE» stampato prima di eventuali voci finali (es. shopper). */
+    val subtotal: BigDecimal? = null,
+    val repairs: List<Repair> = emptyList(),
+    /** Indici delle voci lette con poca sicurezza dall'OCR: da controllare. */
+    val weakItems: Set<Int> = emptySet(),
+) {
+    /** Somma delle voci riconosciute. */
+    val itemsSum: BigDecimal get() = items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }
+    /** Totale stampato meno somma delle voci: 0 = tutto torna; diverso da 0 = righe mancanti, doppie o lette male. null se non si può confrontare. */
+    val itemsGap: BigDecimal? get() = if (total == null || items.isEmpty()) null else total - itemsSum
+}
 
 /**
  * Interpretazione euristica del testo OCR di scontrini, ricevute e fatture italiane.
@@ -26,26 +40,33 @@ data class ReceiptData(
  */
 object ReceiptParser {
     private val AMOUNT = Regex("(?<![\\d.,])-?\\d{1,3}(?:[.]\\d{3})*[,]\\d{2}(?![\\d])|(?<![\\d.,])-?\\d+[,.]\\d{2}(?![\\d])")
-    private val TOTAL_KEYS = listOf("totale complessivo", "totale euro", "totale eur", "importo pagato", "totale da pagare", "da pagare", "importo da pagare", "totale documento", "totale fattura", "totale", "total")
+    private val TOTAL_KEYS = listOf("totale complessivo", "totale euro", "totale eur", "importo pagato", "pagamento elettronico", "totale da pagare", "da pagare", "importo da pagare", "totale documento", "totale fattura", "totale", "total")
     private val NOT_TOTAL = listOf("subtotale", "sub totale", "sub-totale", "totale iva", "imponibile", "resto", "sconto", "articoli", "pezzi", "iva")
     private val SKIP_MERCHANT = Regex("(?i)^(scontrino|ricevuta|fattura|documento|cassa|cassiere|data|ora|tel|p\\.?\\s?iva|partita|c\\.?f\\.?|www|via |viale |piazza |corso |n\\.|nr|pos|copia|arrivederci|grazie)")
-    private val SKIP_ITEM = Regex("(?i)(totale|subtotale|resto|contant|carta|bancomat|pagamento|iva|imponibile|sconto|arrotond|importo|pos|ticket|buono|punti|saldo|credito)")
+    private val SKIP_ITEM = Regex("(?i)\\b(totale|subtotale|sub\\s?totale|resto|contant\\w*|carta di|c\\.?\\s?credito|credito|bancomat|pagamento|iva|imponibile|sconto|arrotond\\w*|importo|pos|ticket|buono|punti|saldo|annull\\w*|articoli|riscosso|ricalcolato)\\b")
+    private val QTY_LINE = Regex("^(\\d{1,3})\\s*[xX×]\\s*[\\d.,]+\\s*[A-Za-z]{0,3}\\s*[xX×]")
+    private val VAT_SUFFIX = Regex("\\s+\\d{1,2}\\s?%$")
 
     fun amountsIn(line: String): List<BigDecimal> =
         AMOUNT.findAll(line).mapNotNull { NumberParser.parseMoney(it.value) }.toList()
 
-    fun parse(text: String, today: LocalDate = LocalDate.now()): ReceiptData {
-        val lines = text.lines().map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() }
+    /** @param vocabulary parole in più (voci già viste dall'utente) per riparare i nomi storpiati; @param weakRows righe lette con poca sicurezza (testo). */
+    fun parse(text: String, today: LocalDate = LocalDate.now(), vocabulary: Set<String> = emptySet(), weakRows: Collection<String> = emptyList()): ReceiptData {
+        val lines = joinSplitRows(text.lines().map { ReceiptCorrector.fixLine(it.replace(Regex("\\s+"), " ").trim()) }.filter { it.isNotEmpty() })
         val merchant = findMerchant(lines)
         val date = findDate(lines, today)
-        val total = findTotal(lines)
+        val vocab = ProductDictionary.allKeywords + vocabulary
+        val parsedItems = findItems(lines).map { it.copy(description = ReceiptCorrector.repairWords(it.description, vocab)) }
+        val total = findTotal(lines, parsedItems.fold(BigDecimal.ZERO) { a, b -> a + b.amount }.takeIf { parsedItems.isNotEmpty() })
+        val weakKeys = weakRows.map { ReceiptStitcher.key(it) }.filter { it.length > 3 }
+        val weak = parsedItems.indices.filter { i -> ReceiptStitcher.key(parsedItems[i].description).let { k -> k.length > 3 && weakKeys.any { w -> w.contains(k) || k.contains(w) } } }.toSet()
+        val (items, repairs) = repairSums(parsedItems, total, lines, weak)
         val vat = findVat(lines)
-        val items = findItems(lines)
         val desc = buildString {
             append(merchant ?: "Spesa")
             if (items.isNotEmpty() && items.size <= 3) append(": ").append(items.joinToString(", ") { it.description.take(24) })
         }
-        return ReceiptData(merchant, date, total, vat, items, desc, text)
+        return ReceiptData(merchant, date, total, vat, items, desc, text, findSubtotal(lines), repairs, weak)
     }
 
     private fun findMerchant(lines: List<String>): String? {
@@ -75,16 +96,43 @@ object ReceiptParser {
         return found.firstOrNull { it.second }?.first ?: found.firstOrNull()?.first
     }
 
-    private fun findTotal(lines: List<String>): BigDecimal? {
+    private val PRICE_ONLY = Regex("^(?:\\d{1,2}\\s?%\\s*)?-?\\d{1,3}(?:[.]\\d{3})*[,.]\\d{2}$")
+
+    /** L'OCR a volte separa la descrizione dal prezzo su due righe: «TOTALE COMPLESSIVO €» + «80.85» tornano una riga sola. */
+    private fun joinSplitRows(lines: List<String>): List<String> {
+        val out = ArrayList<String>()
+        var i = 0
+        while (i < lines.size) {
+            val l = lines[i]
+            val next = lines.getOrNull(i + 1)
+            if (next != null && PRICE_ONLY.matches(next) && l.count { it.isLetter() } >= 3 && !AMOUNT.containsMatchIn(l)) { out.add("$l $next"); i += 2 }
+            else { out.add(l); i++ }
+        }
+        return out
+    }
+
+    /**
+     * Totale: cerca le righe «totale complessivo», «importo pagato»… e prende il primo importo DOPO la parola (se l'OCR ha unito due righe,
+     * l'IVA che segue non si confonde con il totale). Se la somma delle voci coincide con uno dei candidati, vince quello.
+     */
+    private fun findTotal(lines: List<String>, itemsSum: BigDecimal?): BigDecimal? {
+        val candidates = ArrayList<BigDecimal>()
         for (key in TOTAL_KEYS) {
             for ((i, l) in lines.withIndex()) {
                 val low = l.lowercase()
-                if (!low.contains(key)) continue
+                val at = low.indexOf(key)
+                if (at < 0) continue
                 if (key == "totale" && NOT_TOTAL.any { low.contains(it) }) continue
-                val a = amountsIn(l).lastOrNull() ?: lines.getOrNull(i + 1)?.let { amountsIn(it).firstOrNull() }
-                if (a != null && a.signum() > 0) return a
+                val a = amountsIn(l.substring(at + key.length)).firstOrNull() ?: (1..2).firstNotNullOfOrNull { k -> lines.getOrNull(i + k)?.takeIf { PRICE_ONLY.matches(it) || it.count { c -> c.isLetter() } < 3 }?.let { amountsIn(it).firstOrNull() } }
+                if (a != null && a.signum() > 0) candidates.add(a)
             }
         }
+        if (itemsSum != null) {
+            candidates.firstOrNull { (it - itemsSum).abs() <= BigDecimal("0.01") }?.let { return it }
+            // nessun candidato torna con le voci: se un importo del documento coincide con la somma, è quasi certamente il totale
+            lines.flatMap { amountsIn(it) }.firstOrNull { it.signum() > 0 && (it - itemsSum).abs() <= BigDecimal("0.01") && itemsSum.signum() > 0 }?.let { return it }
+        }
+        candidates.firstOrNull()?.let { return it }
         // ripiego: l'importo più alto che compare nel documento
         return lines.flatMap { amountsIn(it) }.filter { it.signum() > 0 }.maxOrNull()
     }
@@ -98,16 +146,88 @@ object ReceiptParser {
         return rows.firstNotNullOfOrNull { amountsIn(it).lastOrNull() }
     }
 
-    private fun findItems(lines: List<String>): List<ReceiptItem> {
+    private fun findSubtotal(lines: List<String>): BigDecimal? =
+        lines.lastOrNull { Regex("(?i)sub\\s?-?totale").containsMatchIn(it) }?.let { amountsIn(it).lastOrNull() }
+
+    private fun compact(l: String) = l.lowercase().filter { it.isLetter() }
+    private val END_OF_ITEMS = listOf("totalecomplessivo", "totaleeuro", "totaleeur", "importopagato", "pagamentocontante", "pagamentoelettronico", "totaledapagare")
+    /** Parole di servizio che l'OCR può spezzare («Impor to pagato»): si riconoscono anche senza spazi. */
+    private val SERVICE_WORDS = listOf("importopagato", "pagamento", "riscosso", "ricalcolato", "subtotale", "contante", "elettronico", "totale")
+
+    private fun findItems(allLines: List<String>): List<ReceiptItem> {
+        // le voci stanno prima dei totali: dal «totale complessivo» in poi (pagamenti, resto, firma) non ce ne sono
+        val end = allLines.indexOfFirst { l -> compact(l).let { c -> END_OF_ITEMS.any { c.contains(it) } } }
+        val lines = if (end >= 0) allLines.take(end) else allLines
         val out = ArrayList<ReceiptItem>()
+        var qty = 1
+        var unit: BigDecimal? = null
         for (l in lines) {
+            if (compact(l).let { c -> SERVICE_WORDS.any { c.contains(it) } }) continue
+            val q = QTY_LINE.find(l)
+            if (q != null) { qty = q.groupValues[1].toIntOrNull() ?: 1; unit = amountsIn(l).lastOrNull(); continue }   // «4 x 1.0 PZ x EUR 0.89»: vale per la voce che segue
             if (SKIP_ITEM.containsMatchIn(l)) continue
             val m = Regex("^(.*?[A-Za-zÀ-ú].*?)\\s+(-?\\d{1,3}(?:[.]\\d{3})*[,.]\\d{2})\\s*[A-Za-z]?$").find(l) ?: continue
             val a = NumberParser.parseMoney(m.groupValues[2]) ?: continue
-            val d = m.groupValues[1].trim().trimEnd('x', 'X', '*', ' ').trim()
-            if (d.length < 2 || DateParser.parseText(d) != null) continue
-            out.add(ReceiptItem(d, a))
+            val d = m.groupValues[1].trim().replace(VAT_SUFFIX, "").replace(Regex("\\s+[xX*]$"), "").trim()
+            if (d.length < 2 || a.signum() == 0 || DateParser.parseText(d) != null) continue
+            out.add(ReceiptItem(d, a, if (qty > 1 && a.signum() > 0) qty else 1, if (qty > 1) unit else null))
+            qty = 1; unit = null
         }
-        return out
+        return cancelPairs(out)
+    }
+
+    private val CONFUSABLE = mapOf('3' to "8", '8' to "36", '5' to "6", '6' to "58", '1' to "7", '7' to "1", '0' to "8", '4' to "9", '9' to "4")
+
+    /**
+     * Quadra la somma delle voci col totale: se manca poco e c'è UNA sola correzione che fa tornare i conti la si applica.
+     * Prima quantità × prezzo unitario («4 x … 0,89» deve dare 3,56); poi, solo per voci lette con poca sicurezza e se il totale compare
+     * almeno due volte nel documento (è affidabile), una cifra scambiata con una simile (3↔8, 5↔6, 1↔7…). Mai nel dubbio: più soluzioni = nessuna.
+     */
+    private fun repairSums(items: List<ReceiptItem>, total: BigDecimal?, lines: List<String>, weak: Set<Int>): Pair<List<ReceiptItem>, List<Repair>> {
+        if (total == null || items.isEmpty()) return items to emptyList()
+        val tol = BigDecimal("0.009")
+        val gap = total - items.fold(BigDecimal.ZERO) { a, b -> a + b.amount }
+        if (gap.abs() <= tol) return items to emptyList()
+        // 1) quantità × prezzo unitario
+        val byUnit = items.indices.filter { i -> val it = items[i]; it.unit != null && it.quantity > 1 && (it.unit.multiply(BigDecimal(it.quantity)) - it.amount).abs() > tol &&
+            (gap - (it.unit.multiply(BigDecimal(it.quantity)) - it.amount)).abs() <= tol }
+        if (byUnit.size == 1) {
+            val i = byUnit[0]; val it = items[i]; val to = it.unit!!.multiply(BigDecimal(it.quantity))
+            return items.toMutableList().also { l -> l[i] = it.copy(amount = to) } to listOf(Repair(it.description, it.amount, to, "${it.quantity} × ${it.unit} = $to"))
+        }
+        // 2) cifra scambiata, solo su voci poco sicure e con totale confermato da più righe
+        val totalSeen = lines.count { l -> amountsIn(l).any { (it - total).abs() <= tol } }
+        if (totalSeen < 2) return items to emptyList()
+        data class Cand(val i: Int, val to: BigDecimal)
+        val cands = ArrayList<Cand>()
+        for (i in weak) {
+            val a = items[i].amount; val str = a.abs().setScale(2).toPlainString()
+            for (pos in str.indices) {
+                val c = str[pos]; val subs = CONFUSABLE[c] ?: continue
+                for (n in subs) {
+                    val v = BigDecimal(str.substring(0, pos) + n + str.substring(pos + 1)).let { if (a.signum() < 0) it.negate() else it }
+                    if ((gap - (v - a)).abs() <= tol) cands.add(Cand(i, v))
+                }
+            }
+        }
+        val distinct = cands.distinct()
+        if (distinct.size != 1) return items to emptyList()
+        val c = distinct[0]; val it = items[c.i]
+        return items.toMutableList().also { l -> l[c.i] = it.copy(amount = c.to) } to listOf(Repair(it.description, it.amount, c.to, "la somma delle voci ora torna col totale"))
+    }
+
+    /** «ANNULLI»: una voce negativa elimina la voce uguale che la precede (stesso testo e importo opposto). */
+    private fun cancelPairs(items: List<ReceiptItem>): List<ReceiptItem> {
+        val list = items.toMutableList()
+        var i = 0
+        while (i < list.size) {
+            val n = list[i]
+            if (n.amount.signum() < 0) {
+                val j = (i - 1 downTo 0).firstOrNull { k -> list[k].amount.signum() > 0 && list[k].amount.compareTo(n.amount.negate()) == 0 && list[k].description.equals(n.description, ignoreCase = true) }
+                if (j != null) { list.removeAt(i); list.removeAt(j); i = maxOf(0, j); continue }
+            }
+            i++
+        }
+        return list
     }
 }

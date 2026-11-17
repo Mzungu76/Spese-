@@ -21,7 +21,7 @@ object Exporters {
                 q(categories[x.categoryId]?.name ?: ""), q(x.description), x.kind.key, q(x.merchant), q(x.notes)).joinToString(";")
         }
 
-    fun xlsx(list: List<Transaction>, accountNames: Map<Long, String>, categories: Map<Long, Category>): ByteArray {
+    fun xlsx(list: List<Transaction>, accountNames: Map<Long, String>, categories: Map<Long, Category>, cal: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR): ByteArray {
         val tx = mutableListOf<RawRow>(listOf("Data", "Valuta", "Conto", "Importo", "Categoria", "Descrizione", "Tipo", "Esercente", "Note"))
         list.forEach { x ->
             tx.add(listOf(x.bookingDate, x.valueDate, accountNames[x.accountId] ?: "", XlsxWriter.Amount(x.amount),
@@ -31,11 +31,11 @@ object Exporters {
         categories.values.sortedBy { it.sortOrder }.forEach { c ->
             cats.add(listOf(c.name, c.kind.label, if (c.flexible) "sì" else "no", c.budgetMonthly?.let { XlsxWriter.Amount(it) }, if (c.active) "sì" else "no"))
         }
-        val s = StatsEngine.compute(list)
-        val mon = mutableListOf<RawRow>(listOf("Mese", "Entrate", "Spese", "Saldo"))
+        val s = StatsEngine.compute(list, cal)
+        val mon = mutableListOf<RawRow>(listOf(if (cal.isSolar) "Mese" else "Mese contabile (dal giorno ${cal.startDay})", "Entrate", "Spese", "Saldo"))
         StatsEngine.allMonths(s.byMonth).forEach { m ->
             val b = s.byMonth[m]
-            mon.add(listOf(m.toString(), XlsxWriter.Amount(b?.income ?: java.math.BigDecimal.ZERO), XlsxWriter.Amount(b?.expense ?: java.math.BigDecimal.ZERO), XlsxWriter.Amount(b?.net ?: java.math.BigDecimal.ZERO)))
+            mon.add(listOf(if (cal.isSolar) m.toString() else "$m (" + it.spese.core.common.Dates.fmt(cal.start(m)) + " – " + it.spese.core.common.Dates.fmt(cal.end(m)) + ")", XlsxWriter.Amount(b?.income ?: java.math.BigDecimal.ZERO), XlsxWriter.Amount(b?.expense ?: java.math.BigDecimal.ZERO), XlsxWriter.Amount(b?.net ?: java.math.BigDecimal.ZERO)))
         }
         return XlsxWriter.toBytes(listOf(RawSheet("Movimenti", tx), RawSheet("Categorie", cats), RawSheet("Riepilogo mensile", mon)))
     }
