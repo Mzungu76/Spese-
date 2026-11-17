@@ -48,6 +48,7 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
     }
 
     override suspend fun dedupKeys(accountId: Long) = dao.dedupKeys(accountId)
+    override suspend fun getDedupKey(id: Long): String? = dao.get(id)?.dedupKey
     override suspend fun setDocument(txId: Long, documentId: Long?) = dao.setDocument(txId, documentId)
     override suspend fun createImportBatch(label: String, count: Int) = db.importBatches().insert(ImportBatchEntity(label = label, createdAt = System.currentTimeMillis(), rowCount = count))
     override suspend fun deleteImportBatch(batchId: Long): Int = db.withTransaction {
@@ -140,7 +141,8 @@ class AccountRepositoryImpl @Inject constructor(private val db: AppDatabase) : A
     override suspend fun getAll() = dao.getAll().map { it.toDomain() }
 
     override suspend fun getOrCreate(name: String): Account = db.withTransaction {
-        val n = name.trim().ifBlank { "Conto principale" }
+        val n = name.trim()
+        require(n.isNotEmpty()) { "Indica il nome del conto." }
         dao.findByName(n)?.toDomain() ?: Account(dao.insert(AccountEntity(name = n, type = AccountType.CONTO.name)), n)
     }
 

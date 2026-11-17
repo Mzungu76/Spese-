@@ -42,8 +42,10 @@ class MainFlowTest {
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
     @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
+    @Inject lateinit var accountRepo: it.spese.domain.repository.AccountRepository
 
-    @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
+    // nessun conto predefinito: se ne crea uno esplicitamente (è l'unico, quindi il modulo lo propone)
+    @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded(); accountRepo.getOrCreate("Conto test") } }
 
     private fun waitText(text: String, substring: Boolean = false, ms: Long = 8000) {
         try { compose.waitUntil(ms) { compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() } }
@@ -135,6 +137,24 @@ class MainFlowTest {
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("da guardare", substring = true))   // la scheda del ritmo di spesa sta sopra gli avvisi
         waitText("da guardare", substring = true)
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
+    }
+
+    @Test fun un_movimento_senza_conto_sta_in_verifica_fuori_dalla_contabilita_e_si_assegna_al_conto() {
+        val day = java.time.LocalDate.now()
+        runBlocking {
+            txRepo.insertAll(listOf(it.spese.domain.repository.NewTransaction("n1", "n1", null, day, day, "Pagamento in sospeso", java.math.BigDecimal("-12.50"),
+                it.spese.core.model.TxKind.SPESA, null, false, null, origin = it.spese.core.model.TxOrigin.NOTIFICATION)))
+        }
+        compose.waitUntil(8000) { data.value.unassigned.size == 1 }
+        assertEquals(0, data.value.transactions.size)                  // senza conto: fuori da saldi, entrate e spese
+        compose.onNodeWithTag("tab_transactions").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Verifica", substring = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Senza conto", substring = true)
+        compose.onNodeWithTag("review_assign").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Su quale conto?")
+        compose.onNodeWithTag("pick_account").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 1 }
+        assertEquals(0, data.value.unassigned.size)
     }
 
     private fun goTab(label: String) {

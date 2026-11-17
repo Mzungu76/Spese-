@@ -37,9 +37,9 @@ class TransactionEditViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val d = data.first { it.loaded && it.accounts.isNotEmpty() }
+            val d = data.first { it.loaded }
             if (txId == 0L) {
-                _form.value = EditForm(accountId = d.accounts.firstOrNull { !it.archived }?.id, loaded = true)
+                _form.value = EditForm(accountId = d.accounts.filter { !it.archived }.singleOrNull()?.id, loaded = true)      // proposto solo se è l'unico conto
             } else {
                 val t = repo.get(txId)
                 if (t == null) { _done.tryEmit(Unit); return@launch }

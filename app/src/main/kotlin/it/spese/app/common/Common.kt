@@ -37,6 +37,12 @@ class FilterStore @Inject constructor(settings: it.spese.domain.repository.Setti
     val searchRequested: StateFlow<Boolean> = _searchRequested.asStateFlow()
     fun requestSearch() { _searchRequested.value = true }
     fun consumeSearch() { _searchRequested.value = false }
+
+    /** Richiesta di aprire la sezione Verifica in Movimenti (dalla Home). */
+    private val _reviewRequested = MutableStateFlow(false)
+    val reviewRequested: StateFlow<Boolean> = _reviewRequested.asStateFlow()
+    fun requestReview() { _reviewRequested.value = true }
+    fun consumeReview() { _reviewRequested.value = false }
 }
 
 /** Messaggi brevi (snackbar) emessi dai ViewModel. */

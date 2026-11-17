@@ -237,7 +237,7 @@ class BackupRepositoryImpl @Inject constructor(
         val ad = db.accounts()
         val nativeAcc = extras?.accounts.orEmpty().associateBy { it.name }
         val accIds = HashMap<String, Long>()
-        for (name in (s.tx.map { it.acc } + nativeAcc.keys).distinct()) {
+        for (name in (s.tx.map { it.acc } + nativeAcc.keys).filter { it.isNotBlank() }.distinct()) {
             val old = ad.findByName(name)
             val na = nativeAcc[name]
             accIds[name] = old?.id ?: ad.insert(AccountEntity(name = name, type = na?.type ?: AccountType.CONTO.name, openingCents = na?.let { Money.toCents(it.opening) } ?: 0, archived = na?.archived ?: false))
@@ -255,8 +255,8 @@ class BackupRepositoryImpl @Inject constructor(
         val now = System.currentTimeMillis()
         val have = HashSet<String>().also { set -> td.getAll().forEach { set.add(it.externalId) } }
         val toInsert = s.tx.filter { have.add(it.id) }.map { t ->
-            val accId = accIds.getValue(t.acc)
-            TransactionEntity(externalId = t.id, dedupKey = Duplicates.key(accId.toString(), t.d, t.v, t.a, t.t), accountId = accId,
+            val accId = t.acc.takeIf { it.isNotBlank() }?.let { accIds.getValue(it) }        // senza conto: resta senza conto, in Verifica
+            TransactionEntity(externalId = t.id, dedupKey = Duplicates.key(accId?.toString() ?: "", t.d, t.v, t.a, t.t), accountId = accId,
                 bookingDate = t.d.toEpochDay(), valueDate = t.v.toEpochDay(), description = t.t, amountCents = Money.toCents(t.a),
                 kind = if (t.a.signum() >= 0) TxKind.ENTRATA.key else TxKind.SPESA.key, notes = t.notes, merchantOverride = t.merchant,
                 origin = t.origin ?: TxOrigin.BACKUP.name, documentId = t.doc?.let { docIds[it] }, createdAt = now)
@@ -331,6 +331,11 @@ class BackupRepositoryImpl @Inject constructor(
     }
 
     // ---------- annullamento, azzeramento, backup automatici ----------
+    override suspend fun saveUndoSnapshot() = withContext(Dispatchers.IO) {
+        undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
+        settings.update { it.copy(lastUndo = "snapshot") }
+    }
+
     override suspend fun hasUndo() = undoFile.exists()
 
     override suspend fun undoLast(): Boolean = withContext(Dispatchers.IO) {

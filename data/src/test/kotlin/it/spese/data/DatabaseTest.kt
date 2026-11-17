@@ -139,7 +139,7 @@ class DatabaseTest {
         val t = ReadStatementUseCase().invoke(env.resource("revolut.csv"), "revolut.csv").first()
         val o = env.commit(t, t.detected!!.headerRow, t.detected!!.mapping, "Revolut")
         assertEquals(4, o.added)
-        assertEquals(setOf("Conto principale", "Revolut"), env.accounts.getAll().map { it.name }.toSet())
+        assertEquals(setOf("Revolut"), env.accounts.getAll().map { it.name }.toSet())       // nessun conto predefinito: esiste solo quello indicato
         val tr = env.tx.getAll().filter { it.kind == TxKind.TRASFERIMENTO }   // "REVOLUT" / "HYPE" -> Trasferimenti
         assertEquals(2, tr.size)
     }

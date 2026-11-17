@@ -18,7 +18,7 @@ class CompletePendingAmountUseCase @Inject constructor(
         val p = config.get().pending.firstOrNull { it.id == pendingId } ?: error("Promemoria non trovato")
         val dir = (sign ?: p.sign).takeIf { it != 0 } ?: error("Scegli se è un'uscita o un'entrata.")
         require(amount.signum() > 0) { "Inserisci l'importo." }
-        val acc = accountId ?: p.accountId ?: accounts.getAll().firstOrNull { !it.archived }?.id ?: accounts.getOrCreate("Conto principale").id
+        val acc = accountId ?: p.accountId      // se manca, il movimento resta senza conto, in Verifica
         val date = Instant.ofEpochMilli(p.id).atZone(zone).toLocalDate()
         val label = it.spese.domain.capture.CaptureSource.byId(p.sourceId)?.label ?: p.sourceId
         saveTx(TransactionDraft(0, acc, date, date, description.ifBlank { p.description }, if (dir < 0) amount.negate() else amount, categoryId, null,

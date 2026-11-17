@@ -44,7 +44,7 @@ data class TransactionsState(
 class TransactionsViewModel @Inject constructor(
     data: StateFlow<AppData>, private val filters: FilterStore, private val repo: TransactionRepository, private val assign: AssignCategoryUseCase,
     private val duplicate: DuplicateTransactionsUseCase, private val exporter: ExportTransactionsUseCase, private val messenger: UiMessenger,
-    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase,
+    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase,
 ) : ViewModel() {
     private val reviewMode = MutableStateFlow(false)
     private val sort = MutableStateFlow(SortKey.DATE to true)
@@ -71,7 +71,7 @@ class TransactionsViewModel @Inject constructor(
                     parts.filter { it.kind == TxKind.ENTRATA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
                     parts.filter { it.kind == TxKind.SPESA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
                     it.spese.domain.finance.AlertEngine.referenceToday(LocalDate.now(), d.ledger),
-                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules), rm)
+                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules, d.unassigned), rm)
             }.also { current = it }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionsState())
 
@@ -79,7 +79,15 @@ class TransactionsViewModel @Inject constructor(
     fun consumeSearch() = filters.consumeSearch()
     fun setReviewMode(on: Boolean) { reviewMode.value = on }
     fun confirm(ids: Collection<Long>) = viewModelScope.launch { confirmReview(ids); messenger.show(if (ids.size == 1) "Confermato" else "Confermati ${ids.size} movimenti") }
-    fun confirmAllReview() = confirm(current.review.map { it.tx.id })
+    /** Conferma tutti quelli che hanno un conto: i movimenti senza conto restano in Verifica finché non si sceglie il conto. */
+    fun confirmAllReview() = confirm(current.review.filter { it.tx.accountId != null }.map { it.tx.id })
+    val reviewRequested = filters.reviewRequested
+    fun consumeReview() = filters.consumeReview()
+    /** Sceglie il conto dei movimenti selezionati: da quel momento entrano nella contabilità. */
+    fun assignAccount(ids: Collection<Long>, accountId: Long) = viewModelScope.launch {
+        try { val n = assignAcc(ids, accountId); messenger.show(if (n == 1) "Movimento assegnato al conto: ora conta nei totali" else "$n movimenti assegnati al conto: ora contano nei totali") }
+        catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
     /** Cambia categoria dalla Verifica: la scelta dell'utente sostituisce divisioni e provvisorietà, quindi il movimento è controllato. */
     fun reassign(txId: Long, categoryId: Long) = viewModelScope.launch {
         try { setSplits(txId, emptyList()); assign(listOf(txId), categoryId); confirmReview(listOf(txId)) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }

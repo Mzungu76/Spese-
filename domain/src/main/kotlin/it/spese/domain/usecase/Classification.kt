@@ -36,7 +36,8 @@ class ReclassifyAllUseCase @Inject constructor(
 
 data class TransactionDraft(
     val id: Long = 0,
-    val accountId: Long,
+    /** Il conto è facoltativo solo per i movimenti automatici (notifiche, ricorrenze): senza conto vanno in Verifica. */
+    val accountId: Long?,
     val bookingDate: LocalDate,
     val valueDate: LocalDate = bookingDate,
     val description: String,
@@ -62,11 +63,11 @@ class SaveTransactionUseCase @Inject constructor(
         require(d.amount.signum() != 0) { "L'importo non può essere zero." }
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val c = classifier.classify(d.description, d.amount, d.categoryId)
-        val acc = accounts.getAll().firstOrNull { it.id == d.accountId } ?: error("Conto inesistente")
+        val acc = d.accountId?.let { id -> accounts.getAll().firstOrNull { it.id == id } ?: error("Conto inesistente") }
         val amount = it.spese.core.common.Money.scale(d.amount)
-        val key = Duplicates.key(d.accountId.toString(), d.bookingDate, d.valueDate, amount, d.description.trim())
+        val key = Duplicates.key(d.accountId?.toString() ?: "", d.bookingDate, d.valueDate, amount, d.description.trim())
         if (d.id == 0L) {
-            val ext = Duplicates.key(acc.name, d.bookingDate, d.valueDate, amount, d.description.trim()) + "#m" + UUID.randomUUID().toString().take(8)
+            val ext = Duplicates.key(acc?.name ?: "", d.bookingDate, d.valueDate, amount, d.description.trim()) + "#m" + UUID.randomUUID().toString().take(8)
             tx.insertAll(listOf(NewTransaction(ext, key, d.accountId, d.bookingDate, d.valueDate, d.description.trim(), amount, c.kind,
                 c.categoryId, c.manual, c.ruleId, d.merchant?.takeIf { it.isNotBlank() }, d.notes, d.origin, d.documentId)))
             return 0
@@ -86,8 +87,8 @@ class DuplicateTransactionsUseCase @Inject constructor(private val tx: Transacti
         val accs = accounts.getAll().associateBy { it.id }
         for (id in ids) {
             val t = tx.get(id) ?: continue
-            val name = accs[t.accountId]?.name ?: ""
-            val key = Duplicates.key(t.accountId.toString(), t.bookingDate, t.valueDate, t.amount, t.description)
+            val name = t.accountId?.let { id -> accs[id]?.name } ?: ""
+            val key = Duplicates.key(t.accountId?.toString() ?: "", t.bookingDate, t.valueDate, t.amount, t.description)
             val ext = Duplicates.key(name, t.bookingDate, t.valueDate, t.amount, t.description) + "#m" + UUID.randomUUID().toString().take(8)
             n += tx.insertAll(listOf(NewTransaction(ext, key, t.accountId, t.bookingDate, t.valueDate, t.description, t.amount, t.kind, t.categoryId,
                 t.manualCategory, t.ruleId, t.merchantOverride, t.notes, TxOrigin.MANUAL)))
@@ -164,5 +165,25 @@ class ConfirmTransfersUseCase @Inject constructor(private val assign: AssignCate
         val cat = it.spese.domain.classification.TransferSuggestions.transferCategory(categories.getAll()) ?: throw IllegalStateException("Manca la categoria «Trasferimenti»: creala in Categorie.")
         assign(pairs.flatMap { listOf(it.outgoing.id, it.incoming.id) }.distinct(), cat.id)
         return pairs.size
+    }
+}
+
+/**
+ * Assegna un conto ai movimenti (a quelli che non lo hanno, o li sposta). La chiave di deduplica dipende dal conto e si ricalcola,
+ * tranne per i provvisori (notifiche e ricorrenze), la cui chiave non dipende dal conto: così l'estratto conto li sostituisce come prima.
+ */
+class AssignAccountUseCase @Inject constructor(private val tx: TransactionRepository, private val accounts: AccountRepository) {
+    suspend operator fun invoke(txIds: Collection<Long>, accountId: Long?): Int {
+        if (accountId != null) accounts.getAll().firstOrNull { it.id == accountId } ?: error("Conto inesistente")
+        var n = 0
+        for (id in txIds) {
+            val t = tx.get(id) ?: continue
+            if (t.accountId == accountId) continue
+            val provisional = t.origin == TxOrigin.NOTIFICATION || t.origin == TxOrigin.RECURRING
+            val key = if (provisional) tx.getDedupKey(id) ?: t.externalId else Duplicates.key(accountId?.toString() ?: "", t.bookingDate, t.valueDate, t.amount, t.description.trim())
+            tx.update(t.copy(accountId = accountId), key)
+            n++
+        }
+        return n
     }
 }

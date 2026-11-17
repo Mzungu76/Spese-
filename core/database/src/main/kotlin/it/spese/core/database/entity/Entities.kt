@@ -97,7 +97,8 @@ data class TransactionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val externalId: String,
     val dedupKey: String,
-    val accountId: Long,
+    /** Nullo = movimento senza conto (in Verifica). Il vincolo RESTRICT impedisce di eliminare un conto che ha ancora movimenti. */
+    val accountId: Long?,
     val bookingDate: Long,
     val valueDate: Long,
     val description: String,

@@ -17,7 +17,7 @@ interface AccountDao {
     @Update suspend fun update(a: AccountEntity)
     @Query("DELETE FROM accounts WHERE id = :id") suspend fun delete(id: Long)
     @Query("SELECT COUNT(*) FROM transactions WHERE accountId = :id") suspend fun txCount(id: Long): Int
-    @Query("UPDATE transactions SET accountId = :to WHERE accountId = :from") suspend fun moveTransactions(from: Long, to: Long)
+    @Query("UPDATE transactions SET accountId = :to WHERE accountId = :from") suspend fun moveTransactions(from: Long, to: Long?)
     @Query("DELETE FROM accounts") suspend fun deleteAll()
 }
 

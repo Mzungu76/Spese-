@@ -10,13 +10,14 @@ import it.spese.core.model.TxOrigin
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-enum class ReviewReason { AUTO_SPLIT, PROVISIONAL, RECURRING, THRESHOLD_RULE, UNUSUAL }
+enum class ReviewReason { NO_ACCOUNT, AUTO_SPLIT, PROVISIONAL, RECURRING, THRESHOLD_RULE, UNUSUAL }
 
 data class ReviewNote(val reason: ReviewReason, val text: String)
 data class ReviewItem(val tx: Transaction, val notes: List<ReviewNote>, val splits: List<TransactionSplit>)
 
 /**
  * Sezione "Verifica" dei Movimenti: i movimenti la cui associazione non è certa.
+ * - senza conto: restano fuori da saldi, entrate e spese finché non si sceglie il conto (non si possono «confermare»);
  * - divisi automaticamente da una quota fissa (prelievi);
  * - provvisori nati da notifiche, in attesa dell'estratto conto;
  * - assegnati da una regola con soglia di importo;
@@ -27,21 +28,23 @@ data class ReviewItem(val tx: Transaction, val notes: List<ReviewNote>, val spli
 object ReviewEngine {
     const val RECENT_DAYS = 60L
 
-    fun items(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: List<Category>, rules: List<Rule>): List<ReviewItem> {
-        if (ledger.isEmpty()) return emptyList()
+    fun items(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: List<Category>, rules: List<Rule>, unassigned: List<Transaction> = emptyList()): List<ReviewItem> {
+        if (ledger.isEmpty() && unassigned.isEmpty()) return emptyList()
         val names = categories.associate { it.id to it.name }
         val rulesById = rules.associateBy { it.id }
-        val recentFrom = ledger.maxOf { it.bookingDate }.minusDays(RECENT_DAYS)
+        val recentFrom = (ledger + unassigned).maxOf { it.bookingDate }.minusDays(RECENT_DAYS)
         val history = ledger.filter { it.kind == TxKind.SPESA && splits[it.id].isNullOrEmpty() }.groupBy { it.categoryId }
         val out = ArrayList<ReviewItem>()
-        for (t in ledger) {
-            if (t.reviewed) continue
+        for (t in unassigned + ledger) {
+            val noAccount = t.accountId == null
+            if (t.reviewed && !noAccount) continue       // «controllato» non basta: senza conto resta in Verifica
             val notes = ArrayList<ReviewNote>()
+            if (noAccount) notes.add(ReviewNote(ReviewReason.NO_ACCOUNT, "Senza conto: resta fuori da saldi, entrate e spese finché non scegli il conto"))
             val parts = splits[t.id].orEmpty().sortedBy { it.position }
             if (parts.any { it.auto }) notes.add(ReviewNote(ReviewReason.AUTO_SPLIT, "Diviso automaticamente: " + parts.joinToString(" + ") { (names[it.categoryId] ?: "Senza categoria") + " " + Money.eur0(it.amount.abs()) }))
             if (t.origin == TxOrigin.RECURRING) notes.add(ReviewNote(ReviewReason.RECURRING, "Ricorrente: creato in automatico, confermalo quando arriva davvero (l'estratto conto lo sostituisce)"))
             if (t.origin == TxOrigin.NOTIFICATION) notes.add(ReviewNote(ReviewReason.PROVISIONAL, "Da notifica: sarà sostituito dall'estratto conto"))
-            if (!t.manualCategory && parts.isEmpty() && t.bookingDate >= recentFrom) {
+            if (!noAccount && !t.manualCategory && parts.isEmpty() && t.bookingDate >= recentFrom) {
                 val rule = t.ruleId?.let { rulesById[it] }
                 if (rule != null && (rule.min.signum() != 0 || rule.max.signum() != 0)) {
                     val limit = buildString { if (rule.min.signum() != 0) append("da ").append(Money.eur0(rule.min)); if (rule.max.signum() != 0) { if (isNotEmpty()) append(" "); append("fino a ").append(Money.eur0(rule.max)) } }

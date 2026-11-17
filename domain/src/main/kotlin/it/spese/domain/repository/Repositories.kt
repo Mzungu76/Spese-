@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.Flow
 data class NewTransaction(
     val externalId: String,
     val dedupKey: String,
-    val accountId: Long,
+    /** Nullo = senza conto: il movimento resta in Verifica, fuori dalla contabilità, finché non se ne sceglie uno. */
+    val accountId: Long?,
     val bookingDate: LocalDate,
     val valueDate: LocalDate,
     val description: String,
@@ -44,6 +45,8 @@ interface TransactionRepository {
     /** Inserisce i movimenti ignorando quelli con `externalId` già presente; restituisce il numero di righe inserite. */
     suspend fun insertAll(items: List<NewTransaction>): Int
     suspend fun update(tx: Transaction, dedupKey: String)
+    /** Chiave di deduplica salvata di un movimento. */
+    suspend fun getDedupKey(id: Long): String?
     suspend fun delete(ids: Collection<Long>)
     suspend fun applyClassifications(updates: List<ClassificationUpdate>)
     /** Chiavi di deduplica dei movimenti esistenti di un conto (una per movimento). */
@@ -93,6 +96,7 @@ interface RuleRepository {
 interface AccountRepository {
     fun observeAll(): Flow<List<Account>>
     suspend fun getAll(): List<Account>
+    /** Il conto con quel nome, creato se manca. Il nome è obbligatorio: non esiste un conto «di ripiego». */
     suspend fun getOrCreate(name: String): Account
     suspend fun insert(a: Account): Long
     suspend fun update(a: Account)
@@ -233,6 +237,8 @@ interface BackupRepository {
     suspend fun restore(env: BackupEnvelope, mode: RestoreMode, extraFiles: Map<String, ByteArray> = emptyMap()): RestoreResult
     suspend fun hasUndo(): Boolean
     suspend fun undoLast(): Boolean
+    /** Salva subito uno snapshot per «Annulla»: da chiamare prima di un'operazione che cancella dati. */
+    suspend fun saveUndoSnapshot()
     suspend fun resetAll()
     /** Scrive un backup automatico nella cartella interna e ruota i vecchi file. */
     suspend fun autoBackup(keep: Int): String

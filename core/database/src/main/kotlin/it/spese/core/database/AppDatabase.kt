@@ -31,8 +31,22 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recurring(): RecurringDao
 
     companion object {
-        const val VERSION = 7
+        const val VERSION = 8
         const val NAME = "gestione-spese.db"
+
+        /**
+         * 7 → 8: il conto di un movimento può mancare (`accountId` nullo = senza conto, in Verifica). SQLite non permette di togliere NOT NULL
+         * da una colonna: si ricrea la tabella copiando tutto, e si rimettono a posto le divisioni dei movimenti (che hanno un vincolo a cascata).
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `_splits_backup` AS SELECT * FROM `transaction_splits`")
+                SCHEMA_7_8_SQL.forEach { db.execSQL(it) }
+                db.execSQL("DELETE FROM `transaction_splits`")
+                db.execSQL("INSERT INTO `transaction_splits` SELECT * FROM `_splits_backup`")
+                db.execSQL("DROP TABLE `_splits_backup`")
+            }
+        }
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
         /** 6 → 7: entrate e spese ricorrenti. */
@@ -83,7 +97,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
@@ -105,4 +119,19 @@ private val SCHEMA_4_5_SQL: List<String> = listOf(
 private val SCHEMA_6_7_SQL: List<String> = listOf(
     "CREATE TABLE IF NOT EXISTS `recurring_rules` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `accountId` INTEGER, `categoryId` INTEGER, `everyMonths` INTEGER NOT NULL, `dayOfMonth` INTEGER NOT NULL, `startDate` INTEGER NOT NULL, `endDate` INTEGER, `enabled` INTEGER NOT NULL, `autoConfirm` INTEGER NOT NULL, `lastGenerated` INTEGER, FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
     "CREATE INDEX IF NOT EXISTS `index_recurring_rules_categoryId` ON `recurring_rules` (`categoryId`)",
+)
+
+
+/** Ricreazione della tabella dei movimenti con il conto facoltativo (identica a quella esportata in schemas/8.json). */
+private val SCHEMA_7_8_SQL: List<String> = listOf(
+    "CREATE TABLE IF NOT EXISTS `_new_transactions` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `externalId` TEXT NOT NULL, `dedupKey` TEXT NOT NULL, `accountId` INTEGER, `bookingDate` INTEGER NOT NULL, `valueDate` INTEGER NOT NULL, `description` TEXT NOT NULL, `amountCents` INTEGER NOT NULL, `kind` TEXT NOT NULL, `categoryId` INTEGER, `manualCategory` INTEGER NOT NULL, `manualUpdatedAt` INTEGER NOT NULL, `ruleId` INTEGER, `merchantOverride` TEXT, `notes` TEXT NOT NULL, `origin` TEXT NOT NULL, `documentId` INTEGER, `importBatchId` INTEGER, `createdAt` INTEGER NOT NULL, `reviewed` INTEGER NOT NULL DEFAULT 0, FOREIGN KEY(`accountId`) REFERENCES `accounts`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`categoryId`) REFERENCES `categories`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`documentId`) REFERENCES `documents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`importBatchId`) REFERENCES `import_batches`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+    "INSERT INTO `_new_transactions` (`id`, `externalId`, `dedupKey`, `accountId`, `bookingDate`, `valueDate`, `description`, `amountCents`, `kind`, `categoryId`, `manualCategory`, `manualUpdatedAt`, `ruleId`, `merchantOverride`, `notes`, `origin`, `documentId`, `importBatchId`, `createdAt`, `reviewed`) SELECT `id`, `externalId`, `dedupKey`, `accountId`, `bookingDate`, `valueDate`, `description`, `amountCents`, `kind`, `categoryId`, `manualCategory`, `manualUpdatedAt`, `ruleId`, `merchantOverride`, `notes`, `origin`, `documentId`, `importBatchId`, `createdAt`, `reviewed` FROM `transactions`",
+    "DROP TABLE `transactions`",
+    "ALTER TABLE `_new_transactions` RENAME TO `transactions`",
+    "CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_externalId` ON `transactions` (`externalId`)",
+    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_dedupKey` ON `transactions` (`accountId`, `dedupKey`)",
+    "CREATE INDEX IF NOT EXISTS `index_transactions_bookingDate` ON `transactions` (`bookingDate`)",
+    "CREATE INDEX IF NOT EXISTS `index_transactions_categoryId` ON `transactions` (`categoryId`)",
+    "CREATE INDEX IF NOT EXISTS `index_transactions_documentId` ON `transactions` (`documentId`)",
+    "CREATE INDEX IF NOT EXISTS `index_transactions_importBatchId` ON `transactions` (`importBatchId`)",
 )

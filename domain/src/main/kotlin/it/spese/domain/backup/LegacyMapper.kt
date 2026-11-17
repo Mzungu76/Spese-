@@ -63,7 +63,7 @@ object LegacyMapper {
         }
         val catByName = cats.associateBy { it.name }
 
-        val accNames = s.tx.map { it.acc }.distinct()
+        val accNames = s.tx.map { it.acc }.filter { it.isNotBlank() }.distinct()
         val accounts = accNames.mapIndexed { i, n -> Account(i + 1L, n, AccountType.CONTO) }
         val accId = accounts.associate { it.name to it.id }
 
@@ -76,7 +76,7 @@ object LegacyMapper {
         val txs = s.tx.filter { seen.add(it.id) }.mapIndexed { i, t ->
             val manualCat = s.ov[t.id]?.let { catByName[it]?.id }
             val cl = classifier.classify(t.t, t.a, manualCat)
-            Transaction(i + 1L, t.id, accId.getValue(t.acc), t.d, t.v, t.t, t.a, cl.kind, cl.categoryId, cl.manual, cl.ruleId,
+            Transaction(i + 1L, t.id, t.acc.takeIf { it.isNotBlank() }?.let { accId.getValue(it) }, t.d, t.v, t.t, t.a, cl.kind, cl.categoryId, cl.manual, cl.ruleId,
                 t.merchant, t.notes, runCatching { TxOrigin.valueOf(t.origin ?: "BACKUP") }.getOrDefault(TxOrigin.BACKUP), null, nowMs)
         }
         val dues = s.due.mapIndexed { i, d -> Due(i + 1L, d.id, d.name, d.amt, d.next, d.freq) }
@@ -89,7 +89,7 @@ object LegacyMapper {
         val acc = d.accounts.associate { it.id to it.name }
         val cat = d.categories.associate { it.id to it.name }
         val tx = d.transactions.sortedWith(compareByDescending<Transaction> { it.bookingDate }.thenByDescending { it.id }).map {
-            LegacyTx(it.externalId, it.bookingDate, it.valueDate, it.amount, it.description, acc[it.accountId] ?: "Conto principale",
+            LegacyTx(it.externalId, it.bookingDate, it.valueDate, it.amount, it.description, it.accountId?.let { id -> acc[id] } ?: "",
                 it.notes, it.merchantOverride, it.origin.name, it.documentId?.let { id -> docNames[id] })
         }
         val cats = d.categories.sortedBy { it.sortOrder }.map { LegacyCat(it.name, it.kind, it.flexible, colorHex(it.color), it.active, it.icon, it.parentId?.let { pid -> d.categories.firstOrNull { p -> p.id == pid }?.name }, it.nature?.key) }

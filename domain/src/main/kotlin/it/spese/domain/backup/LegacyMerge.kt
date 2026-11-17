@@ -20,7 +20,7 @@ data class MergePlan(
     fun summary(): List<String> {
         val out = ArrayList<String>()
         if (newTx.isNotEmpty()) {
-            val accs = newTx.map { it.acc }.toSet()
+            val accs = newTx.map { it.acc }.filter { it.isNotBlank() }.toSet()
             out.add("Movimenti nuovi: ${newTx.size}" + if (accs.isNotEmpty()) " (conti: ${accs.joinToString(", ")})" else "")
         }
         fun line(type: String, label: String) {

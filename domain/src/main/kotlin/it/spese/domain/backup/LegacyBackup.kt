@@ -126,7 +126,7 @@ object LegacyBackupCodec {
             val v = DateParser.parseText(o["v"].str() ?: "") ?: d
             val a = o["a"].dec() ?: return@mapNotNull null
             val t = o["t"].str() ?: ""
-            val acc = (o["acc"].str() ?: "").ifBlank { "Conto principale" }
+            val acc = (o["acc"].str() ?: "").trim()          // vuoto = movimento senza conto
             val id = o["id"].str()?.takeIf { it.isNotBlank() } ?: run {
                 val k = "$acc|$d|$v|${Money.scale(a).toPlainString()}|$t"
                 val n = (seen[k] ?: 0) + 1; seen[k] = n; "$k#$n"

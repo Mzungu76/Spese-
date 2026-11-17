@@ -41,7 +41,8 @@ class CommitImportUseCase @Inject constructor(
 ) {
     /** Importa solo le righe nuove (le duplicate sono scartate); registra il lotto per poterlo annullare. */
     suspend operator fun invoke(table: StatementTable, headerRow: Int, mapping: ColumnMapping, accountName: String, options: ImportOptions = ImportOptions()): ImportOutcome {
-        val name = accountName.trim().ifBlank { "Conto principale" }
+        val name = accountName.trim()
+        require(name.isNotEmpty()) { "Scegli il conto su cui importare l'estratto conto." }
         val acc = accounts.getOrCreate(name)
         val result = ImportParser.parse(table.rows, headerRow, mapping, options)
         val preview = ImportPlanner.preview(result, acc.id.toString(), tx.dedupKeys(acc.id))
@@ -50,7 +51,7 @@ class CommitImportUseCase @Inject constructor(
         // le righe dell'estratto sostituiscono i movimenti provvisori nati da notifiche (stesso importo, data vicina)
         // (anche gli scontrini scansionati, su qualunque conto: spesso li si registra su un conto diverso da quello addebitato)
         val ledger = tx.getAll()
-        val provisional = ledger.filter { (it.accountId == acc.id && (it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING)) || it.origin == TxOrigin.OCR }
+        val provisional = ledger.filter { ((it.accountId == acc.id || it.accountId == null) && (it.origin == TxOrigin.NOTIFICATION || it.origin == TxOrigin.RECURRING)) || it.origin == TxOrigin.OCR }
         val matches = NotificationReconciler.match(provisional, fresh.mapIndexed { i, p -> NotificationReconciler.Row(i, p.row.amount, p.row.date) })
         val batch = tx.createImportBatch(table.fileName, fresh.size)
         val items = fresh.mapIndexed { i, p ->

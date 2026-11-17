@@ -38,7 +38,7 @@ class DatabaseSeeder @Inject constructor(private val db: AppDatabase) {
             db.rules().insert(RuleEntity(keyword = r.keyword, categoryId = byName.getValue(r.category), sign = r.sign.key,
                 minCents = Money.toCents(r.min), maxCents = 0, priority = i))
         }
-        if (db.accounts().getAll().isEmpty()) db.accounts().insert(AccountEntity(name = "Conto principale", type = AccountType.CONTO.name))
+        // nessun conto predefinito: i conti si creano esplicitamente (importando un estratto, o in Altro › Conti)
     }
 
     /** Ripristina lo stato iniziale (dopo "Azzera"): cancella tutto e reinserisce i dati predefiniti. */

@@ -49,7 +49,7 @@ fun OverflowMenu(menu: DataMenu) {
             DropdownMenuItem({ Text("Entrate e spese ricorrenti") }, { open = false; menu.onRecurring() }, leadingIcon = { Icon(Icons.Default.Autorenew, null) })
             DropdownMenuItem({ Text("Report PDF") }, { open = false; menu.onReports() }, leadingIcon = { Icon(Icons.Default.PictureAsPdf, null) })
             DropdownMenuItem({ Text("Conti") }, { open = false; menu.onAccounts() }, leadingIcon = { Icon(Icons.Default.AccountBalance, null) })
-            if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla ultima importazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) })
+            if (menu.undoAvailable) DropdownMenuItem({ Text("Annulla l'ultima operazione") }, { open = false; menu.onUndo() }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null) })
             HorizontalDivider()
             DropdownMenuItem({ Text("Backup e impostazioni") }, { open = false; menu.onSettings() }, leadingIcon = { Icon(Icons.Default.Settings, null) })
         }
@@ -107,6 +107,7 @@ class RootViewModel @Inject constructor(settings: SettingsRepository, private va
     /** Crea i movimenti dovuti dalle entrate e spese ricorrenti (all'avvio e a ogni ritorno nell'app). */
     fun generateRecurring() { viewModelScope.launch { try { val n = generateRecurring.invoke(); if (n > 0) messenger.show(if (n == 1) "Creato 1 movimento ricorrente: controllalo in Verifica" else "Creati $n movimenti ricorrenti: controllali in Verifica") } catch (_: Exception) { } } }
     fun requestSearch() = filters.requestSearch()
+    fun requestReview() = filters.requestReview()
     fun showTransfers() = filters.update { it.copy(kind = TxKind.TRASFERIMENTO) }
     fun showCategory(id: Long?) = filters.update { it.copy(categoryId = id, period = it.period) }
     val undoAvailable = settings.observe().map { it.lastUndo.isNotEmpty() }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)

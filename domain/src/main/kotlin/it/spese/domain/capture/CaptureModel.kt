@@ -34,7 +34,7 @@ data class RawNotification(val packageName: String, val title: String, val text:
 
 data class SourceConfig(
     val enabled: Boolean = false,
-    /** Conto su cui registrare i movimenti di questa fonte (null = primo conto). */
+    /** Conto su cui registrare i movimenti di questa fonte (null = nessun conto: i movimenti di questa fonte vanno in Verifica finché non lo scegli). */
     val accountId: Long? = null,
     /** Altri pacchetti da ascoltare per questa fonte (app non nell'elenco noto). */
     val extraPackages: Set<String> = emptySet(),
