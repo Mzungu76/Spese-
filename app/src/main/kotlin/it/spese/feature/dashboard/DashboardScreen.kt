@@ -90,7 +90,6 @@ fun DashboardScreen(
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "h-today") { SectionHeader("Oggi", Modifier.padding(horizontal = 24.dp)) }
-            balances?.takeIf { it.accounts.isNotEmpty() }?.let { b -> item(key = "balances") { BalancesCard(b, st.data.managedAccountIds, onOpenNetWorth, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             health?.let { h -> item(key = "health") { HealthCard(h, onOpenHealth, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             advice.reviewMonth?.let { month ->
@@ -144,6 +143,7 @@ fun DashboardScreen(
             item(key = "period") {
                 PillSegmented(listOf<Pair<Period, String>>(Period.CurrentWeek to "Sett.", Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
             }
+            balances?.takeIf { it.accounts.isNotEmpty() }?.let { b -> item(key = "balances") { BalancesCard(b, st.data.managedAccountIds, onOpenNetWorth, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             if (!st.filter.calendar.isSolar && st.data.ledger.isNotEmpty()) item(key = "calendar-note") {
                 val r = PeriodResolver.resolve(shownPeriod, st.data.ledger.minOf { it.bookingDate }, st.data.ledger.maxOf { it.bookingDate }, st.filter.calendar)
                 Text("Mese contabile dal giorno ${st.filter.calendar.startDay}" + (r.from?.let { f -> r.to?.let { t -> " · periodo ${Dates.fmt(f)} – ${Dates.fmt(t)}" } } ?: ""),
