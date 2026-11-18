@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {},
+    onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -60,6 +60,7 @@ fun DashboardScreen(
     val advice by vm.advice.collectAsStateWithLifecycle()
     val transferCount by vm.transferPairs.collectAsStateWithLifecycle()
     val health by vm.health.collectAsStateWithLifecycle()
+    val balances by vm.balances.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -89,6 +90,7 @@ fun DashboardScreen(
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             item(key = "h-today") { SectionHeader("Oggi", Modifier.padding(horizontal = 24.dp)) }
+            balances?.takeIf { it.accounts.isNotEmpty() }?.let { b -> item(key = "balances") { BalancesCard(b, st.data.managedAccountIds, onOpenNetWorth, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             health?.let { h -> item(key = "health") { HealthCard(h, onOpenHealth, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             safe?.let { r -> item(key = "safe") { SafeToSpendCard(r, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
             advice.reviewMonth?.let { month ->

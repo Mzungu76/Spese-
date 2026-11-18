@@ -32,6 +32,10 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
     valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository,
     healthSource: it.spese.feature.health.HealthSource) : ViewModel() {
+    /** Saldi di tutti i conti e totale (stessi numeri del Patrimonio). */
+    val balances: StateFlow<it.spese.domain.networth.NetWorthReport?> = combine(data, goals.observeAll(), valuations.observeAll()) { d, g, v ->
+        if (!d.loaded) null else runCatching { it.spese.domain.networth.NetWorthEngine.compute(d, g, v) }.getOrNull()
+    }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Parere sulla salute del bilancio (null finché i dati non bastano). */
     val health: StateFlow<it.spese.domain.health.HealthReport?> = healthSource.report.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Quanti giroconti probabili (uscita e entrata dello stesso importo su due conti) aspettano una conferma. */
