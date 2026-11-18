@@ -54,10 +54,10 @@ class TransactionsViewModel @Inject constructor(
     private val selection = MutableStateFlow<Set<Long>>(emptySet())
     private var current: TransactionsState = TransactionsState()
 
-    val state: StateFlow<TransactionsState> = combine(data, filters.filter, sort, selection, reviewMode, receiptsMode) { d, f, s, sel, rm, rc -> arrayOf(d, f, s, sel, rm, rc) }
+    val state: StateFlow<TransactionsState> = combine(data, filters.filter, sort, selection, combine(reviewMode, receiptsMode) { r1, r2 -> r1 to r2 }) { d, f, s, sel, v -> arrayOf(d, f, s, sel, v) }
         .mapLatest { a ->
             @Suppress("UNCHECKED_CAST")
-            val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = a[4] as Boolean; val rc = a[5] as Boolean
+            val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = (a[4] as Pair<Boolean, Boolean>).first; val rc = (a[4] as Pair<Boolean, Boolean>).second
             withContext(Dispatchers.Default) {
                 // i filtri guardano le parti (un prelievo diviso compare cercando una sua categoria), l'elenco mostra il movimento intero
                 val parts = FilterEngine.apply(d.transactions, f, d.categoriesById, d.accounts.associate { it.id to it.name })
