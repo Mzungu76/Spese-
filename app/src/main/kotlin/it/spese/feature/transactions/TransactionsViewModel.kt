@@ -39,6 +39,8 @@ data class TransactionsState(
     val review: List<ReviewItem> = emptyList(), val reviewMode: Boolean = false,
     /** Solo i movimenti con scontrino/foto allegata (ignora il periodo e gli altri filtri). */
     val receiptsMode: Boolean = false,
+    /** Somma dei giroconti mostrati (positivi e negativi): tra due tuoi conti si annulla, verso fuori no. */
+    val transfers: BigDecimal = BigDecimal.ZERO,
 )
 
 @HiltViewModel
@@ -76,7 +78,8 @@ class TransactionsViewModel @Inject constructor(
                     shown.filter { it.kind == TxKind.ENTRATA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
                     shown.filter { it.kind == TxKind.SPESA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
                     it.spese.domain.finance.AlertEngine.referenceToday(LocalDate.now(), d.ledger),
-                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules, d.unassigned), rm, rc)
+                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules, d.unassigned), rm, rc,
+                    shown.filter { it.kind == TxKind.TRASFERIMENTO }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount })
             }.also { current = it }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionsState())
 

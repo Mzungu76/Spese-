@@ -114,6 +114,8 @@ fun TransactionsScreen(
             MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyLarge)
             MoneyText(st.expense, decimals = false, colored = false, style = MaterialTheme.typography.bodyLarge)
         }
+        if (!st.reviewMode && st.transfers.signum() != 0) Text("Giroconti (netto, fuori da entrate e spese): " + (if (st.transfers.signum() > 0) "+" else "−") + it.spese.core.common.Money.eur0(st.transfers.abs()),
+            Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (unclassified > 0 && !selecting && !st.reviewMode) Row(Modifier.padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onOpenClassify).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) { Text("$unclassified", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
@@ -129,7 +131,7 @@ fun TransactionsScreen(
                 st.items.forEach { x ->
                     if (byDay && x.bookingDate != lastDay) {
                         lastDay = x.bookingDate
-                        val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate && it.kind != TxKind.TRASFERIMENTO }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
+                        val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
                         stickyHeader(key = "d${x.bookingDate}") {
                             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp)) {
                                 Text(x.bookingDate.dayLabel(st.today).uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
