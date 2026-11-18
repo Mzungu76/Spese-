@@ -29,17 +29,21 @@ class WidgetsTest {
         }
     }
 
-    @Test fun `la composizione predefinita di ogni pagina mostra ogni widget una volta`() {
-        WidgetPage.entries.forEach { page ->
-            val d = LayoutOps.default(page)
-            val fixed = WidgetCatalog.forPage(page).filter { !it.repeatable }.map { it.id }.toSet()
-            assertEquals(page.name, fixed, d.filter { it.widgetId != WidgetCatalog.SECTION }.map { it.widgetId }.toSet())
-            assertEquals(d.size, d.map { it.uid }.toSet().size)
-        }
+    @Test fun `la composizione predefinita di ogni pagina è quella di sempre, con i widget propri della pagina`() {
+        val homeOriginal = setOf("safe", "health", "advice", "balances", "hero", "cashflow", "period", "pace", "watch", "opps", "categories", "alerts", "unassigned", "transfer_pairs", "pending_amounts", "notif_review", "subs")
+        assertEquals(homeOriginal, LayoutOps.default(home).filter { it.widgetId != WidgetCatalog.SECTION }.map { it.widgetId }.toSet())
         assertEquals(3, LayoutOps.default(home).count { it.widgetId == WidgetCatalog.SECTION })
-        // l'ordine di sempre sulla Home: i widget «Oggi» prima di quelli del mese, i «Da sistemare» in fondo
+        WidgetPage.entries.filter { it != home }.forEach { page ->
+            val own = WidgetCatalog.forPage(page).filter { WidgetCatalog.isNative(page, it.id) && !it.repeatable }.map { it.id }.toSet()
+            assertEquals(page.name, own, LayoutOps.default(page).filter { it.widgetId != WidgetCatalog.SECTION }.map { it.widgetId }.toSet())
+        }
+        WidgetPage.entries.forEach { page -> val d = LayoutOps.default(page); assertEquals(d.size, d.map { it.uid }.toSet().size) }
         val ids = LayoutOps.default(home).map { it.widgetId }
         assertTrue(ids.indexOf("health") < ids.indexOf("hero")); assertTrue(ids.indexOf("hero") < ids.indexOf("alerts")); assertTrue(ids.indexOf("period") < ids.indexOf("balances"))
+    }
+
+    @Test fun `ogni pagina ha almeno dieci widget tra cui scegliere`() {
+        WidgetPage.entries.forEach { page -> assertTrue("${page.name}: ${WidgetCatalog.forPage(page).size}", WidgetCatalog.forPage(page).size >= 10) }
     }
 
     @Test fun `l'elenco dei movimenti non si può nascondere, togliere o perdere`() {
@@ -54,7 +58,7 @@ class WidgetsTest {
     }
 
     @Test fun `un widget di una pagina non compare in un'altra`() {
-        assertTrue(LayoutOps.normalize(WidgetPage.GOALS, listOf(WidgetInstance("a", "safe"), WidgetInstance("b", "goals_list"))).map { it.widgetId } == listOf("goals_list"))
+        assertTrue(LayoutOps.normalize(WidgetPage.GOALS, listOf(WidgetInstance("a", "pace"), WidgetInstance("b", "goals_list"))).map { it.widgetId } == listOf("goals_list"))
     }
 
     @Test fun `salvataggio e lettura restituiscono la stessa composizione`() {

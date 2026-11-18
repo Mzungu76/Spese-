@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.Flow
 enum class WidgetPage(val label: String) { HOME("Home"), TRANSACTIONS("Movimenti"), GOALS("Obiettivi"), NETWORTH("Patrimonio") }
 
 /** Come i widget sono raggruppati nella galleria. */
-enum class WidgetGroup(val label: String) { TODAY("Oggi"), MONTH("Spese ed entrate"), TODO("Da sistemare"), SAVINGS("Obiettivi"), WEALTH("Patrimonio"), LIST("Movimenti"), LAYOUT("Struttura") }
+enum class WidgetGroup(val label: String) { TODAY("Oggi"), MONTH("Spese ed entrate"), TODO("Da sistemare"), SAVINGS("Obiettivi"), WEALTH("Patrimonio"), LIST("Movimenti"), ACTIONS("Scorciatoie e promemoria"), LAYOUT("Struttura") }
 
 /** Un widget che l'app sa mostrare: un blocco con un solo compito. `repeatable` = se ne possono mettere più copie (es. i titoli di sezione). */
 data class WidgetSpec(
@@ -30,51 +30,73 @@ interface WidgetLayoutRepository {
 
 object WidgetCatalog {
     const val SECTION = "section"
-    private val HOME = setOf(WidgetPage.HOME)
-    private fun h(id: String, title: String, desc: String, g: WidgetGroup, repeatable: Boolean = false) = WidgetSpec(id, title, desc, g, HOME, repeatable)
-    private fun p(page: WidgetPage, id: String, title: String, desc: String, g: WidgetGroup, required: Boolean = false) = WidgetSpec(id, title, desc, g, setOf(page), false, required)
+    private val H = WidgetPage.HOME; private val T = WidgetPage.TRANSACTIONS; private val G = WidgetPage.GOALS; private val N = WidgetPage.NETWORTH
+    private fun w(id: String, title: String, desc: String, g: WidgetGroup, vararg pages: WidgetPage, required: Boolean = false) =
+        WidgetSpec(id, title, desc, g, pages.toSet(), false, required)
 
+    /** I widget con un identificativo di una pagina sono «suoi» (vivono solo lì); gli altri si possono mettere in più pagine. */
     val specs: List<WidgetSpec> = listOf(
         WidgetSpec(SECTION, "Titolo di sezione", "Una riga di titolo per raggruppare i widget", WidgetGroup.LAYOUT, WidgetPage.entries.toSet(), repeatable = true),
-        // Home
-        h("safe", "Disponibile oggi", "Quanto puoi ancora spendere nel mese, al giorno", WidgetGroup.TODAY),
-        h("health", "Salute del bilancio", "Giudizio e punteggio sul tuo storico", WidgetGroup.TODAY),
-        h("advice", "Consigli e chiusura del mese", "Il consiglio più importante e il mese da chiudere", WidgetGroup.TODAY),
-        h("balances", "Saldi dei conti", "Il saldo di ogni conto e il totale", WidgetGroup.TODAY),
-        h("hero", "Risparmio del periodo", "Quanto hai messo da parte (o speso in più) e in che percentuale", WidgetGroup.MONTH),
-        h("cashflow", "Entrate e spese", "Grafico del periodo, con il confronto tra categorie", WidgetGroup.MONTH),
-        h("period", "Periodo", "Il selettore: settimana, mese, 3 mesi, anno, tutto", WidgetGroup.MONTH),
-        h("pace", "Ritmo di spesa", "Stai spendendo più o meno del solito, giorno per giorno", WidgetGroup.MONTH),
-        h("watch", "Categorie in aumento", "Dove stai spendendo più dello storico", WidgetGroup.MONTH),
-        h("opps", "Dove puoi risparmiare", "Le categorie su cui conviene intervenire", WidgetGroup.MONTH),
-        h("categories", "Dove vanno i soldi", "Le categorie con importi e variazioni (spese o entrate)", WidgetGroup.MONTH),
-        h("alerts", "Avvisi", "Budget, scadenze e spese non previste", WidgetGroup.TODO),
-        h("unassigned", "Movimenti senza conto", "Quelli da assegnare a un conto", WidgetGroup.TODO),
-        h("transfer_pairs", "Giroconti probabili", "Spostamenti tra i tuoi conti da confermare", WidgetGroup.TODO),
-        h("pending_amounts", "Importi da completare", "Movimenti segnalati da notifiche senza cifra", WidgetGroup.TODO),
-        h("notif_review", "Notifiche da controllare", "Quelle da ignorare o da registrare", WidgetGroup.TODO),
-        h("subs", "Abbonamenti e rate", "Costo mensile e novità", WidgetGroup.TODO),
+        // Oggi
+        w("safe", "Disponibile oggi", "Quanto puoi ancora spendere nel mese, al giorno", WidgetGroup.TODAY, H, G, T),
+        w("health", "Salute del bilancio", "Giudizio e punteggio sul tuo storico", WidgetGroup.TODAY, H, G, N),
+        w("advice", "Consigli e chiusura del mese", "Il consiglio più importante e il mese da chiudere", WidgetGroup.TODAY, H, G, N),
+        w("balances", "Saldi dei conti", "Il saldo di ogni conto e il totale", WidgetGroup.TODAY, H, N, T),
+        w("net_summary", "Patrimonio in breve", "Il totale, come è cambiato e quanto è liquido", WidgetGroup.TODAY, H, G, T),
+        w("recent_tx", "Ultimi movimenti", "Gli ultimi cinque movimenti registrati", WidgetGroup.TODAY, H, N, G),
+        // Spese ed entrate
+        w("hero", "Risparmio del periodo", "Quanto hai messo da parte (o speso in più) e in che percentuale", WidgetGroup.MONTH, H, G, T),
+        w("cashflow", "Entrate e spese", "Grafico del periodo, con il confronto tra categorie", WidgetGroup.MONTH, H, T),
+        w("period", "Periodo", "Il selettore: settimana, mese, 3 mesi, anno, tutto", WidgetGroup.MONTH, H, T, G),
+        w("pace", "Ritmo di spesa", "Stai spendendo più o meno del solito, giorno per giorno", WidgetGroup.MONTH, H, T),
+        w("watch", "Categorie in aumento", "Dove stai spendendo più dello storico", WidgetGroup.MONTH, H, T),
+        w("opps", "Dove puoi risparmiare", "Le categorie su cui conviene intervenire", WidgetGroup.MONTH, H, G, T),
+        w("categories", "Dove vanno i soldi", "Le categorie con importi e variazioni (spese o entrate)", WidgetGroup.MONTH, H, T),
+        w("budgets", "Stato dei budget", "Le categorie con il budget più consumato", WidgetGroup.MONTH, H, G, T),
+        w("top_expenses", "Spese più grandi", "Le cinque spese più alte del periodo", WidgetGroup.MONTH, H, T),
+        w("top_merchants", "Esercenti principali", "Dove hai speso di più nel periodo", WidgetGroup.MONTH, H, T),
+        // Da sistemare
+        w("alerts", "Avvisi", "Budget, scadenze e spese non previste", WidgetGroup.TODO, H, T, G, N),
+        w("dues", "Prossime scadenze", "Le scadenze e le ricorrenze dei prossimi giorni", WidgetGroup.TODO, H, G, N),
+        w("unassigned", "Movimenti senza conto", "Quelli da assegnare a un conto", WidgetGroup.TODO, H, T),
+        w("transfer_pairs", "Giroconti probabili", "Spostamenti tra i tuoi conti da confermare", WidgetGroup.TODO, H, T, N),
+        w("pending_amounts", "Importi da completare", "Movimenti segnalati da notifiche senza cifra", WidgetGroup.TODO, H, T),
+        w("notif_review", "Notifiche da controllare", "Quelle da ignorare o da registrare", WidgetGroup.TODO, H, T),
+        w("subs", "Abbonamenti e rate", "Costo mensile e novità", WidgetGroup.TODO, H, T, G),
+        // Scorciatoie e promemoria
+        w("shortcuts", "Scorciatoie", "Aggiungi, importa, scansiona e apri le sveglie con un tocco", WidgetGroup.ACTIONS, H, T, G, N),
+        w("reminders_next", "Prossime sveglie", "Le prossime sveglie e promemoria in programma", WidgetGroup.ACTIONS, H, G, N),
         // Movimenti
-        p(WidgetPage.TRANSACTIONS, "tx_filters", "Ricerca e filtri", "Cerca un movimento e filtra per periodo, conto, categoria", WidgetGroup.LIST),
-        p(WidgetPage.TRANSACTIONS, "tx_view", "Tutti · Verifica · Scontrini", "Il selettore per vedere tutti i movimenti, quelli da controllare o quelli con scontrino", WidgetGroup.LIST),
-        p(WidgetPage.TRANSACTIONS, "tx_summary", "Totali dell'elenco", "Quanti movimenti, entrate, spese e il netto dei giroconti", WidgetGroup.LIST),
-        p(WidgetPage.TRANSACTIONS, "tx_classify", "Da classificare", "Quanti movimenti non hanno ancora una categoria", WidgetGroup.LIST),
-        p(WidgetPage.TRANSACTIONS, "tx_list", "Elenco dei movimenti", "I movimenti, raggruppati per giorno", WidgetGroup.LIST, required = true),
+        w("tx_filters", "Ricerca e filtri", "Cerca un movimento e filtra per periodo, conto, categoria", WidgetGroup.LIST, T),
+        w("tx_view", "Tutti · Verifica · Scontrini", "Il selettore per vedere tutti i movimenti, quelli da controllare o quelli con scontrino", WidgetGroup.LIST, T),
+        w("tx_summary", "Totali dell'elenco", "Quanti movimenti, entrate, spese e il netto dei giroconti", WidgetGroup.LIST, T),
+        w("tx_classify", "Da classificare", "Quanti movimenti non hanno ancora una categoria", WidgetGroup.LIST, T),
+        w("tx_list", "Elenco dei movimenti", "I movimenti, raggruppati per giorno", WidgetGroup.LIST, T, required = true),
+        w("receipts", "Ultimi scontrini", "I cinque movimenti più recenti con uno scontrino allegato", WidgetGroup.LIST, H, T),
         // Obiettivi
-        p(WidgetPage.GOALS, "goals_intro", "Come funzionano", "Una breve spiegazione degli obiettivi", WidgetGroup.SAVINGS),
-        p(WidgetPage.GOALS, "goals_summary", "Da mettere da parte ogni mese", "La quota mensile totale e i pulsanti per i budget", WidgetGroup.SAVINGS),
-        p(WidgetPage.GOALS, "goals_list", "I tuoi obiettivi", "Ogni obiettivo con il suo avanzamento", WidgetGroup.SAVINGS),
+        w("goals_intro", "Come funzionano", "Una breve spiegazione degli obiettivi", WidgetGroup.SAVINGS, G),
+        w("goals_summary", "Da mettere da parte ogni mese", "La quota mensile totale e i pulsanti per i budget", WidgetGroup.SAVINGS, G),
+        w("goals_list", "I tuoi obiettivi", "Ogni obiettivo con il suo avanzamento", WidgetGroup.SAVINGS, G),
+        w("goals_progress", "Obiettivi in breve", "I primi obiettivi con la barra di avanzamento", WidgetGroup.SAVINGS, H, N),
         // Patrimonio
-        p(WidgetPage.NETWORTH, "nw_total", "Patrimonio totale", "Quanto hai in tutto, tra liquidità, investimenti e conti di altri", WidgetGroup.WEALTH),
-        p(WidgetPage.NETWORTH, "nw_trend", "Andamento", "Come è cambiato il patrimonio negli ultimi mesi", WidgetGroup.WEALTH),
-        p(WidgetPage.NETWORTH, "nw_fund", "Fondo di emergenza", "Quanti mesi di spese essenziali copri", WidgetGroup.WEALTH),
-        p(WidgetPage.NETWORTH, "nw_margin", "Margine investibile", "Quanto potresti investire senza toccare il fondo", WidgetGroup.WEALTH),
-        p(WidgetPage.NETWORTH, "nw_accounts", "Conti", "Il saldo di ogni conto, con il valore degli investimenti", WidgetGroup.WEALTH),
+        w("nw_total", "Patrimonio totale", "Quanto hai in tutto, tra liquidità, investimenti e conti di altri", WidgetGroup.WEALTH, N),
+        w("nw_trend", "Andamento", "Come è cambiato il patrimonio negli ultimi mesi", WidgetGroup.WEALTH, N),
+        w("nw_fund", "Fondo di emergenza", "Quanti mesi di spese essenziali copri", WidgetGroup.WEALTH, N),
+        w("nw_margin", "Margine investibile", "Quanto potresti investire senza toccare il fondo", WidgetGroup.WEALTH, N),
+        w("nw_accounts", "Conti", "Il saldo di ogni conto, con il valore degli investimenti", WidgetGroup.WEALTH, N),
     )
 
     private val byId = specs.associateBy { it.id }
     fun spec(id: String): WidgetSpec? = byId[id]
     fun forPage(page: WidgetPage): List<WidgetSpec> = specs.filter { page in it.pages }
+
+    /** Un widget proprio della pagina (si disegna da sé) o uno condiviso (disegnato con i dati della Home). */
+    fun isNative(page: WidgetPage, id: String): Boolean = id == SECTION || when (page) {
+        WidgetPage.HOME -> true
+        WidgetPage.TRANSACTIONS -> id.startsWith("tx_")
+        WidgetPage.GOALS -> id.startsWith("goals_") && id != "goals_progress"
+        WidgetPage.NETWORTH -> id.startsWith("nw_") && id != "net_summary"
+    }
 }
 
 /** Un widget in una composizione predefinita. */
@@ -102,12 +124,12 @@ object LayoutPresets {
     val SPENDING = LayoutPreset("spending", "Focus spese", "Quanto puoi spendere, il ritmo e dove vanno i soldi", mapOf(
         H to listOf(
             sec("Oggi"), w("safe"), w("pace"), w("period"),
-            sec("Dove vanno i soldi"), w("categories", "kind" to "SPESA"), w("watch"), w("opps"), w("cashflow"),
-            sec("Da sistemare"), w("alerts"), w("subs"), w("unassigned"), w("transfer_pairs"),
+            sec("Dove vanno i soldi"), w("categories", "kind" to "SPESA"), w("top_expenses"), w("budgets"), w("watch"), w("opps"), w("cashflow"),
+            sec("Da sistemare"), w("alerts"), w("subs"), w("dues"), w("unassigned"), w("transfer_pairs"),
         ),
         T to listOf(w("tx_filters"), w("tx_summary"), w("tx_view"), w("tx_classify"), w("tx_list")),
-        G to listOf(w("goals_summary"), w("goals_list")),
-        N to listOf(w("nw_total"), w("nw_accounts"), w("nw_fund")),
+        G to listOf(w("safe"), w("budgets"), w("goals_summary"), w("goals_list"), w("subs")),
+        N to listOf(w("nw_total"), w("nw_accounts"), w("nw_fund"), w("dues")),
     ))
     val INCOME = LayoutPreset("income", "Focus entrate", "Quanto incassi, da dove arriva e dove sono i soldi", mapOf(
         H to listOf(
@@ -116,17 +138,17 @@ object LayoutPresets {
             sec("Da sistemare"), w("alerts"), w("unassigned"), w("transfer_pairs"), w("pending_amounts"),
         ),
         T to listOf(w("tx_filters"), w("tx_summary"), w("tx_list")),
-        G to listOf(w("goals_summary"), w("goals_list")),
-        N to listOf(w("nw_total"), w("nw_trend"), sec("Conti"), w("nw_accounts")),
+        G to listOf(w("hero"), w("goals_summary"), w("goals_list")),
+        N to listOf(w("nw_total"), w("nw_trend"), w("goals_progress"), sec("Conti"), w("nw_accounts")),
     ))
     val SAVING = LayoutPreset("saving", "Risparmio", "Salute del bilancio, obiettivi, margine e consigli per mettere da parte", mapOf(
         H to listOf(
-            sec("Risparmio"), w("health"), w("hero"), w("advice"), w("opps"), w("balances"),
+            sec("Risparmio"), w("health"), w("hero"), w("goals_progress"), w("advice"), w("opps"), w("net_summary"),
             sec("Da sistemare"), w("alerts"), w("subs"),
         ),
         T to listOf(w("tx_summary"), w("tx_filters"), w("tx_view"), w("tx_list")),
-        G to listOf(w("goals_summary"), w("goals_list"), w("goals_intro")),
-        N to listOf(w("nw_total"), w("nw_fund"), w("nw_margin"), w("nw_trend"), sec("Conti"), w("nw_accounts")),
+        G to listOf(w("health"), w("goals_summary"), w("goals_list"), w("opps"), w("advice"), w("goals_intro")),
+        N to listOf(w("nw_total"), w("nw_fund"), w("nw_margin"), w("nw_trend"), w("goals_progress"), sec("Conti"), w("nw_accounts"), w("health")),
     ))
     val MINIMAL = LayoutPreset("minimal", "Minimale", "Solo l'essenziale in ogni pagina", mapOf(
         H to listOf(w("safe"), w("balances"), w("alerts")),
@@ -135,7 +157,14 @@ object LayoutPresets {
         N to listOf(w("nw_total"), w("nw_accounts")),
     ))
 
-    val all: List<LayoutPreset> = listOf(BALANCED, SPENDING, INCOME, SAVING, MINIMAL)
+    val DAILY = LayoutPreset("daily", "Controllo quotidiano", "Scorciatoie, cosa puoi spendere, ultimi movimenti e promemoria", mapOf(
+        H to listOf(w("shortcuts"), w("safe"), w("balances"), w("recent_tx"), w("reminders_next"), w("alerts")),
+        T to listOf(w("shortcuts"), w("tx_filters"), w("tx_view"), w("tx_classify"), w("tx_list")),
+        G to listOf(w("shortcuts"), w("goals_summary"), w("goals_list")),
+        N to listOf(w("shortcuts"), w("nw_total"), w("nw_accounts"), w("dues")),
+    ))
+
+    val all: List<LayoutPreset> = listOf(BALANCED, DAILY, SPENDING, INCOME, SAVING, MINIMAL)
     fun byId(id: String): LayoutPreset? = all.firstOrNull { it.id == id }
 
     /** Le istanze di un preset per una pagina (identificativi `p-N`). */
