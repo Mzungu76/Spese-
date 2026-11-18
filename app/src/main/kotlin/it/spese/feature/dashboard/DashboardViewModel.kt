@@ -31,7 +31,16 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     review: it.spese.domain.finance.SubscriptionReviewRepository,
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
     valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository,
-    healthSource: it.spese.feature.health.HealthSource, private val widgets: it.spese.domain.widgets.WidgetLayoutRepository) : ViewModel() {
+    healthSource: it.spese.feature.health.HealthSource, private val widgets: it.spese.domain.widgets.WidgetLayoutRepository,
+    reminderRepo: it.spese.domain.reminders.ReminderRepository) : ViewModel() {
+    /** Obiettivi con l'avanzamento (per i widget che li mostrano in breve). */
+    val goalsProgress: StateFlow<List<it.spese.domain.goals.GoalProgress>> = goals.observeAll().map { g -> it.spese.domain.goals.GoalEngine.all(g, java.time.LocalDate.now()) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    /** Le sveglie accese con il prossimo scatto, in ordine di tempo. */
+    val nextReminders: StateFlow<List<Pair<it.spese.domain.reminders.Reminder, java.time.LocalDateTime>>> = reminderRepo.observe().map { l ->
+        val now = java.time.LocalDateTime.now()
+        l.filter { r -> r.enabled }.mapNotNull { r -> it.spese.domain.reminders.ReminderEngine.next(r, now)?.let { n -> r to n } }.sortedBy { x -> x.second }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     /** I widget della Home, nell'ordine scelto (o quello predefinito). */
     val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = widgets.observe().map { m -> it.spese.domain.widgets.LayoutOps.effective(m, it.spese.domain.widgets.WidgetPage.HOME) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), it.spese.domain.widgets.LayoutOps.default(it.spese.domain.widgets.WidgetPage.HOME))

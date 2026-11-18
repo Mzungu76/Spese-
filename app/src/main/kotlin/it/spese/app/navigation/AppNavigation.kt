@@ -46,6 +46,7 @@ import it.spese.feature.transfers.TransfersScreen
 import it.spese.feature.budgets.BudgetsScreen
 import it.spese.feature.reminders.RemindersScreen
 import it.spese.domain.widgets.WidgetPage
+import it.spese.feature.dashboard.HomeCallbacks
 import it.spese.feature.widgets.CustomizeScreen
 import it.spese.feature.health.HealthScreen
 import it.spese.feature.more.MoreActions
@@ -169,6 +170,15 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
         onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onSettings = { nav.navigate(Routes.SETTINGS) }, undoAvailable = undoAvailable, onUndo = vm::undoLast, onReports = { nav.navigate(Routes.REPORTS) }, onRecurring = { nav.navigate(Routes.RECURRING) },
     )
     fun goTab(r: String) = nav.navigate(r) { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true }
+    /** I tocchi dei widget condivisi: stessi per la Home e per le altre pagine che li ospitano. */
+    val homeCb = HomeCallbacks(
+        onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
+        onOpenNetWorth = { goTab(Routes.NETWORTH) }, onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) },
+        onOpenTrends = { nav.navigate(Routes.TRENDS) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenAdvice = { nav.navigate(Routes.ADVICE) },
+        onOpenTransfersReview = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onOpenUnassigned = { vm.requestReview(); goTab(Routes.TRANSACTIONS) }, onOpenHealth = { nav.navigate(Routes.HEALTH) }, onOpenReview = { nav.navigate(Routes.REVIEW) },
+        onAdd = { addOpen = true }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onOpenReminders = { nav.navigate(Routes.REMINDERS) },
+        onOpenGoals = { goTab(Routes.GOALS) }, onOpenBudgets = { nav.navigate(Routes.BUDGETS) },
+    )
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
@@ -179,9 +189,9 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 DashboardScreen(menu, onCustomize = { nav.navigate(Routes.customize(WidgetPage.HOME)) }, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenNetWorth = { goTab(Routes.NETWORTH) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
-                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, onOpenAdvice = { nav.navigate(Routes.ADVICE) }, onOpenTransfersReview = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onOpenUnassigned = { vm.requestReview(); goTab(Routes.TRANSACTIONS) }, onOpenHealth = { nav.navigate(Routes.HEALTH) }, onOpenReview = { nav.navigate(Routes.REVIEW) }, contentPadding = pad)
+                    onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, onOpenAdvice = { nav.navigate(Routes.ADVICE) }, onOpenTransfersReview = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onOpenUnassigned = { vm.requestReview(); goTab(Routes.TRANSACTIONS) }, onOpenHealth = { nav.navigate(Routes.HEALTH) }, onOpenReview = { nav.navigate(Routes.REVIEW) }, onOpenReminders = { nav.navigate(Routes.REMINDERS) }, onOpenGoals = { goTab(Routes.GOALS) }, onOpenBudgets = { nav.navigate(Routes.BUDGETS) }, contentPadding = pad)
             }
-            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.TRANSACTIONS)) }, bottomPadding = pad) }
+            composable(Routes.TRANSACTIONS) { TransactionsScreen(menu, onOpen = { nav.navigate(Routes.edit(it)) }, onAdd = { addOpen = true }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.TRANSACTIONS)) }, home = homeCb, bottomPadding = pad) }
             composable(Routes.CATEGORIES) { CategoriesScreen(menu, onOpenCategory = { nav.navigate(Routes.category(it)) }, onManage = { nav.navigate(Routes.manage(it)) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, bottomPadding = pad) }
             composable(Routes.CATEGORY, arguments = listOf(navArgument("id") { type = NavType.LongType })) { entry ->
                 val catVm: CategoryDetailViewModel = hiltViewModel()
@@ -212,8 +222,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                     }
                 })
             }
-            composable(Routes.NETWORTH) { NetWorthScreen(menu = menu, bottomPadding = pad, onCustomize = { nav.navigate(Routes.customize(WidgetPage.NETWORTH)) }) }
-            composable(Routes.GOALS) { GoalsScreen(menu = menu, bottomPadding = pad, onOpenBudgets = { nav.navigate(Routes.BUDGETS) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.GOALS)) }) }
+            composable(Routes.NETWORTH) { NetWorthScreen(menu = menu, bottomPadding = pad, onCustomize = { nav.navigate(Routes.customize(WidgetPage.NETWORTH)) }, home = homeCb) }
+            composable(Routes.GOALS) { GoalsScreen(menu = menu, bottomPadding = pad, onOpenBudgets = { nav.navigate(Routes.BUDGETS) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.GOALS)) }, home = homeCb) }
             composable(Routes.HEALTH) { HealthScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.BUDGETS) { BudgetsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.CUSTOMIZE, arguments = listOf(navArgument("page") { type = NavType.StringType; defaultValue = "HOME" })) { CustomizeScreen(onBack = { nav.popBackStack() }) }

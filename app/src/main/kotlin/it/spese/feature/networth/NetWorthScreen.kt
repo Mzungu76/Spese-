@@ -31,9 +31,11 @@ import java.time.YearMonth
 
 /** Patrimonio: quanto hai, come è cambiato, se il fondo di emergenza è al sicuro e quanto potresti investire. */
 @Composable
-fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onCustomize: () -> Unit = {}, vm: NetWorthViewModel = hiltViewModel()) {
+fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onCustomize: () -> Unit = {}, home: it.spese.feature.dashboard.HomeCallbacks? = null, vm: NetWorthViewModel = hiltViewModel()) {
     val r by vm.report.collectAsStateWithLifecycle()
     val layout by vm.layout.collectAsStateWithLifecycle()
+    val shared = layout.any { w -> w.enabled && !it.spese.domain.widgets.WidgetCatalog.isNative(it.spese.domain.widgets.WidgetPage.NETWORTH, w.widgetId) }
+    val hctx = it.spese.feature.dashboard.rememberHomeCtx(home, shared)
     var edit by remember { mutableStateOf<AccountBalance?>(null) }
     Column(Modifier.fillMaxSize()) {
         if (onBack != null) BackHeader("Patrimonio", onBack) else it.spese.app.common.LargeHeader("Patrimonio", menu = menu)
@@ -51,7 +53,7 @@ fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataM
                     "nw_fund" -> { item(key = inst.uid) { FundCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
                     "nw_margin" -> { item(key = inst.uid) { MarginCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
                     "nw_accounts" -> { items(rep.accounts, key = { b -> "${inst.uid}-${b.account.id}" }) { b -> AccountRow(b) { edit = b } } }
-                    else -> Unit
+                    else -> { hctx?.let { c -> it.spese.feature.dashboard.homeWidget(inst, c) } }
                 }
             }
             item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_networth")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }

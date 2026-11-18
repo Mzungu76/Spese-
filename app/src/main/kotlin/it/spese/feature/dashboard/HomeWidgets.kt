@@ -22,7 +22,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.core.common.Dates
+import it.spese.core.model.Transaction
+import it.spese.domain.reminders.ReminderKind
 import it.spese.core.common.Money
 import it.spese.core.designsystem.chart.GapAreaChart
 import it.spese.core.designsystem.chart.GapPoint
@@ -35,7 +38,10 @@ import it.spese.domain.finance.PeriodResolver
 import it.spese.domain.finance.SafeToSpendReport
 import it.spese.domain.finance.SavingsOpportunities
 import it.spese.domain.finance.SubscriptionSummary
+import it.spese.domain.goals.GoalProgress
 import it.spese.domain.health.HealthReport
+import it.spese.domain.reminders.Reminder
+import java.time.LocalDateTime
 import it.spese.domain.networth.NetWorthReport
 import it.spese.domain.widgets.WidgetInstance
 import it.spese.feature.categories.CategoryRankRow
@@ -49,6 +55,7 @@ class HomeCallbacks(
     val onOpenAlerts: () -> Unit, val onOpenCategory: (Long?) -> Unit, val onOpenNetWorth: () -> Unit, val onOpenCategories: () -> Unit, val onOpenTransfers: () -> Unit,
     val onOpenTrends: () -> Unit, val onOpenCapture: () -> Unit, val onOpenSubscriptions: () -> Unit, val onOpenAdvice: () -> Unit, val onOpenTransfersReview: () -> Unit,
     val onOpenUnassigned: () -> Unit, val onOpenHealth: () -> Unit, val onOpenReview: () -> Unit,
+    val onAdd: () -> Unit = {}, val onImport: () -> Unit = {}, val onScan: () -> Unit = {}, val onOpenReminders: () -> Unit = {}, val onOpenGoals: () -> Unit = {}, val onOpenBudgets: () -> Unit = {},
 )
 
 /** Tutto ciò che i widget della Home leggono: lo stato condiviso (periodo, selezione di categorie) e i dati già calcolati. */
@@ -57,6 +64,7 @@ class HomeCtx(
     val health: HealthReport?, val safe: SafeToSpendReport?, val advice: HomeAdvice, val balances: NetWorthReport?, val subs: SubscriptionSummary?,
     val transferCount: Int, val pendingAmounts: Int, val pendingNotifs: Int, val alertCount: Int,
     val points: List<GapPoint>, val shownPeriod: Period, val catKind: MutableState<TxKind>, val cb: HomeCallbacks,
+    val goals: List<GoalProgress> = emptyList(), val reminders: List<Pair<Reminder, LocalDateTime>> = emptyList(),
 )
 
 private fun Modifier.homeCard() = this.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -257,6 +265,159 @@ fun LazyListScope.homeWidget(inst: WidgetInstance, c: HomeCtx) {
                 }
             }
         }
+        "net_summary" -> {
+            c.balances?.let { r ->
+                item(key = k) {
+                    SectionCard(Modifier.homeCard().clickable(onClick = c.cb.onOpenNetWorth), title = "Patrimonio") {
+                        MoneyText(r.total, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, colored = false, decimals = false)
+                        r.change?.let { ch -> Text((if (ch.signum() >= 0) "+" else "−") + Money.eur0(ch.abs()) + " nei mesi scorsi", style = MaterialTheme.typography.bodyMedium, color = if (ch.signum() >= 0) fin.positive else fin.negative) }
+                        Text("Liquidità ${Money.eur0(r.liquidity)} · Investimenti ${Money.eur0(r.investments)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        "goals_progress" -> {
+            item(key = k) {
+                SectionCard(Modifier.homeCard().clickable(onClick = c.cb.onOpenGoals), title = "Obiettivi") {
+                    if (c.goals.isEmpty()) Text("Nessun obiettivo: tocca per crearne uno.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    c.goals.take(3).forEach { p ->
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(p.goal.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                Text("${p.percent}%", style = MaterialTheme.typography.labelLarge)
+                            }
+                            LinearProgressIndicator(progress = { p.percent / 100f }, Modifier.fillMaxWidth().height(6.dp), color = fin.positive, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
+                            Text("${Money.eur0(p.goal.saved)} di ${Money.eur0(p.goal.target)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+        "budgets" -> {
+            val used = c.m.budgets.filter { u -> u.budget.signum() > 0 }.take(4)
+            if (used.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard().clickable(onClick = c.cb.onOpenBudgets), title = "Stato dei budget") {
+                    used.forEach { u ->
+                        val over = u.spent > u.budget
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(u.category.name, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall, maxLines = 1)
+                                Text("${Money.eur0(u.spent)} / ${Money.eur0(u.budget)}", style = MaterialTheme.typography.labelLarge, color = if (over) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                            }
+                            LinearProgressIndicator(progress = { (u.spent.toFloat() / u.budget.toFloat()).coerceIn(0f, 1f) }, Modifier.fillMaxWidth().height(6.dp), color = if (over) MaterialTheme.colorScheme.error else fin.positive, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
+                        }
+                    }
+                }
+            }
+        }
+        "dues" -> {
+            val next = c.m.upcoming.take(5)
+            if (next.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard(), title = "Prossime scadenze") {
+                    next.forEach { u ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(u.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(when { u.daysLeft < 0 -> "Scaduta da ${-u.daysLeft} giorni"; u.daysLeft == 0 -> "Oggi"; u.daysLeft == 1 -> "Domani"; else -> "Tra ${u.daysLeft} giorni" } + " · " + Dates.fmt(u.date),
+                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            MoneyText(u.amount.abs(), decimals = false, colored = false)
+                        }
+                    }
+                }
+            }
+        }
+        "top_expenses" -> {
+            val top = c.m.biggestExpenses.take(5)
+            if (top.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard(), title = "Spese più grandi") {
+                    top.forEach { x ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(x.merchant, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(Dates.fmt(x.bookingDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            MoneyText(x.amount.abs(), decimals = false, colored = false)
+                        }
+                    }
+                }
+            }
+        }
+        "top_merchants" -> {
+            val top = c.m.merchants.take(5)
+            if (top.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard(), title = "Esercenti principali") {
+                    top.forEach { e ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(e.first, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(if (e.second.count == 1) "1 volta" else "${e.second.count} volte", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            MoneyText(e.second.total.abs(), decimals = false, colored = false)
+                        }
+                    }
+                }
+            }
+        }
+        "recent_tx" -> {
+            val last = c.st.data.ledger.sortedWith(compareByDescending<Transaction> { t -> t.bookingDate }.thenByDescending { t -> t.id }).take(5)
+            if (last.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard(), title = "Ultimi movimenti") {
+                    last.forEach { x ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(x.merchant, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(Dates.fmt(x.bookingDate) + " · " + c.st.data.accountName(x.accountId), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                            }
+                            MoneyText(x.amount, signed = true, colored = x.amount.signum() > 0 && x.kind == TxKind.ENTRATA, muted = x.kind == TxKind.TRASFERIMENTO, decimals = false)
+                        }
+                    }
+                }
+            }
+        }
+        "receipts" -> {
+            val withDoc = c.st.data.ledger.filter { t -> t.documentId != null }.sortedWith(compareByDescending<Transaction> { t -> t.bookingDate }.thenByDescending { t -> t.id }).take(5)
+            if (withDoc.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard(), title = "Ultimi scontrini") {
+                    withDoc.forEach { x ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("📎 " + x.merchant, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(Dates.fmt(x.bookingDate), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            MoneyText(x.amount.abs(), decimals = false, colored = false)
+                        }
+                    }
+                }
+            }
+        }
+        "reminders_next" -> {
+            val next = c.reminders.take(3)
+            if (next.isNotEmpty()) item(key = k) {
+                SectionCard(Modifier.homeCard().clickable(onClick = c.cb.onOpenReminders), title = "Prossime sveglie") {
+                    next.forEach { (r, at) ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Alarm, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(r.title.ifBlank { if (r.kind == ReminderKind.IMPORT) "Importa estratto conto" else "Promemoria" }, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                                Text(Dates.fmt(at.toLocalDate()) + " alle " + "%02d:%02d".format(at.hour, at.minute), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        "shortcuts" -> {
+            item(key = k) {
+                Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = c.cb.onAdd, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.Add, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Aggiungi", maxLines = 1) }
+                    FilledTonalButton(onClick = c.cb.onImport, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.UploadFile, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Importa", maxLines = 1) }
+                    FilledTonalButton(onClick = c.cb.onScan, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.DocumentScanner, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Scansiona", maxLines = 1) }
+                    FilledTonalButton(onClick = c.cb.onOpenReminders, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp)) { Icon(Icons.Default.Alarm, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Sveglie", maxLines = 1) }
+                }
+            }
+        }
         else -> Unit
     }
 }
@@ -282,4 +443,42 @@ private fun CountUpMoney(value: BigDecimal, content: @Composable (BigDecimal) ->
         from = value
     }
     content(if (t.value >= 1f) value else from.setScale(2, java.math.RoundingMode.HALF_UP))
+}
+
+
+/**
+ * I dati dei widget condivisi, per le pagine che non sono la Home (Movimenti, Obiettivi, Patrimonio).
+ * Restituisce `null` se la pagina non ne usa (`needed` = false), se mancano i tocchi o se i dati non sono pronti.
+ */
+@Composable
+fun rememberHomeCtx(cb: HomeCallbacks?, needed: Boolean): HomeCtx? {
+    val vm: DashboardViewModel = androidx.hilt.navigation.compose.hiltViewModel()
+    val catKind = androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(TxKind.SPESA) }
+    if (!needed || cb == null) return null
+    val st by vm.state.collectAsStateWithLifecycle()
+    val pendingNotifs by vm.pendingNotifications.collectAsStateWithLifecycle()
+    val subs by vm.subscriptions.collectAsStateWithLifecycle()
+    val pendingAmounts by vm.pendingAmounts.collectAsStateWithLifecycle()
+    val safe by vm.safeToSpend.collectAsStateWithLifecycle()
+    val advice by vm.advice.collectAsStateWithLifecycle()
+    val transferCount by vm.transferPairs.collectAsStateWithLifecycle()
+    val health by vm.health.collectAsStateWithLifecycle()
+    val balances by vm.balances.collectAsStateWithLifecycle()
+    val goals by vm.goalsProgress.collectAsStateWithLifecycle()
+    val reminders by vm.nextReminders.collectAsStateWithLifecycle()
+    val fin = it.spese.core.designsystem.theme.SpeseTheme.finance
+    val m = st.model
+    return if (!st.data.loaded || m == null) null else HomeCtx(
+        st = st, m = m, vm = vm, fin = fin, health = health, safe = safe, advice = advice, balances = balances, subs = subs,
+        transferCount = transferCount, pendingAmounts = pendingAmounts, pendingNotifs = pendingNotifs, alertCount = m.alerts.count { a -> a.level >= 1 },
+        points = st.buckets.map { b -> GapPoint(b.label, b.income, b.expense, b.title) },
+        shownPeriod = when (val per = st.filter.period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> per; else -> Period.All },
+        catKind = catKind, cb = cb, goals = goals, reminders = reminders,
+    )
+}
+
+/** Un widget condiviso dentro una pagina che non è una lista a scorrimento (Movimenti): un piccolo elenco che prende solo lo spazio che gli serve. */
+@Composable
+fun SharedWidgetBlock(inst: WidgetInstance, c: HomeCtx, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.lazy.LazyColumn(modifier.fillMaxWidth().heightIn(max = 420.dp), userScrollEnabled = false) { homeWidget(inst, c) }
 }

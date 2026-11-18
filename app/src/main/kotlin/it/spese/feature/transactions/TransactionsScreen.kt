@@ -44,11 +44,13 @@ import it.spese.domain.classification.merchant
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TransactionsScreen(
-    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, onOpenClassify: () -> Unit, onCustomize: () -> Unit = {}, bottomPadding: PaddingValues = PaddingValues(),
+    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, onOpenClassify: () -> Unit, onCustomize: () -> Unit = {}, home: it.spese.feature.dashboard.HomeCallbacks? = null, bottomPadding: PaddingValues = PaddingValues(),
     vm: TransactionsViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
     val layout by vm.layout.collectAsStateWithLifecycle()
+    val shared = layout.any { w -> w.enabled && !it.spese.domain.widgets.WidgetCatalog.isNative(it.spese.domain.widgets.WidgetPage.TRANSACTIONS, w.widgetId) }
+    val hctx = it.spese.feature.dashboard.rememberHomeCtx(home, shared)
     val ctx = LocalContext.current
     var pickCategory by remember { mutableStateOf<((Long) -> Unit)?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -180,7 +182,7 @@ fun TransactionsScreen(
             }
         }
                 }
-                else -> Unit
+                else -> { if (hctx != null) it.spese.feature.dashboard.SharedWidgetBlock(inst, hctx) }
             }
         }
     }

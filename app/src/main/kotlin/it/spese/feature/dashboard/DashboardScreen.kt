@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onCustomize: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {},
+    onCustomize: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {}, onOpenReminders: () -> Unit = {}, onOpenGoals: () -> Unit = {}, onOpenBudgets: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -90,8 +90,15 @@ fun DashboardScreen(
         val catOpt = layout.firstOrNull { w -> w.widgetId == "categories" }?.options?.get("kind")
         val catKind = rememberSaveable(catOpt) { mutableStateOf(if (catOpt == "ENTRATA") TxKind.ENTRATA else TxKind.SPESA) }
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
-        val cb = HomeCallbacks(onOpenAlerts, onOpenCategory, onOpenNetWorth, onOpenCategories, onOpenTransfers, onOpenTrends, onOpenCapture, onOpenSubscriptions, onOpenAdvice, onOpenTransfersReview, onOpenUnassigned, onOpenHealth, onOpenReview)
-        val ctx = HomeCtx(st, m, vm, fin, health, safe, advice, balances, subs, transferCount, pendingAmounts, pendingNotifs, alertCount, points, shownPeriod, catKind, cb)
+        val cb = HomeCallbacks(
+            onOpenAlerts = onOpenAlerts, onOpenCategory = onOpenCategory, onOpenNetWorth = onOpenNetWorth, onOpenCategories = onOpenCategories, onOpenTransfers = onOpenTransfers,
+            onOpenTrends = onOpenTrends, onOpenCapture = onOpenCapture, onOpenSubscriptions = onOpenSubscriptions, onOpenAdvice = onOpenAdvice, onOpenTransfersReview = onOpenTransfersReview,
+            onOpenUnassigned = onOpenUnassigned, onOpenHealth = onOpenHealth, onOpenReview = onOpenReview,
+            onAdd = onAdd, onImport = onImport, onScan = onScan, onOpenReminders = onOpenReminders, onOpenGoals = onOpenGoals, onOpenBudgets = onOpenBudgets,
+        )
+        val goalsProgress by vm.goalsProgress.collectAsStateWithLifecycle()
+        val nextReminders by vm.nextReminders.collectAsStateWithLifecycle()
+        val ctx = HomeCtx(st, m, vm, fin, health, safe, advice, balances, subs, transferCount, pendingAmounts, pendingNotifs, alertCount, points, shownPeriod, catKind, cb, goalsProgress, nextReminders)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             layout.forEach { inst -> if (inst.enabled) homeWidget(inst, ctx) }
             item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_home")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la Home") } }

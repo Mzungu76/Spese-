@@ -32,9 +32,11 @@ import java.time.LocalDate
 
 /** Obiettivi di risparmio: ognuno con la sua quota mensile; la somma decide quanto «Disponibile oggi» tiene da parte. */
 @Composable
-fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onOpenBudgets: () -> Unit = {}, onCustomize: () -> Unit = {}, vm: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onOpenBudgets: () -> Unit = {}, onCustomize: () -> Unit = {}, home: it.spese.feature.dashboard.HomeCallbacks? = null, vm: GoalsViewModel = hiltViewModel()) {
     val goals by vm.goals.collectAsStateWithLifecycle()
     val layout by vm.layout.collectAsStateWithLifecycle()
+    val shared = layout.any { w -> w.enabled && !it.spese.domain.widgets.WidgetCatalog.isNative(it.spese.domain.widgets.WidgetPage.GOALS, w.widgetId) }
+    val hctx = it.spese.feature.dashboard.rememberHomeCtx(home, shared)
     val plan by vm.plan.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
     val progress = remember(goals) { GoalEngine.all(goals, today) }
@@ -71,7 +73,7 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
             if (progress.isEmpty()) item(key = "${inst.uid}-empty") { EmptyState(Icons.Default.Savings, "Nessun obiettivo", "Tocca + per aggiungerne uno: fondo di emergenza, vacanza, investimento… Senza obiettivi si usa quello unico del Piano.") }
             items(progress, key = { g -> "${inst.uid}-${g.goal.id}" }) { p -> GoalRow(p, { edit = p.goal }, { deposit = p.goal }) }
                     }
-                    else -> Unit
+                    else -> { hctx?.let { c -> it.spese.feature.dashboard.homeWidget(inst, c) } }
                 }
             }
             item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_goals")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }
