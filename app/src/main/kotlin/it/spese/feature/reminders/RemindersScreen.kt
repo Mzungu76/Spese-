@@ -83,11 +83,12 @@ private fun ReminderDialog(r: Reminder, accounts: List<Account>, onDismiss: () -
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 ChipChoice(listOf(ReminderKind.IMPORT to "Estratto conto", ReminderKind.CUSTOM to "Sveglia personale"), kind, { kind = it })
                 if (kind == ReminderKind.IMPORT) {
-                    DropdownField("Conto", accounts.firstOrNull { it.id == acc }, accounts, { it.name }, { a -> acc = a.id }, Modifier.fillMaxWidth(), nullLabel = "Tutti i conti", onNull = { acc = null })
+                    Text("Conto", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf<Pair<Long?, String>>(null to "Tutti i conti") + accounts.map { a -> a.id to a.name }, acc, { acc = it })
                     Text("La notifica dirà da quale data (dall'ultimo estratto importato) a oggi scaricare e importare i movimenti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 OutlinedTextField(title, { title = it }, label = { Text(if (kind == ReminderKind.IMPORT) "Titolo (facoltativo)" else "Titolo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(note, { note = it }, label = { Text("Nota (facoltativa)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                OutlinedTextField(note, { note = it }, label = { Text("Nota (facoltativa)") }, modifier = Modifier.fillMaxWidth())
                 Text("Quando", style = MaterialTheme.typography.labelLarge)
                 ChipChoice(ReminderRepeat.entries.map { it to it.label }, repeat, { repeat = it })
                 when (repeat) {

@@ -45,10 +45,12 @@ class Notifier @Inject constructor(@ApplicationContext private val context: Cont
 
     fun canPost(): Boolean = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun post(id: Int, title: String, text: String, bigText: String? = null) {
+    fun post(id: Int, title: String, text: String, bigText: String? = null, route: String? = null) {
         if (!canPost()) return
         ensureChannel()
-        val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        route?.let { intent.putExtra(MainActivity.EXTRA_ROUTE, it) }
+        val pi = PendingIntent.getActivity(context, route?.hashCode() ?: 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(context, CHANNEL_ALERTS).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText ?: text)).setContentIntent(pi).setAutoCancel(true).build()
@@ -105,7 +107,7 @@ class ReminderWorker @AssistedInject constructor(
         val r = reminders.getAll().firstOrNull { it.id == id && it.enabled } ?: return Result.success()
         val d = data.first { it.loaded }
         val m = it.spese.domain.reminders.ReminderEngine.message(r, d.accounts, d.ledger, java.time.LocalDate.now())
-        notifier.post(3000 + (id % 5000).toInt(), m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null })
+        notifier.post(3000 + (id % 5000).toInt(), m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null }, if (r.kind == it.spese.domain.reminders.ReminderKind.IMPORT) it.spese.app.navigation.Routes.IMPORT else null)
         if (r.repeat == it.spese.domain.reminders.ReminderRepeat.ONCE) reminders.save(r.copy(enabled = false)) else scheduler.scheduleReminder(r)
         return Result.success()
     }

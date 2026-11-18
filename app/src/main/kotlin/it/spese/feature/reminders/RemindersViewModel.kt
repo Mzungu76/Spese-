@@ -37,6 +37,6 @@ class RemindersViewModel @Inject constructor(
         val d = data.value
         val m = ReminderEngine.message(r, d.accounts, d.ledger, LocalDate.now())
         if (!notifier.canPost()) { messenger.show("Le notifiche dell'app sono disattivate: attivale dalle impostazioni del telefono"); return }
-        notifier.post(2999, m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null })
+        notifier.post(2999, m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null }, if (r.kind == it.spese.domain.reminders.ReminderKind.IMPORT) it.spese.app.navigation.Routes.IMPORT else null)
     }
 }
