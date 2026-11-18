@@ -43,6 +43,7 @@ import it.spese.feature.advice.AdviceScreen
 import it.spese.feature.advice.MonthReviewScreen
 import it.spese.feature.goals.GoalsScreen
 import it.spese.feature.transfers.TransfersScreen
+import it.spese.feature.budgets.BudgetsScreen
 import it.spese.feature.more.MoreActions
 import it.spese.feature.more.MoreScreen
 import it.spese.feature.networth.NetWorthScreen
@@ -66,7 +67,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"
+    const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"; const val BUDGETS = "budgets"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -207,11 +208,12 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 })
             }
             composable(Routes.NETWORTH) { NetWorthScreen(menu = menu, bottomPadding = pad) }
-            composable(Routes.GOALS) { GoalsScreen(menu = menu, bottomPadding = pad) }
+            composable(Routes.GOALS) { GoalsScreen(menu = menu, bottomPadding = pad, onOpenBudgets = { nav.navigate(Routes.BUDGETS) }) }
+            composable(Routes.BUDGETS) { BudgetsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRANSFERS_REVIEW) { TransfersScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.MORE) {
                 MoreScreen(menu, MoreActions(
-                    onCategories = { goTab(Routes.CATEGORIES) }, onPlan = { goTab(Routes.PLAN) }, onTrends = { nav.navigate(Routes.TRENDS) }, onAdvice = { nav.navigate(Routes.ADVICE) }, onReview = { nav.navigate(Routes.REVIEW) },
+                    onCategories = { goTab(Routes.CATEGORIES) }, onBudgets = { nav.navigate(Routes.BUDGETS) }, onPlan = { goTab(Routes.PLAN) }, onTrends = { nav.navigate(Routes.TRENDS) }, onAdvice = { nav.navigate(Routes.ADVICE) }, onReview = { nav.navigate(Routes.REVIEW) },
                     onAlerts = { nav.navigate(Routes.ALERTS) }, onRecurring = { nav.navigate(Routes.RECURRING) }, onSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onReports = { nav.navigate(Routes.REPORTS) },
                     onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onTransfers = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onSettings = { nav.navigate(Routes.SETTINGS) }), pad)
             }

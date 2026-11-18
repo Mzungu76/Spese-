@@ -32,7 +32,7 @@ import java.time.LocalDate
 
 /** Obiettivi di risparmio: ognuno con la sua quota mensile; la somma decide quanto «Disponibile oggi» tiene da parte. */
 @Composable
-fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), vm: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onOpenBudgets: () -> Unit = {}, vm: GoalsViewModel = hiltViewModel()) {
     val goals by vm.goals.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
@@ -56,6 +56,7 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
                     MoneyText(GoalEngine.monthlyTotal(goals, today), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, colored = false)
                     plan?.let { p -> Text(if (p.income.signum() > 0) "Sono il ${Money.percent(p.savings, p.income, 0).toInt()}% delle tue entrate medie (${Money.eur0(p.income)})." else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     if (plan != null) OutlinedButton(onClick = { budgets = true }, Modifier.testTag("goal_budgets")) { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Genera i budget") }
+                    OutlinedButton(onClick = onOpenBudgets, Modifier.testTag("goal_open_budgets")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Budget per categoria") }
                 }
             }
             if (progress.isEmpty()) item { EmptyState(Icons.Default.Savings, "Nessun obiettivo", "Tocca + per aggiungerne uno: fondo di emergenza, vacanza, investimento… Senza obiettivi si usa quello unico del Piano.") }
@@ -64,7 +65,7 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
     }
     edit?.let { g -> GoalDialog(g, { edit = null }, vm) }
     deposit?.let { g -> DepositDialog(g, { deposit = null }) { amount -> vm.deposit(g, amount) } }
-    if (budgets) plan?.let { p -> BudgetDialog(p, { budgets = false }) { vm.applyBudgets(p); budgets = false } }
+    if (budgets) plan?.let { p -> it.spese.feature.budgets.BudgetProposalDialog(p, { budgets = false }) { list -> vm.applyBudgets(list); budgets = false } }
 }
 
 @Composable
@@ -115,32 +116,5 @@ private fun DepositDialog(g: Goal, onDismiss: () -> Unit, onConfirm: (BigDecimal
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Versamento per «${g.name}»") },
         text = { AmountField(amount, { amount = it }, "Importo", Modifier.fillMaxWidth(), supporting = "Un importo negativo toglie dal totale messo da parte") },
         confirmButton = { TextButton(enabled = (parseAmountOrNull(amount)?.signum() ?: 0) != 0, onClick = { onConfirm(parseAmountOrNull(amount) ?: BigDecimal.ZERO); onDismiss() }) { Text("Registra") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
-}
-
-@Composable
-private fun BudgetDialog(p: BudgetPlan, onDismiss: () -> Unit, onApply: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss, title = { Text("Budget mensili proposti") },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Calcolati su ${p.months} ${if (p.months == 1) "mese" else "mesi"} di storico: entrate ${Money.eur0(p.income)}, da mettere da parte ${Money.eur0(p.savings)}.", style = MaterialTheme.typography.bodySmall)
-                Text(when {
-                    p.shortfall.signum() > 0 -> "Attenzione: anche azzerando le spese discrezionali mancano ${Money.eur0(p.shortfall)} al mese. Conviene abbassare le quote degli obiettivi."
-                    p.cutPercent > 0 -> "Per rispettare gli obiettivi le spese discrezionali scendono del ${p.cutPercent}%; le altre restano alla tua media."
-                    else -> "Le tue spese di sempre stanno già dentro gli obiettivi: i budget sono la tua media."
-                }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                p.proposals.forEach { b ->
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(b.category.name, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-                            Text("media ${Money.eur0(b.average)}" + (b.current?.let { " · ora ${Money.eur0(it)}" } ?: "") + if (b.cutPercent > 0) " · −${b.cutPercent}%" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Text(Money.eur0(b.proposed), style = MaterialTheme.typography.titleSmall)
-                    }
-                }
-                Text("Sostituiscono i budget già impostati sulle categorie elencate.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        confirmButton = { TextButton(onClick = onApply) { Text("Imposta i budget") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

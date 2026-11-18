@@ -39,13 +39,11 @@ class GoalsViewModel @Inject constructor(
         messenger.show(if (GoalEngine.remaining(n).signum() == 0 && GoalEngine.remaining(g).signum() > 0) "Obiettivo «${g.name}» raggiunto!" else "Versamento registrato")
     }
 
-    /** Imposta i budget mensili proposti sulle categorie (sostituisce quelli esistenti per le categorie coinvolte). */
-    fun applyBudgets(p: BudgetPlan) = viewModelScope.launch {
+    /** Imposta i budget scelti dall'utente nella proposta (solo le righe spuntate, con gli importi eventualmente modificati). */
+    fun applyBudgets(changes: List<Pair<Long, BigDecimal>>) = viewModelScope.launch {
         try {
-            val byId = p.proposals.associateBy { it.category.id }
-            val cats = categories.getAll().filter { it.id in byId }
-            cats.forEach { c -> categories.update(c.copy(budgetMonthly = byId.getValue(c.id).proposed.takeIf { it.signum() > 0 })) }
-            messenger.show("Budget impostati su ${cats.size} categorie")
+            changes.forEach { (id, v) -> categories.setBudget(id, v.takeIf { it.signum() > 0 }) }
+            messenger.show("Budget impostati su ${changes.size} categorie")
         } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
 }

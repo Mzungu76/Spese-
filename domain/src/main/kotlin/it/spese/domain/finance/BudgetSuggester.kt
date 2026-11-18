@@ -2,6 +2,7 @@ package it.spese.domain.finance
 
 import it.spese.core.model.Category
 import it.spese.core.model.Goal
+import it.spese.core.model.SpendNature
 import it.spese.core.model.TxKind
 import it.spese.domain.goals.GoalEngine
 import it.spese.domain.repository.AppData
@@ -10,7 +11,7 @@ import java.math.RoundingMode
 import java.time.LocalDate
 
 /** Budget proposto per una categoria principale: media storica, proposta (arrotondata a 5 €) e budget attuale, se c'è. */
-data class BudgetProposal(val category: Category, val average: BigDecimal, val proposed: BigDecimal, val current: BigDecimal?, val compressible: Boolean) {
+data class BudgetProposal(val category: Category, val average: BigDecimal, val proposed: BigDecimal, val current: BigDecimal?, val compressible: Boolean, val fixed: Boolean = false) {
     val cutPercent: Int get() = if (average.signum() <= 0 || proposed >= average) 0 else average.subtract(proposed).multiply(BigDecimal(100)).divide(average, 0, RoundingMode.HALF_UP).toInt()
 }
 
@@ -60,8 +61,46 @@ object BudgetSuggester {
         val proposals = rows.map { (c, avg) ->
             val isFlex = SavingsOpportunities.isCandidate(c)
             val proposed = if (isFlex) round5(avg.multiply(factor), RoundingMode.HALF_UP) else round5(avg, RoundingMode.CEILING)
-            BudgetProposal(c, avg, proposed, c.budgetMonthly?.takeIf { it.signum() > 0 }, isFlex)
+            BudgetProposal(c, avg, proposed, c.budgetMonthly?.takeIf { it.signum() > 0 }, isFlex, c.nature == SpendNature.FIXED)
         }.sortedByDescending { it.average }
         return BudgetPlan(income, savings, months.size, proposals, cut, (-room).max(BigDecimal.ZERO))
+    }
+}
+
+/** Una categoria principale di spesa con la sua media mensile e il budget attuale (per la modifica manuale uno per uno). */
+data class BudgetRow(val category: Category, val average: BigDecimal, val current: BigDecimal?) { val fixed: Boolean get() = category.nature == SpendNature.FIXED }
+data class BudgetOverview(val income: BigDecimal, val savings: BigDecimal, val months: Int, val rows: List<BudgetRow>)
+
+/** Un cambio di budget. `fixed` = spesa di natura fissa: non si cambia senza chiedere. `new` nullo = budget rimosso. */
+data class BudgetChange(val categoryId: Long, val name: String, val old: BigDecimal?, val new: BigDecimal?, val fixed: Boolean)
+
+object BudgetChanges {
+    /** Le righe della proposta già spuntate: quelle che cambiano il budget e NON sono spese fisse (le fisse restano da spuntare a mano). */
+    fun defaultSelection(plan: BudgetPlan): List<BudgetProposal> = plan.proposals.filter { !it.fixed && it.proposed.compareTo(it.current ?: BigDecimal.ZERO) != 0 }
+
+    /** Righe della proposta che cambiano il budget e sono spese fisse: richiedono una conferma esplicita. */
+    fun needsAsking(plan: BudgetPlan): List<BudgetProposal> = plan.proposals.filter { it.fixed && it.proposed.compareTo(it.current ?: BigDecimal.ZERO) != 0 }
+}
+
+object BudgetOverviewBuilder {
+    /** Tutte le categorie principali di spesa (anche senza storico), ordinate per spesa media. */
+    fun build(data: AppData, goals: List<Goal>, today: LocalDate = LocalDate.now()): BudgetOverview? {
+        if (!data.loaded) return null
+        val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
+        val cal = data.calendar
+        val ref = AlertEngine.referenceToday(today, tx.ifEmpty { return null })
+        val current = cal.monthOf(ref)
+        val byMonth = StatsEngine.compute(tx.filter { cal.monthOf(it.bookingDate) < current }, cal).byMonth
+        val months = byMonth.keys.sorted().takeLast(6)
+        val byId = data.categoriesById
+        val spent = HashMap<Long?, BigDecimal>()
+        months.forEach { m -> byMonth.getValue(m).byCategory.forEach { (id, v) -> spent.merge(CategoryTree.rootId(id, byId), v) { a, b -> a + b } } }
+        val n = BigDecimal(maxOf(1, months.size))
+        val income = months.fold(BigDecimal.ZERO) { a, m -> a + byMonth.getValue(m).income }.divide(n, 2, RoundingMode.HALF_UP)
+        val savings = if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, ref) else AlertEngine.goalMonthly(data.goal)
+        val rows = data.categories.filter { it.active && it.kind == TxKind.SPESA && it.parentId == null && it.systemKey == null }
+            .map { c -> BudgetRow(c, (spent[c.id] ?: BigDecimal.ZERO).divide(n, 2, RoundingMode.HALF_UP), c.budgetMonthly?.takeIf { it.signum() > 0 }) }
+            .sortedWith(compareByDescending<BudgetRow> { it.average }.thenBy { it.category.name })
+        return BudgetOverview(income, savings, months.size, rows)
     }
 }

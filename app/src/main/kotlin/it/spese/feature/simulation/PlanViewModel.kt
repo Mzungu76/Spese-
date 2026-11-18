@@ -75,12 +75,16 @@ class PlanViewModel @Inject constructor(
         messenger.show(if (!ac.sufficient) "Anche azzerando le voci comprimibili non basta: serve agire su altre voci o sulle entrate" else "Taglio del ${ac.percent}% sulle voci comprimibili")
     }
 
-    fun setBudgets(mode: String) = viewModelScope.launch {
-        val st = state.value; val ctx = st.context ?: return@launch; val cuts = st.scenario?.cuts ?: emptyMap()
-        when (mode) {
-            "avg", "cut" -> ctx.base.categories.forEach { c -> c.categoryId?.let { id -> categories.setBudget(id, PlanEngine.suggestedBudget(c.monthlyAvg, if (mode == "cut") cuts[id] ?: 0 else 0)) } }
-            else -> categories.clearBudgets()
-        }
+    /** Cambi di budget che il pulsante `mode` («avg», «cut», «clear») farebbe, con le spese fisse segnate (vanno confermate). */
+    fun budgetChanges(mode: String): List<it.spese.domain.finance.BudgetChange> {
+        val st = state.value; val ctx = st.context ?: return emptyList()
+        return PlanEngine.budgetChanges(ctx.base, st.scenario?.cuts ?: emptyMap(), mode, st.data.categories)
+    }
+
+    fun applyBudgetChanges(changes: List<it.spese.domain.finance.BudgetChange>) = viewModelScope.launch {
+        if (changes.isEmpty()) { messenger.show("Nessun budget da cambiare"); return@launch }
+        changes.forEach { categories.setBudget(it.categoryId, it.new) }
+        messenger.show(if (changes.size == 1) "Budget di «${changes[0].name}» aggiornato" else "Budget aggiornati su ${changes.size} categorie")
     }
     fun setBudget(categoryId: Long, v: BigDecimal?) = viewModelScope.launch { categories.setBudget(categoryId, v) }
 

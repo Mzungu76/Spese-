@@ -3,6 +3,7 @@ package it.spese.domain
 import it.spese.core.model.*
 import it.spese.domain.finance.*
 import it.spese.domain.goals.*
+import it.spese.domain.simulation.PlanEngine
 import it.spese.domain.repository.AppData
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -112,5 +113,70 @@ class GoalBackupTest {
         assertEquals(2, back.size)
         assertEquals("Fondo", back[0].name); assertEquals(0, BigDecimal("450.50").compareTo(back[0].saved)); assertEquals(LocalDate.parse("2027-06-30"), back[0].deadline); assertEquals(0, BigDecimal(150).compareTo(back[0].monthly))
         assertEquals("Viaggio", back[1].name); assertNull(back[1].deadline); assertNull(back[1].monthly); assertFalse(back[1].enabled); assertEquals(1, back[1].priority)
+    }
+}
+
+class BudgetFixedTest {
+    private fun d(s: String) = LocalDate.parse(s)
+    private fun eq(expected: String, actual: BigDecimal?) = assertEquals("atteso $expected, trovato $actual", 0, BigDecimal(expected).compareTo(actual))
+    private var n = 0L
+    private fun tx(date: String, amount: Int, cat: Long) = Transaction(++n, "e$n", 1, d(date), d(date), "x$n", BigDecimal(amount), if (amount > 0) TxKind.ENTRATA else TxKind.SPESA, cat)
+    // «Affitto» è fissa MA segnata come comprimibile (il caso che prima veniva ridotto); «Svago» discrezionale; «Spesa» necessaria
+    private val cats = listOf(
+        Category(1, "Affitto", TxKind.SPESA, true, 0, nature = SpendNature.FIXED, budgetMonthly = BigDecimal(800)), Category(2, "Stipendio", TxKind.ENTRATA, false, 0),
+        Category(3, "Svago", TxKind.SPESA, true, 0, nature = SpendNature.DISCRETIONARY), Category(4, "Spesa", TxKind.SPESA, false, 0, nature = SpendNature.ESSENTIAL),
+        Category(5, "Bollette", TxKind.SPESA, false, 0, parentId = 1),
+    )
+    private fun history() = listOf("2025-12", "2026-01", "2026-02").flatMap { m -> listOf(tx("$m-01", 2000, 2), tx("$m-02", -800, 1), tx("$m-10", -400, 4), tx("$m-15", -500, 3)) }
+    private val data = AppData(transactions = history(), categories = cats, accounts = listOf(Account(1, "C")), loaded = true)
+    private val goals = listOf(Goal(1, "Fondo", BigDecimal(9000), monthly = BigDecimal(500)))
+    private val today = d("2026-03-05")
+
+    @Test fun `una spesa fissa non viene mai ridotta e va chiesta, anche se è segnata come comprimibile`() {
+        val plan = BudgetSuggester.suggest(data, goals, today)!!
+        val rent = plan.proposals.first { it.category.name == "Affitto" }
+        assertTrue(rent.fixed); assertFalse(rent.compressible); eq("800", rent.proposed)           // alla media, mai tagliata
+        assertEquals(40, plan.cutPercent)                                                          // il taglio va tutto sullo svago
+        // selezione predefinita: la fissa non c'è (nemmeno se il budget cambierebbe), lo svago sì
+        val def = BudgetChanges.defaultSelection(plan).map { it.category.name }
+        assertTrue("Svago" in def); assertFalse("Affitto" in def)
+        // una fissa il cui budget cambierebbe finisce tra quelle da chiedere
+        val other = BudgetSuggester.suggest(data.copy(categories = cats.map { if (it.id == 1L) it.copy(budgetMonthly = BigDecimal(700)) else it }), goals, today)!!
+        assertEquals(listOf("Affitto"), BudgetChanges.needsAsking(other).map { it.category.name })
+    }
+
+    @Test fun `panoramica per la modifica manuale - tutte le categorie principali di spesa con media e budget`() {
+        val o = BudgetOverviewBuilder.build(data, goals, today)!!
+        eq("2000", o.income); eq("500", o.savings); assertEquals(3, o.months)
+        assertEquals(listOf("Affitto", "Svago", "Spesa"), o.rows.map { it.category.name })           // senza sottocategorie né categorie di sistema, per spesa media
+        eq("800", o.rows[0].average); eq("800", o.rows[0].current); assertTrue(o.rows[0].fixed)
+        assertNull(o.rows[1].current)
+    }
+
+    @Test fun `il Piano non considera comprimibile una spesa fissa`() {
+        val base = PlanEngine.base(data.transactions, cats, SavingsGoal())
+        assertFalse(base.categories.first { it.name == "Affitto" }.flexible); assertTrue(base.categories.first { it.name == "Svago" }.flexible)
+        // la sottocategoria di una fissa eredita la natura: non è comprimibile neanche se è segnata così
+        val withChild = cats.map { if (it.id == 5L) it.copy(flexible = true) else it }
+        val tx2 = data.transactions + tx("2026-02-20", -60, 5)
+        assertFalse(PlanEngine.base(tx2, withChild, SavingsGoal()).categories.first { it.name == "Bollette" }.flexible)
+    }
+
+    @Test fun `i pulsanti del budget nel Piano segnalano i cambi su spese fisse`() {
+        val base = PlanEngine.base(data.transactions, cats, SavingsGoal())
+        val cuts = mapOf(1L to 30, 3L to 30)                                                        // un taglio (vecchio, a mano) anche sull'affitto
+        val ch = PlanEngine.budgetChanges(base, cuts, "cut", cats)
+        val rent = ch.firstOrNull { it.name == "Affitto" }
+        assertNotNull(rent); assertTrue(rent!!.fixed); assertTrue(rent.new!! < rent.old!!)        // il taglio sulla fissa c'è, e va confermato dall'utente
+        assertTrue(ch.first { it.name == "Svago" }.let { !it.fixed })
+        // «media attuale»: se la media dell'affitto è diversa dal suo budget, anche questo cambio è segnato come «fisso» (va chiesto)
+        assertTrue(PlanEngine.budgetChanges(base, emptyMap(), "avg", cats).filter { it.name == "Affitto" }.all { it.fixed })
+        // e se il budget è già uguale alla media, non c'è nessun cambio da proporre
+        val avgRent = base.categories.first { it.name == "Affitto" }.monthlyAvg
+        val same = cats.map { if (it.id == 1L) it.copy(budgetMonthly = PlanEngine.suggestedBudget(avgRent)) else it }
+        assertTrue(PlanEngine.budgetChanges(base, emptyMap(), "avg", same).none { it.name == "Affitto" })
+        // «cancella»: toglie solo i budget che ci sono, e segna la fissa
+        val clear = PlanEngine.budgetChanges(base, cuts, "clear", cats)
+        assertEquals(listOf("Affitto"), clear.map { it.name }); assertTrue(clear[0].fixed); assertNull(clear[0].new)
     }
 }

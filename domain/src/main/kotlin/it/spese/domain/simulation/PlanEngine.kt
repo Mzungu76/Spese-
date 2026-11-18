@@ -6,7 +6,10 @@ import it.spese.core.model.Due
 import it.spese.core.model.DueFrequency
 import it.spese.core.model.GoalMode
 import it.spese.core.model.SavingsGoal
+import it.spese.core.model.SpendNature
 import it.spese.core.model.Transaction
+import it.spese.domain.finance.BudgetChange
+import it.spese.domain.finance.CategoryTree
 import it.spese.domain.finance.PeriodStats
 import it.spese.domain.finance.StatsEngine
 import java.math.BigDecimal
@@ -40,7 +43,8 @@ object PlanEngine {
         val byId = categories.associateBy { it.id }
         val cats = s.byCategory.entries.filter { it.value.signum() > 0 }.map { (id, v) ->
             val c = byId[id]
-            CategoryAverage(id, c?.name ?: UNCATEGORIZED, c?.flexible ?: false, v.divide(mo, 10, RoundingMode.HALF_UP), v)
+            // le spese fisse (affitto, rate…) non sono mai «comprimibili» in automatico, anche se la categoria è segnata come tale
+            CategoryAverage(id, c?.name ?: UNCATEGORIZED, (c?.flexible ?: false) && CategoryTree.rootNature(id, byId) != SpendNature.FIXED, v.divide(mo, 10, RoundingMode.HALF_UP), v)
         }.sortedByDescending { it.monthlyAvg }
         return PlanBase(s, mo, goal.expectedIncome ?: incAuto, incAuto, exp, cats)
     }
@@ -73,6 +77,24 @@ object PlanEngine {
         val gap = (goalMonthly - base.currentSaving).max(BigDecimal.ZERO)
         val raw = gap.multiply(Money.HUNDRED).divide(fa, 10, RoundingMode.HALF_UP).divide(BigDecimal(5), 0, RoundingMode.CEILING).toInt() * 5
         return AutoCut(minOf(100, raw), !(raw >= 100 && gap > fa))
+    }
+
+    /**
+     * Cambi di budget che un pulsante del Piano farebbe: «avg» = media attuale, «cut» = media dopo i tagli, altro = cancella tutti.
+     * Restano solo i cambi reali; quelli su spese fisse sono segnati (`fixed`) perché vanno confermati dall'utente.
+     */
+    fun budgetChanges(base: PlanBase, cuts: Map<Long, Int>, mode: String, categories: Collection<Category>): List<BudgetChange> {
+        val byId = categories.associateBy { it.id }
+        fun fixed(id: Long) = CategoryTree.rootNature(id, byId) == SpendNature.FIXED
+        val raw = when (mode) {
+            "avg", "cut" -> base.categories.mapNotNull { c ->
+                val id = c.categoryId ?: return@mapNotNull null
+                val cat = byId[id] ?: return@mapNotNull null
+                BudgetChange(id, cat.name, cat.budgetMonthly, suggestedBudget(c.monthlyAvg, if (mode == "cut") cuts[id] ?: 0 else 0), fixed(id))
+            }
+            else -> categories.filter { c -> (c.budgetMonthly ?: BigDecimal.ZERO).signum() > 0 }.map { c -> BudgetChange(c.id, c.name, c.budgetMonthly, null, fixed(c.id)) }
+        }
+        return raw.filter { (it.old ?: BigDecimal.ZERO).compareTo(it.new ?: BigDecimal.ZERO) != 0 }
     }
 
     /** Budget proposto = media mensile dopo l'eventuale taglio, arrotondato a 5 €. */
