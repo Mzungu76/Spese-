@@ -12,25 +12,49 @@ class WidgetsTest {
         assertEquals(ids.size, ids.toSet().size)
     }
 
-    @Test fun `ogni preset usa solo widget del catalogo e non ripete quelli non ripetibili`() {
-        LayoutPresets.all.forEach { p ->
-            val items = p.layouts.getValue(home)
-            assertTrue("${p.id}: vuoto", items.isNotEmpty())
-            items.forEach { i -> assertNotNull("${p.id}: ${i.widgetId} sconosciuto", WidgetCatalog.spec(i.widgetId)) }
-            val fixed = items.filter { WidgetCatalog.spec(it.widgetId)!!.repeatable.not() }.map { it.widgetId }
-            assertEquals("${p.id}: doppioni", fixed.size, fixed.toSet().size)
+    @Test fun `ogni preset ha una composizione per ogni pagina, con soli widget di quella pagina e senza doppioni`() {
+        LayoutPresets.all.forEach { pr ->
+            WidgetPage.entries.forEach { page ->
+                val items = pr.layouts[page].orEmpty()
+                assertTrue("${pr.id}/${page.name}: vuoto", items.isNotEmpty())
+                items.forEach { i ->
+                    val spec = WidgetCatalog.spec(i.widgetId)
+                    assertNotNull("${pr.id}: ${i.widgetId} sconosciuto", spec)
+                    assertTrue("${pr.id}: ${i.widgetId} non è della pagina ${page.name}", page in spec!!.pages)
+                }
+                val fixed = items.filter { !WidgetCatalog.spec(it.widgetId)!!.repeatable }.map { it.widgetId }
+                assertEquals("${pr.id}/${page.name}: doppioni", fixed.size, fixed.toSet().size)
+                WidgetCatalog.forPage(page).filter { it.required }.forEach { r -> assertTrue("${pr.id}/${page.name}: manca ${r.id}", items.any { it.widgetId == r.id }) }
+            }
         }
     }
 
-    @Test fun `la composizione predefinita mostra ogni widget una volta e tre titoli di sezione`() {
-        val d = LayoutOps.default(home)
-        val fixed = WidgetCatalog.forPage(home).filter { !it.repeatable }.map { it.id }.toSet()
-        assertEquals(fixed, d.filter { it.widgetId != WidgetCatalog.SECTION }.map { it.widgetId }.toSet())
-        assertEquals(3, d.count { it.widgetId == WidgetCatalog.SECTION })
-        assertEquals(d.size, d.map { it.uid }.toSet().size)
-        // l'ordine di sempre: i widget «Oggi» prima di quelli del mese, i «Da sistemare» in fondo
-        val ids = d.map { it.widgetId }
+    @Test fun `la composizione predefinita di ogni pagina mostra ogni widget una volta`() {
+        WidgetPage.entries.forEach { page ->
+            val d = LayoutOps.default(page)
+            val fixed = WidgetCatalog.forPage(page).filter { !it.repeatable }.map { it.id }.toSet()
+            assertEquals(page.name, fixed, d.filter { it.widgetId != WidgetCatalog.SECTION }.map { it.widgetId }.toSet())
+            assertEquals(d.size, d.map { it.uid }.toSet().size)
+        }
+        assertEquals(3, LayoutOps.default(home).count { it.widgetId == WidgetCatalog.SECTION })
+        // l'ordine di sempre sulla Home: i widget «Oggi» prima di quelli del mese, i «Da sistemare» in fondo
+        val ids = LayoutOps.default(home).map { it.widgetId }
         assertTrue(ids.indexOf("health") < ids.indexOf("hero")); assertTrue(ids.indexOf("hero") < ids.indexOf("alerts")); assertTrue(ids.indexOf("period") < ids.indexOf("balances"))
+    }
+
+    @Test fun `l'elenco dei movimenti non si può nascondere, togliere o perdere`() {
+        val t = WidgetPage.TRANSACTIONS
+        var l = LayoutOps.default(t)
+        val uid = l.first { it.widgetId == "tx_list" }.uid
+        assertEquals(l, LayoutOps.setEnabled(l, uid, false)); assertEquals(l, LayoutOps.remove(l, uid))
+        l = LayoutOps.normalize(t, listOf(WidgetInstance("a", "tx_filters"), WidgetInstance("b", "tx_list", false)))
+        assertTrue(l.first { it.widgetId == "tx_list" }.enabled)                              // un elenco nascosto viene riacceso
+        l = LayoutOps.normalize(t, listOf(WidgetInstance("a", "tx_filters")))
+        assertEquals(listOf("tx_filters", "tx_list"), l.map { it.widgetId })                  // un elenco mancante viene riaggiunto
+    }
+
+    @Test fun `un widget di una pagina non compare in un'altra`() {
+        assertTrue(LayoutOps.normalize(WidgetPage.GOALS, listOf(WidgetInstance("a", "safe"), WidgetInstance("b", "goals_list"))).map { it.widgetId } == listOf("goals_list"))
     }
 
     @Test fun `salvataggio e lettura restituiscono la stessa composizione`() {
