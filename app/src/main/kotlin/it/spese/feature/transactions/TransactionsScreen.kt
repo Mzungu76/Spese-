@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -65,6 +67,7 @@ fun TransactionsScreen(
     var moreMenu by remember { mutableStateOf(false) }
     var filterSheet by remember { mutableStateOf(false) }
     var splitTarget by remember { mutableStateOf<Transaction?>(null) }
+    var transferDest by remember { mutableStateOf<Set<Long>?>(null) }
     val unclassified = remember(st.data.transactions) { st.data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO } }
 
     Column(Modifier.fillMaxSize()) {
@@ -75,6 +78,7 @@ fun TransactionsScreen(
                 if (st.selection.size == 1) IconButton(onClick = { st.data.ledger.firstOrNull { it.id == st.selection.first() }?.let { splitTarget = it }; vm.clearSelection() }) { Icon(Icons.Default.CallSplit, "Dividi su più categorie") }
                 IconButton(onClick = vm::selectAll) { Icon(Icons.Default.SelectAll, "Seleziona tutti") }
                 IconButton(onClick = { pickCategory = { vm.assignToSelection(it) } }) { Icon(Icons.AutoMirrored.Filled.Label, "Cambia categoria") }
+                IconButton(onClick = { transferDest = st.selection }, Modifier.testTag("transfer_destination")) { Icon(Icons.Default.SwapHoriz, "Giroconto: dove vanno i soldi") }
                 IconButton(onClick = vm::duplicateSelection) { Icon(Icons.Default.ContentCopy, "Duplica") }
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Elimina") }
             },
@@ -168,6 +172,7 @@ fun TransactionsScreen(
     confirmBulk?.let { id ->
         ConfirmDialog("Assegnare la categoria?", "Assegnare \"${st.data.categoryName(id)}\" a tutti i ${st.items.size} movimenti filtrati? L'assegnazione manuale prevale sulle regole.", "Assegna", { vm.assignToAllFiltered(id) }, { confirmBulk = null; bulkAll = false })
     }
+    transferDest?.let { ids -> TransferDestinationDialog(st.data.accounts.filter { !it.archived }, ids.size, { transferDest = null }) { d -> vm.setTransferDestination(ids, d); transferDest = null } }
     pickAccountFor?.let { ids -> AccountPickerDialog(st.data.accounts.filter { !it.archived }, ids.size, { pickAccountFor = null }) { a -> vm.assignAccount(ids, a.id); pickAccountFor = null } }
     if (confirmDelete) ConfirmDialog("Eliminare ${st.selection.size} movimenti?", "L'operazione non può essere annullata.", "Elimina", { vm.deleteSelection() }, { confirmDelete = false }, destructive = true)
 }
@@ -227,6 +232,29 @@ fun AccountPickerDialog(accounts: List<it.spese.core.model.Account>, count: Int,
                     Text("I movimenti entrano nella contabilità del conto scelto.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     accounts.forEach { a -> TextButton(onClick = { onPick(a) }, Modifier.fillMaxWidth().testTag("pick_account")) { Text(a.name, Modifier.fillMaxWidth()) } }
                 }
+            }
+        },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
+
+/** «Dove finiscono i soldi?»: un altro conto dell'app (si crea l'altra metà) oppure fuori dall'app (con un nome). In entrambi i casi esce da entrate e spese. */
+@Composable
+fun TransferDestinationDialog(accounts: List<it.spese.core.model.Account>, count: Int, onDismiss: () -> Unit, onPick: (it.spese.domain.usecase.TransferDestination) -> Unit) {
+    var label by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (count == 1) "Giroconto: dove vanno i soldi?" else "Giroconto ($count movimenti): dove vanno i soldi?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Spostare soldi tra tuoi conti non è né una spesa né un'entrata. Dì dove vanno (o da dove arrivano) per contabilizzarli lì.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (accounts.isNotEmpty()) {
+                    Text("Un conto dell'app", style = MaterialTheme.typography.labelLarge)
+                    Text("Se manca, creo l'altra metà su quel conto: così il suo saldo è giusto. Se poi importi il suo estratto, la riga vera la sostituisce.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    accounts.forEach { a -> TextButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.ToAccount(a.id)) }, Modifier.fillMaxWidth().testTag("dest_account")) { Text(a.name, Modifier.fillMaxWidth()) } }
+                }
+                HorizontalDivider()
+                Text("Fuori dall'app", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(label, { label = it }, label = { Text("Nome (es. Tasca Vacanze)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.Outside(label)) }, Modifier.fillMaxWidth().testTag("dest_outside")) { Text("Resta mio, fuori dall'app") }
+                Text("Se è una spesa vera (soldi dati a qualcuno), usa invece «Cambia categoria».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })

@@ -46,7 +46,7 @@ data class TransactionsState(
 class TransactionsViewModel @Inject constructor(
     data: StateFlow<AppData>, private val filters: FilterStore, private val repo: TransactionRepository, private val assign: AssignCategoryUseCase,
     private val duplicate: DuplicateTransactionsUseCase, private val exporter: ExportTransactionsUseCase, private val messenger: UiMessenger,
-    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase,
+    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase, private val setDestination: it.spese.domain.usecase.SetTransferDestinationUseCase,
 ) : ViewModel() {
     private val reviewMode = MutableStateFlow(false)
     private val receiptsMode = MutableStateFlow(false)
@@ -94,6 +94,18 @@ class TransactionsViewModel @Inject constructor(
     fun assignAccount(ids: Collection<Long>, accountId: Long) = viewModelScope.launch {
         try { val n = assignAcc(ids, accountId); messenger.show(if (n == 1) "Movimento assegnato al conto: ora conta nei totali" else "$n movimenti assegnati al conto: ora contano nei totali") }
         catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
+    /** Giroconto dei movimenti selezionati, con la destinazione dei soldi. */
+    fun setTransferDestination(ids: Collection<Long>, dest: it.spese.domain.usecase.TransferDestination) = viewModelScope.launch {
+        try {
+            val n = setDestination(ids, dest)
+            selection.value = emptySet()
+            messenger.show(when {
+                n == 0 -> "Nessun movimento cambiato"
+                dest is it.spese.domain.usecase.TransferDestination.ToAccount -> "$n ${if (n == 1) "giroconto registrato" else "giroconti registrati"}: l'altra metà è sul conto scelto"
+                else -> "$n ${if (n == 1) "giroconto registrato" else "giroconti registrati"} fuori dall'app: escono da entrate e spese"
+            })
+        } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
     /** Cambia categoria dalla Verifica: la scelta dell'utente sostituisce divisioni e provvisorietà, quindi il movimento è controllato. */
     fun reassign(txId: Long, categoryId: Long) = viewModelScope.launch {

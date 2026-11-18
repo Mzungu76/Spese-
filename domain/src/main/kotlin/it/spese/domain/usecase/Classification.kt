@@ -187,3 +187,53 @@ class AssignAccountUseCase @Inject constructor(private val tx: TransactionReposi
         return n
     }
 }
+
+/** Dove finiscono (o da dove arrivano) i soldi di un giroconto. */
+sealed interface TransferDestination {
+    /** Un altro conto dell'app: se non c'è già, si crea la metà speculare, così il saldo di quel conto è giusto. */
+    data class ToAccount(val accountId: Long) : TransferDestination
+    /** Fuori dall'app (una tasca, un conto che non importi): resta un giroconto fuori da entrate e spese, con il nome della destinazione. */
+    data class Outside(val label: String) : TransferDestination
+}
+
+/**
+ * Segna i movimenti come giroconto e dice dove vanno i soldi. Verso un conto dell'app crea la metà speculare (importo opposto, stessa data),
+ * già confermata ma provvisoria: se poi si importa l'estratto di quel conto, la riga vera la sostituisce invece di duplicarla.
+ */
+class SetTransferDestinationUseCase @Inject constructor(
+    private val tx: TransactionRepository, private val accounts: AccountRepository, private val categories: CategoryRepository,
+    private val assign: AssignCategoryUseCase, private val confirm: ConfirmReviewUseCase,
+) {
+    suspend operator fun invoke(txIds: Collection<Long>, dest: TransferDestination): Int {
+        val cat = it.spese.domain.classification.TransferSuggestions.transferCategory(categories.getAll()) ?: throw IllegalStateException("Manca la categoria «Trasferimenti»")
+        val accs = accounts.getAll().associateBy { a -> a.id }
+        if (dest is TransferDestination.ToAccount && accs[dest.accountId] == null) throw IllegalStateException("Conto inesistente")
+        val done = ArrayList<Long>(); val mirrors = ArrayList<NewTransaction>()
+        for (id in txIds) {
+            val t = tx.get(id) ?: continue
+            val from = t.accountId ?: continue
+            when (dest) {
+                is TransferDestination.ToAccount -> {
+                    if (dest.accountId == from) continue
+                    val key = "mirror|${t.externalId}|${dest.accountId}"
+                    mirrors.add(NewTransaction(key, key, dest.accountId, t.bookingDate, t.valueDate,
+                        (if (t.amount.signum() < 0) "Giroconto da " else "Giroconto verso ") + (accs[from]?.name ?: "altro conto"), t.amount.negate(), TxKind.TRASFERIMENTO, cat.id, true, null,
+                        notes = "Metà speculare di «${t.description}»", origin = TxOrigin.NOTIFICATION))
+                }
+                is TransferDestination.Outside -> {
+                    val keep = t.notes.lines().filter { l -> !l.startsWith("Destinazione:") && l.isNotBlank() }
+                    val notes = (keep + (if (dest.label.isNotBlank()) listOf("Destinazione: ${dest.label.trim()}") else emptyList())).joinToString("\n")
+                    if (notes != t.notes) tx.update(t.copy(notes = notes), tx.getDedupKey(id) ?: t.externalId)
+                }
+            }
+            done.add(id)
+        }
+        if (done.isEmpty()) return 0
+        assign(done, cat.id)
+        if (mirrors.isNotEmpty() && tx.insertAll(mirrors) > 0) {
+            val keys = mirrors.map { m -> m.externalId }.toSet()
+            confirm(tx.getAll().filter { m -> m.externalId in keys }.map { m -> m.id })
+        }
+        return done.size
+    }
+}
