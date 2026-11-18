@@ -45,6 +45,7 @@ import it.spese.feature.goals.GoalsScreen
 import it.spese.feature.transfers.TransfersScreen
 import it.spese.feature.budgets.BudgetsScreen
 import it.spese.feature.reminders.RemindersScreen
+import it.spese.feature.widgets.CustomizeScreen
 import it.spese.feature.health.HealthScreen
 import it.spese.feature.more.MoreActions
 import it.spese.feature.more.MoreScreen
@@ -69,7 +70,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val REMINDERS = "reminders"; const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"; const val BUDGETS = "budgets"; const val HEALTH = "health"
+    const val REMINDERS = "reminders"; const val CUSTOMIZE = "customize"; const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"; const val BUDGETS = "budgets"; const val HEALTH = "health"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
     fun manage(tab: Int) = "manage/$tab"
@@ -173,7 +174,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {
             composable(Routes.DASHBOARD) {
-                DashboardScreen(menu, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenNetWorth = { goTab(Routes.NETWORTH) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
+                DashboardScreen(menu, onCustomize = { nav.navigate(Routes.CUSTOMIZE) }, onOpenAlerts = { nav.navigate(Routes.ALERTS) }, onOpenNetWorth = { goTab(Routes.NETWORTH) }, onOpenCapture = { nav.navigate(Routes.CAPTURE) }, onOpenSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onOpenCategory = { id -> if (id != null) nav.navigate(Routes.category(id)) else { vm.showCategory(null); goTab(Routes.TRANSACTIONS) } },
                     onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onRestore = { nav.navigate(Routes.SETTINGS) },
                     onAdd = { addOpen = true }, onAnalytics = { nav.navigate(Routes.ANALYTICS) }, onOpenClassify = { nav.navigate(Routes.manage(2)) }, onOpenPlan = { goTab(Routes.PLAN) },
                     onOpenCategories = { goTab(Routes.CATEGORIES) }, onOpenTransfers = { vm.showTransfers(); goTab(Routes.TRANSACTIONS) }, onSearch = { vm.requestSearch(); goTab(Routes.TRANSACTIONS) }, onOpenTrends = { nav.navigate(Routes.TRENDS) }, onOpenAdvice = { nav.navigate(Routes.ADVICE) }, onOpenTransfersReview = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onOpenUnassigned = { vm.requestReview(); goTab(Routes.TRANSACTIONS) }, onOpenHealth = { nav.navigate(Routes.HEALTH) }, onOpenReview = { nav.navigate(Routes.REVIEW) }, contentPadding = pad)
@@ -213,13 +214,14 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.GOALS) { GoalsScreen(menu = menu, bottomPadding = pad, onOpenBudgets = { nav.navigate(Routes.BUDGETS) }) }
             composable(Routes.HEALTH) { HealthScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.BUDGETS) { BudgetsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.CUSTOMIZE) { CustomizeScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REMINDERS) { RemindersScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRANSFERS_REVIEW) { TransfersScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.MORE) {
                 MoreScreen(menu, MoreActions(
                     onCategories = { goTab(Routes.CATEGORIES) }, onHealth = { nav.navigate(Routes.HEALTH) }, onBudgets = { nav.navigate(Routes.BUDGETS) }, onPlan = { goTab(Routes.PLAN) }, onTrends = { nav.navigate(Routes.TRENDS) }, onAdvice = { nav.navigate(Routes.ADVICE) }, onReview = { nav.navigate(Routes.REVIEW) },
                     onAlerts = { nav.navigate(Routes.ALERTS) }, onRecurring = { nav.navigate(Routes.RECURRING) }, onSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onReports = { nav.navigate(Routes.REPORTS) },
-                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onTransfers = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onSettings = { nav.navigate(Routes.SETTINGS) }, onReminders = { nav.navigate(Routes.REMINDERS) }), pad)
+                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onTransfers = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onSettings = { nav.navigate(Routes.SETTINGS) }, onReminders = { nav.navigate(Routes.REMINDERS) }, onCustomize = { nav.navigate(Routes.CUSTOMIZE) }), pad)
             }
             composable(Routes.SUBSCRIPTIONS) { SubscriptionsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }

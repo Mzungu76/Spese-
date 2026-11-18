@@ -41,6 +41,7 @@ class MainFlowTest {
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
     @Inject lateinit var reminderRepo: it.spese.domain.reminders.ReminderRepository
+    @Inject lateinit var widgetRepo: it.spese.domain.widgets.WidgetLayoutRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
     @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
     @Inject lateinit var accountRepo: it.spese.domain.repository.AccountRepository
@@ -165,6 +166,14 @@ class MainFlowTest {
         runBlocking { reminderRepo.save(it.spese.domain.reminders.Reminder(0, it.spese.domain.reminders.ReminderKind.CUSTOM, "Pagare l'affitto", "", repeat = it.spese.domain.reminders.ReminderRepeat.DAILY)) }
         waitText("Pagare l'affitto")
         waitText("Ogni giorno alle 09:00")
+    }
+
+    @Test fun personalizza_la_home_applica_un_setup_pronto_e_lo_salva() {
+        openMore("customize")
+        waitText("Setup pronti")
+        compose.onNodeWithTag("preset_minimal").performClick()
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.HOME]?.size == 3 }
+        assertEquals(listOf("safe", "balances", "alerts"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.HOME).map { w -> w.widgetId })
     }
 
     private fun goTab(label: String) {

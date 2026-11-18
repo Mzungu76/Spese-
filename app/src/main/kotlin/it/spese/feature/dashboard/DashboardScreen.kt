@@ -49,7 +49,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {},
+    onCustomize: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
@@ -94,6 +94,7 @@ fun DashboardScreen(
         val ctx = HomeCtx(st, m, vm, fin, health, safe, advice, balances, subs, transferCount, pendingAmounts, pendingNotifs, alertCount, points, shownPeriod, catKind, cb)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
             layout.forEach { inst -> if (inst.enabled) homeWidget(inst, ctx) }
+            item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_home")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la Home") } }
         }
     }
     if (filters) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filters = false }
