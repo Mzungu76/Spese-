@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import it.spese.core.common.Dates
 import it.spese.core.model.Transaction
+import it.spese.domain.classification.merchant
 import it.spese.domain.reminders.ReminderKind
 import it.spese.core.common.Money
 import it.spese.core.designsystem.chart.GapAreaChart

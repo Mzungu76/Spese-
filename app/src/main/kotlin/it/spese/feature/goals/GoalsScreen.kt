@@ -3,6 +3,7 @@ package it.spese.feature.goals
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import it.spese.feature.dashboard.homeWidget
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -73,7 +74,7 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
             if (progress.isEmpty()) item(key = "${inst.uid}-empty") { EmptyState(Icons.Default.Savings, "Nessun obiettivo", "Tocca + per aggiungerne uno: fondo di emergenza, vacanza, investimento… Senza obiettivi si usa quello unico del Piano.") }
             items(progress, key = { g -> "${inst.uid}-${g.goal.id}" }) { p -> GoalRow(p, { edit = p.goal }, { deposit = p.goal }) }
                     }
-                    else -> { hctx?.let { c -> it.spese.feature.dashboard.homeWidget(inst, c) } }
+                    else -> { hctx?.let { c -> homeWidget(inst, c) } }
                 }
             }
             item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_goals")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }

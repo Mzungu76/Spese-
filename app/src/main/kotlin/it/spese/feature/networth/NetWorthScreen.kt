@@ -2,6 +2,7 @@ package it.spese.feature.networth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import it.spese.feature.dashboard.homeWidget
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -53,7 +54,7 @@ fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataM
                     "nw_fund" -> { item(key = inst.uid) { FundCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
                     "nw_margin" -> { item(key = inst.uid) { MarginCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
                     "nw_accounts" -> { items(rep.accounts, key = { b -> "${inst.uid}-${b.account.id}" }) { b -> AccountRow(b) { edit = b } } }
-                    else -> { hctx?.let { c -> it.spese.feature.dashboard.homeWidget(inst, c) } }
+                    else -> { hctx?.let { c -> homeWidget(inst, c) } }
                 }
             }
             item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_networth")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }
