@@ -31,7 +31,10 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     review: it.spese.domain.finance.SubscriptionReviewRepository,
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
     valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository,
-    healthSource: it.spese.feature.health.HealthSource) : ViewModel() {
+    healthSource: it.spese.feature.health.HealthSource, private val widgets: it.spese.domain.widgets.WidgetLayoutRepository) : ViewModel() {
+    /** I widget della Home, nell'ordine scelto (o quello predefinito). */
+    val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = widgets.observe().map { m -> it.spese.domain.widgets.LayoutOps.effective(m, it.spese.domain.widgets.WidgetPage.HOME) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), it.spese.domain.widgets.LayoutOps.default(it.spese.domain.widgets.WidgetPage.HOME))
     /** Saldi di tutti i conti e totale (stessi numeri del Patrimonio). */
     val balances: StateFlow<it.spese.domain.networth.NetWorthReport?> = combine(data, goals.observeAll(), valuations.observeAll()) { d, g, v ->
         if (!d.loaded) null else runCatching { it.spese.domain.networth.NetWorthEngine.compute(d, g, v) }.getOrNull()
