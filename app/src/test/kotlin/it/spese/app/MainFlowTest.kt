@@ -169,11 +169,15 @@ class MainFlowTest {
     }
 
     @Test fun personalizza_la_home_applica_un_setup_pronto_e_lo_salva() {
-        openMore("customize")
-        waitText("Setup pronti")
-        compose.onNodeWithTag("preset_minimal").performClick()
-        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.HOME]?.size == 3 }
-        assertEquals(listOf("safe", "balances", "alerts"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.HOME).map { w -> w.widgetId })
+        try {
+            openMore("customize")
+            waitText("Setup pronti")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.HOME]?.size == 3 }
+            assertEquals(listOf("safe", "balances", "alerts"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.HOME).map { w -> w.widgetId })
+        } finally {
+            runBlocking { widgetRepo.setAll(emptyMap()) }      // le preferenze restano tra un test e l'altro: senza questo gli altri vedrebbero la Home «Minimale»
+        }
     }
 
     private fun goTab(label: String) {
