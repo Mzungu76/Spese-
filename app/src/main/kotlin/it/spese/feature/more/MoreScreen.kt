@@ -20,7 +20,7 @@ import it.spese.core.designsystem.component.SectionHeader
 class MoreActions(
     val onCategories: () -> Unit, val onHealth: () -> Unit, val onBudgets: () -> Unit, val onPlan: () -> Unit, val onTrends: () -> Unit, val onAdvice: () -> Unit, val onReview: () -> Unit, val onAlerts: () -> Unit,
     val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit, val onTransfers: () -> Unit,
-    val onImport: () -> Unit, val onScan: () -> Unit, val onSettings: () -> Unit,
+    val onImport: () -> Unit, val onScan: () -> Unit, val onSettings: () -> Unit, val onReminders: () -> Unit,
 )
 
 @Composable
@@ -36,6 +36,7 @@ fun MoreScreen(menu: DataMenu, a: MoreActions, bottomPadding: PaddingValues = Pa
             item { MoreRow("trends", Icons.Default.Timeline, "Tendenze e proiezioni", "Ogni categoria contro lo storico", a.onTrends) }
             item { MoreRow("advice", Icons.Default.Lightbulb, "Consigli e guida", "Cosa conviene fare e perché", a.onAdvice) }
             item { MoreRow("review", Icons.Default.EventAvailable, "Chiusura del mese", "Risparmio, 50/30/20 e azioni da applicare", a.onReview) }
+            item { MoreRow("reminders", Icons.Default.Alarm, "Sveglie", "Promemoria per importare gli estratti conto e altro", a.onReminders) }
             item { MoreRow("alerts", Icons.Default.Notifications, "Avvisi", "Budget, scadenze e spese non previste", a.onAlerts) }
             item { SectionHeader("Movimenti automatici", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             item { MoreRow("recurring", Icons.Default.Autorenew, "Ricorrenti", "Stipendio, affitto incassato, abbonamenti", a.onRecurring) }

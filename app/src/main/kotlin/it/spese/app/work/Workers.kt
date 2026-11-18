@@ -94,6 +94,23 @@ class AlertsWorker @AssistedInject constructor(
     }
 }
 
+/** Una sveglia scattata: manda la notifica (per l'estratto conto con le date da importare) e pianifica la prossima. */
+@HiltWorker
+class ReminderWorker @AssistedInject constructor(
+    @Assisted context: Context, @Assisted params: WorkerParameters,
+    private val reminders: it.spese.domain.reminders.ReminderRepository, private val data: StateFlow<AppData>, private val notifier: Notifier, private val scheduler: WorkScheduler,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val id = inputData.getLong("id", 0L)
+        val r = reminders.getAll().firstOrNull { it.id == id && it.enabled } ?: return Result.success()
+        val d = data.first { it.loaded }
+        val m = it.spese.domain.reminders.ReminderEngine.message(r, d.accounts, d.ledger, java.time.LocalDate.now())
+        notifier.post(3000 + (id % 5000).toInt(), m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null })
+        if (r.repeat == it.spese.domain.reminders.ReminderRepeat.ONCE) reminders.save(r.copy(enabled = false)) else scheduler.scheduleReminder(r)
+        return Result.success()
+    }
+}
+
 /** Backup automatico opzionale: salva un JSON nella memoria privata dell'app e ruota i più vecchi. */
 @HiltWorker
 class AutoBackupWorker @AssistedInject constructor(
@@ -117,6 +134,18 @@ class AutoBackupWorker @AssistedInject constructor(
 @Singleton
 class WorkScheduler @Inject constructor(@ApplicationContext private val context: Context) {
     private val wm get() = WorkManager.getInstance(context)
+
+    /** Pianifica (o annulla) il prossimo scatto di una sveglia; dopo ogni scatto il lavoro si ripianifica da solo e sopravvive al riavvio del telefono. */
+    fun scheduleReminder(r: it.spese.domain.reminders.Reminder) {
+        val now = LocalDateTime.now()
+        val next = if (r.enabled) it.spese.domain.reminders.ReminderEngine.next(r, now) else null
+        val name = "reminder_${r.id}"
+        if (next == null) { wm.cancelUniqueWork(name); return }
+        wm.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<ReminderWorker>().setInitialDelay(Duration.between(now, next)).setInputData(workDataOf("id" to r.id)).build())
+    }
+    fun cancelReminder(id: Long) { wm.cancelUniqueWork("reminder_$id") }
+    fun syncReminders(list: List<it.spese.domain.reminders.Reminder>) { list.forEach { scheduleReminder(it) } }
 
     fun apply(s: AppSettings) {
         if (s.notificationsEnabled) {

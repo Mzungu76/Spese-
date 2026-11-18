@@ -40,6 +40,7 @@ class MainFlowTest {
     @Inject lateinit var restore: RestoreBackupUseCase
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
+    @Inject lateinit var reminderRepo: it.spese.domain.reminders.ReminderRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
     @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
     @Inject lateinit var accountRepo: it.spese.domain.repository.AccountRepository
@@ -155,6 +156,16 @@ class MainFlowTest {
         compose.onNodeWithTag("pick_account").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
         compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 1 }
         assertEquals(0, data.value.unassigned.size)
+    }
+
+    @Test fun la_scheda_sveglie_si_apre_da_altro_e_permette_di_crearne_una() {
+        openMore("reminders")
+        waitText("Nessuna sveglia")
+        compose.onNodeWithTag("reminder_add").performClick(); compose.waitForIdle()
+        waitText("Nuova sveglia")
+        compose.onNodeWithText("Salva").performClick()
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { reminderRepo.getAll() }.size == 1 }
+        assertEquals(it.spese.domain.reminders.ReminderKind.IMPORT, runBlocking { reminderRepo.getAll() }.single().kind)
     }
 
     private fun goTab(label: String) {

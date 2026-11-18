@@ -75,6 +75,11 @@ data class NativeGoal(val name: String, val target: BigDecimal, val saved: BigDe
 data class NativeValuation(val account: String, val date: java.time.LocalDate, val value: BigDecimal)
 /** Correzione dell'utente: la categoria di entrata (per nome) è fissa o variabile. */
 data class NativeIncomeNature(val category: String, val fixed: Boolean)
+/** Sveglia o promemoria estratto conto (conto per nome). */
+data class NativeReminder(
+    val kind: String, val title: String, val note: String, val account: String?, val repeat: String, val dayOfWeek: Int, val dayOfMonth: Int,
+    val date: java.time.LocalDate?, val hour: Int, val minute: Int, val enabled: Boolean,
+)
 data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
@@ -91,6 +96,7 @@ data class NativeExtras(
     /** Coppie di movimenti che l'utente ha scartato come giroconti. */
     val transferIgnored: List<String> = emptyList(),
     val incomeNature: List<NativeIncomeNature> = emptyList(),
+    val reminders: List<NativeReminder> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -199,6 +205,10 @@ object LegacyBackupCodec {
                 g["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) }, g["m"].dec(), g["p"].dec()?.toInt() ?: 0, g["on"]?.let { flag(it) } ?: true)
         } } ?: emptyList(),
         incomeNature = o["incNat"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIncomeNature(r["c"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["f"]?.let { flag(it) } ?: return@let null) } } ?: emptyList(),
+        reminders = o["rem"].arr()?.mapNotNull { e -> e.obj()?.let { r ->
+            NativeReminder(r["k"].str() ?: "CUSTOM", r["t"].str() ?: "", r["n"].str() ?: "", r["a"].str()?.takeIf { it.isNotBlank() }, r["r"].str() ?: "MONTHLY",
+                r["w"].dec()?.toInt() ?: 1, r["m"].dec()?.toInt() ?: 1, r["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) }, r["h"].dec()?.toInt() ?: 9, r["mi"].dec()?.toInt() ?: 0, r["on"]?.let { flag(it) } ?: true)
+        } } ?: emptyList(),
         transferIgnored = o["trIgnored"].arr()?.mapNotNull { it.str() } ?: emptyList(),
         valuations = o["vals"].arr()?.mapNotNull { e -> e.obj()?.let { v ->
             NativeValuation(v["a"].str()?.takeIf { it.isNotBlank() } ?: return@let null, v["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) } ?: return@let null, v["v"].dec() ?: return@let null)
@@ -280,6 +290,10 @@ object LegacyBackupCodec {
                     put("n", g.name); put("t", jnum(g.target)); put("s", jnum(g.saved)); g.deadline?.let { put("d", it.toEpochDay()) }; g.monthly?.let { put("m", jnum(it)) }; put("p", g.priority); put("on", if (g.enabled) 1 else 0)
                 }) } }
                 if (x.incomeNature.isNotEmpty()) putJsonArray("incNat") { x.incomeNature.forEach { r -> add(buildJsonObject { put("c", r.category); put("f", if (r.fixed) 1 else 0) }) } }
+                if (x.reminders.isNotEmpty()) putJsonArray("rem") { x.reminders.forEach { r -> add(buildJsonObject {
+                    put("k", r.kind); put("t", r.title); put("n", r.note); r.account?.let { put("a", it) }; put("r", r.repeat); put("w", r.dayOfWeek); put("m", r.dayOfMonth)
+                    r.date?.let { put("d", it.toEpochDay()) }; put("h", r.hour); put("mi", r.minute); put("on", if (r.enabled) 1 else 0)
+                }) } }
                 if (x.transferIgnored.isNotEmpty()) putJsonArray("trIgnored") { x.transferIgnored.forEach { add(JsonPrimitive(it)) } }
                 if (x.valuations.isNotEmpty()) putJsonArray("vals") { x.valuations.forEach { v -> add(buildJsonObject { put("a", v.account); put("d", v.date.toEpochDay()); put("v", jnum(v.value)) }) } }
             }) }
