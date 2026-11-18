@@ -18,7 +18,7 @@ import it.spese.core.designsystem.component.SectionHeader
 
 /** Tutto il resto, raggruppato: analisi, gestione dei dati e impostazioni. Le sezioni di tutti i giorni stanno nella barra in basso. */
 class MoreActions(
-    val onCategories: () -> Unit, val onBudgets: () -> Unit, val onPlan: () -> Unit, val onTrends: () -> Unit, val onAdvice: () -> Unit, val onReview: () -> Unit, val onAlerts: () -> Unit,
+    val onCategories: () -> Unit, val onHealth: () -> Unit, val onBudgets: () -> Unit, val onPlan: () -> Unit, val onTrends: () -> Unit, val onAdvice: () -> Unit, val onReview: () -> Unit, val onAlerts: () -> Unit,
     val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit, val onTransfers: () -> Unit,
     val onImport: () -> Unit, val onScan: () -> Unit, val onSettings: () -> Unit,
 )
@@ -29,6 +29,7 @@ fun MoreScreen(menu: DataMenu, a: MoreActions, bottomPadding: PaddingValues = Pa
         LargeHeader("Altro", menu = menu)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
             item { SectionHeader("Capire i soldi", Modifier.padding(horizontal = 24.dp)) }
+            item { MoreRow("health", Icons.Default.MonitorHeart, "Salute del bilancio", "Giudizio, punteggio e cosa fare, dal tuo storico", a.onHealth) }
             item { MoreRow("categories", Icons.Default.Category, "Categorie", "Dove vanno i soldi, budget e confronti", a.onCategories) }
             item { MoreRow("budgets", Icons.Default.Tune, "Budget per categoria", "Imposta o correggi i budget uno per uno", a.onBudgets) }
             item { MoreRow("plan", Icons.Default.Flag, "Piano e simulazioni", "«E se…», tagli per categoria, scenari", a.onPlan) }

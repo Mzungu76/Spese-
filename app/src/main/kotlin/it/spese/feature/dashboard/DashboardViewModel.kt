@@ -30,7 +30,10 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     captureConfig: it.spese.domain.repository.CaptureConfigRepository,
     review: it.spese.domain.finance.SubscriptionReviewRepository,
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
-    valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository) : ViewModel() {
+    valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository,
+    healthSource: it.spese.feature.health.HealthSource) : ViewModel() {
+    /** Parere sulla salute del bilancio (null finché i dati non bastano). */
+    val health: StateFlow<it.spese.domain.health.HealthReport?> = healthSource.report.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Quanti giroconti probabili (uscita e entrata dello stesso importo su due conti) aspettano una conferma. */
     val transferPairs: StateFlow<Int> = combine(data, transferReview.observeIgnored()) { d, ign -> runCatching { it.spese.domain.classification.TransferSuggestions.compute(d, ign).size }.getOrDefault(0) }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)

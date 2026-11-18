@@ -11,6 +11,7 @@ import it.spese.core.model.*
 import it.spese.data.files.DocumentFiles
 import it.spese.data.mapper.toDomain
 import it.spese.domain.backup.*
+import it.spese.domain.health.IncomeNature
 import it.spese.domain.classification.Classifier
 import it.spese.domain.classification.DefaultData
 import it.spese.domain.classification.Duplicates
@@ -74,6 +75,7 @@ class BackupRepositoryImpl @Inject constructor(
     private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
     private val transferReview = it.spese.data.settings.TransferReviewRepositoryImpl(context)
+    private val incomeNatureRepo = it.spese.data.settings.IncomeNatureRepositoryImpl(context)
     private val goalsRepo = it.spese.data.settings.GoalRepositoryImpl(context)
     private val valuationsRepo = it.spese.data.settings.ValuationRepositoryImpl(context)
 
@@ -87,6 +89,7 @@ class BackupRepositoryImpl @Inject constructor(
         val extras = NativeExtras(
             subIgnored = subReview.getIgnored().toList(),
             transferIgnored = transferReview.getIgnored().toList(),
+            incomeNature = incomeNatureRepo.get().mapNotNull { (id, n) -> catName[id]?.let { nm -> NativeIncomeNature(nm, n == IncomeNature.FIXED) } },
             valuations = valuationsRepo.getAll().mapNotNull { v -> s.accounts.firstOrNull { it.id == v.accountId }?.let { NativeValuation(it.name, v.date, v.value) } },
             goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
@@ -146,6 +149,14 @@ class BackupRepositoryImpl @Inject constructor(
         }
         env.extras?.let { x ->
             if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
+        }
+        // natura delle entrate corretta dall'utente (DataStore, categorie per nome)
+        env.extras?.let { x ->
+            if (x.incomeNature.isNotEmpty() || mode == RestoreMode.Replace) {
+                val ids = db.categories().getAll().associate { it.name to it.id }
+                val incoming = x.incomeNature.mapNotNull { r -> ids[r.category]?.let { id -> id to if (r.fixed) IncomeNature.FIXED else IncomeNature.VARIABLE } }.toMap()
+                incomeNatureRepo.setAll(if (mode == RestoreMode.Replace) incoming else incomeNatureRepo.get() + incoming)
+            }
         }
         // giroconti scartati (DataStore, identificativi dei movimenti)
         env.extras?.let { x ->
@@ -350,7 +361,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList())
+        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList()); incomeNatureRepo.setAll(emptyMap())
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {
