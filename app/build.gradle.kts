@@ -73,7 +73,11 @@ android {
     lint { abortOnError = false; checkReleaseBuilds = false }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
-tasks.withType<Test>().configureEach { maxHeapSize = "2g" }   // i test Robolectric sono pesanti: con i 512 MB di default finiscono la memoria
+tasks.withType<Test>().configureEach {
+    maxHeapSize = "2g"
+    // in caso di errore il log della CI mostra il messaggio completo (es. la schermata che il test non ha trovato)
+    testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; events("failed") }
+}   // i test Robolectric sono pesanti: con i 512 MB di default finiscono la memoria
 
 dependencies {
     implementation(project(":domain"))
