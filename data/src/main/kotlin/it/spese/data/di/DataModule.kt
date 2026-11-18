@@ -46,6 +46,7 @@ abstract class RepositoryModule {
     @Binds abstract fun transferReview(i: it.spese.data.settings.TransferReviewRepositoryImpl): it.spese.domain.classification.TransferReviewRepository
     @Binds abstract fun incomeNature(i: it.spese.data.settings.IncomeNatureRepositoryImpl): it.spese.domain.health.IncomeNatureRepository
     @Binds abstract fun managedAccounts(i: it.spese.data.settings.ManagedAccountsRepositoryImpl): it.spese.domain.repository.ManagedAccountsRepository
+    @Binds abstract fun widgetLayouts(i: it.spese.data.settings.WidgetLayoutRepositoryImpl): it.spese.domain.widgets.WidgetLayoutRepository
     @Binds abstract fun reminders(i: it.spese.data.settings.ReminderRepositoryImpl): it.spese.domain.reminders.ReminderRepository
     @Binds abstract fun goals(i: it.spese.data.settings.GoalRepositoryImpl): it.spese.domain.repository.GoalRepository
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository

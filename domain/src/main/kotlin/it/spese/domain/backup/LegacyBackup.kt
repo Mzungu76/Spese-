@@ -99,6 +99,8 @@ data class NativeExtras(
     val reminders: List<NativeReminder> = emptyList(),
     /** Conti gestiti da altri (per nome). */
     val managedAccounts: List<String> = emptyList(),
+    /** Composizioni dei widget (testo JSON, vuoto = nessuna personalizzazione). */
+    val widgetLayouts: String = "",
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -207,6 +209,7 @@ object LegacyBackupCodec {
                 g["d"].dec()?.toLong()?.let { java.time.LocalDate.ofEpochDay(it) }, g["m"].dec(), g["p"].dec()?.toInt() ?: 0, g["on"]?.let { flag(it) } ?: true)
         } } ?: emptyList(),
         incomeNature = o["incNat"].arr()?.mapNotNull { e -> e.obj()?.let { r -> NativeIncomeNature(r["c"].str()?.takeIf { it.isNotBlank() } ?: return@let null, r["f"]?.let { flag(it) } ?: return@let null) } } ?: emptyList(),
+        widgetLayouts = o["wl"].str().orEmpty(),
         managedAccounts = o["managed"].arr()?.mapNotNull { it.str()?.takeIf { n -> n.isNotBlank() } } ?: emptyList(),
         reminders = o["rem"].arr()?.mapNotNull { e -> e.obj()?.let { r ->
             NativeReminder(r["k"].str() ?: "CUSTOM", r["t"].str() ?: "", r["n"].str() ?: "", r["a"].str()?.takeIf { it.isNotBlank() }, r["r"].str() ?: "MONTHLY",
@@ -293,6 +296,7 @@ object LegacyBackupCodec {
                     put("n", g.name); put("t", jnum(g.target)); put("s", jnum(g.saved)); g.deadline?.let { put("d", it.toEpochDay()) }; g.monthly?.let { put("m", jnum(it)) }; put("p", g.priority); put("on", if (g.enabled) 1 else 0)
                 }) } }
                 if (x.incomeNature.isNotEmpty()) putJsonArray("incNat") { x.incomeNature.forEach { r -> add(buildJsonObject { put("c", r.category); put("f", if (r.fixed) 1 else 0) }) } }
+                if (x.widgetLayouts.isNotBlank()) put("wl", x.widgetLayouts)
                 if (x.managedAccounts.isNotEmpty()) putJsonArray("managed") { x.managedAccounts.forEach { add(JsonPrimitive(it)) } }
                 if (x.reminders.isNotEmpty()) putJsonArray("rem") { x.reminders.forEach { r -> add(buildJsonObject {
                     put("k", r.kind); put("t", r.title); put("n", r.note); r.account?.let { put("a", it) }; put("r", r.repeat); put("w", r.dayOfWeek); put("m", r.dayOfMonth)
