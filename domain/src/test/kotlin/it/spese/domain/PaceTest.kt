@@ -80,4 +80,17 @@ class PaceTest {
         val r = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentWeek), d("2026-11-17"))!!
         assertEquals(d("2026-11-09"), r.start); assertEquals(6, r.dayIndex); assertEquals(0, BigDecimal(70).compareTo(r.spentToDate)); assertEquals(PaceVerdict.IN_LINE, r.verdict)
     }
+
+    @Test fun `con categorie scelte il ritmo riguarda solo la loro spesa, anche piu categorie insieme`() {
+        val l = history()
+        l.add(tx(d("2026-11-01"), -500, 1)); l.add(tx(d("2026-11-05"), -300, 2)); l.add(tx(d("2026-11-10"), -200, 2))
+        val bar = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentMonth), d("2026-11-10"), setOf(2L))!!
+        assertEquals(0, BigDecimal(500).compareTo(bar.spentToDate)); assertEquals(0, BigDecimal(200).compareTo(bar.averageToDate))
+        assertEquals(listOf("Bar"), bar.filtered.map { it.name }); assertEquals(0, bar.averageIncome.signum())
+        val both = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentMonth), d("2026-11-10"), setOf(1L, 2L))!!
+        assertEquals(0, BigDecimal(1000).compareTo(both.spentToDate)); assertEquals(2, both.filtered.size)
+        // la sottocategoria segue la principale
+        val sub = PaceEngine.compute(data(l + tx(d("2026-11-03"), -40, 3)), TxFilter(period = Period.CurrentMonth), d("2026-11-10"), setOf(1L))!!
+        assertEquals(0, BigDecimal(540).compareTo(sub.spentToDate))
+    }
 }

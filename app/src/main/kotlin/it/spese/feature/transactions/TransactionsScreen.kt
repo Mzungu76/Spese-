@@ -102,9 +102,9 @@ fun TransactionsScreen(
         }
         Spacer(Modifier.height(10.dp))
         FilterPills()
-        if (!selecting) PillSegmented(listOf(false to "Tutti", true to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica"), st.reviewMode, vm::setReviewMode, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
+        if (!selecting) PillSegmented(listOf(0 to "Tutti", 1 to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica", 2 to "Scontrini"), if (st.reviewMode) 1 else if (st.receiptsMode) 2 else 0, vm::setView, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
         if (!st.reviewMode) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(if (st.receiptsMode) "${st.items.size} con scontrino" else "${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyLarge)
             MoneyText(st.expense, decimals = false, colored = false, style = MaterialTheme.typography.bodyLarge)
         }
@@ -115,7 +115,7 @@ fun TransactionsScreen(
         }
         if (st.reviewMode) ReviewSection(st, vm, onOpen, { id -> pickCategory = { cid -> vm.reassign(id, cid) } }, { splitTarget = it }, { ids -> pickAccountFor = ids }, bottomPadding)
         else if (st.items.isEmpty()) {
-            EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else "Nessun movimento con questi filtri.")
+            EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else if (st.receiptsMode) "Nessun movimento ha uno scontrino allegato. Scansiona uno scontrino o allega una foto a un movimento." else "Nessun movimento con questi filtri.")
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
                 val byDay = st.sort == SortKey.DATE

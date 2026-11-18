@@ -37,6 +37,8 @@ data class TransactionsState(
     val income: BigDecimal = BigDecimal.ZERO, val expense: BigDecimal = BigDecimal.ZERO, val today: LocalDate = LocalDate.now(),
     /** Movimenti da controllare (sezione Verifica) e se la sezione è aperta. */
     val review: List<ReviewItem> = emptyList(), val reviewMode: Boolean = false,
+    /** Solo i movimenti con scontrino/foto allegata (ignora il periodo e gli altri filtri). */
+    val receiptsMode: Boolean = false,
 )
 
 @HiltViewModel
@@ -47,19 +49,20 @@ class TransactionsViewModel @Inject constructor(
     private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase,
 ) : ViewModel() {
     private val reviewMode = MutableStateFlow(false)
+    private val receiptsMode = MutableStateFlow(false)
     private val sort = MutableStateFlow(SortKey.DATE to true)
     private val selection = MutableStateFlow<Set<Long>>(emptySet())
     private var current: TransactionsState = TransactionsState()
 
-    val state: StateFlow<TransactionsState> = combine(data, filters.filter, sort, selection, reviewMode) { d, f, s, sel, rm -> arrayOf(d, f, s, sel, rm) }
+    val state: StateFlow<TransactionsState> = combine(data, filters.filter, sort, selection, reviewMode, receiptsMode) { d, f, s, sel, rm, rc -> arrayOf(d, f, s, sel, rm, rc) }
         .mapLatest { a ->
             @Suppress("UNCHECKED_CAST")
-            val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = a[4] as Boolean
+            val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = a[4] as Boolean; val rc = a[5] as Boolean
             withContext(Dispatchers.Default) {
                 // i filtri guardano le parti (un prelievo diviso compare cercando una sua categoria), l'elenco mostra il movimento intero
                 val parts = FilterEngine.apply(d.transactions, f, d.categoriesById, d.accounts.associate { it.id to it.name })
                 val ids = parts.mapTo(HashSet()) { it.id }
-                val filtered = d.ledger.filter { it.id in ids }
+                val filtered = if (rc) d.ledger.filter { it.documentId != null } else d.ledger.filter { it.id in ids }
                 val cmp: Comparator<Transaction> = when (s.first) {
                     SortKey.DATE -> compareBy<Transaction> { it.bookingDate }.thenBy { it.id }
                     SortKey.DESCRIPTION -> compareBy { it.description.lowercase() }
@@ -67,17 +70,20 @@ class TransactionsViewModel @Inject constructor(
                     SortKey.AMOUNT -> compareBy { it.amount }
                 }
                 val sorted = filtered.sortedWith(if (s.second) cmp.reversed() else cmp)
+                val shown = if (rc) sorted else parts
                 TransactionsState(d, sorted, f, s.first, s.second, sel.intersect(sorted.map { it.id }.toSet()),
-                    parts.filter { it.kind == TxKind.ENTRATA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
-                    parts.filter { it.kind == TxKind.SPESA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
+                    shown.filter { it.kind == TxKind.ENTRATA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
+                    shown.filter { it.kind == TxKind.SPESA }.fold(BigDecimal.ZERO) { a2, x -> a2 + x.amount },
                     it.spese.domain.finance.AlertEngine.referenceToday(LocalDate.now(), d.ledger),
-                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules, d.unassigned), rm)
+                    ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules, d.unassigned), rm, rc)
             }.also { current = it }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionsState())
 
     val searchRequested = filters.searchRequested
     fun consumeSearch() = filters.consumeSearch()
-    fun setReviewMode(on: Boolean) { reviewMode.value = on }
+    fun setReviewMode(on: Boolean) { reviewMode.value = on; if (on) receiptsMode.value = false }
+    /** 0 = Tutti, 1 = Verifica, 2 = Scontrini. */
+    fun setView(v: Int) { reviewMode.value = v == 1; receiptsMode.value = v == 2 }
     fun confirm(ids: Collection<Long>) = viewModelScope.launch { confirmReview(ids); messenger.show(if (ids.size == 1) "Confermato" else "Confermati ${ids.size} movimenti") }
     /** Conferma tutti quelli che hanno un conto: i movimenti senza conto restano in Verifica finché non si sceglie il conto. */
     fun confirmAllReview() = confirm(current.review.filter { it.tx.accountId != null }.map { it.tx.id })
