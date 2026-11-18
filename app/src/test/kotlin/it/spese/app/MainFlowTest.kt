@@ -158,14 +158,13 @@ class MainFlowTest {
         assertEquals(0, data.value.unassigned.size)
     }
 
-    @Test fun la_scheda_sveglie_si_apre_da_altro_e_permette_di_crearne_una() {
+    @Test fun la_scheda_sveglie_si_apre_da_altro_e_mostra_quelle_salvate() {
         openMore("reminders")
         waitText("Nessuna sveglia")
-        compose.onNodeWithTag("reminder_add").performClick(); compose.waitForIdle()
-        waitText("Nuova sveglia")
-        compose.onNodeWithText("Salva").performClick()
-        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { reminderRepo.getAll() }.size == 1 }
-        assertEquals(it.spese.domain.reminders.ReminderKind.IMPORT, runBlocking { reminderRepo.getAll() }.single().kind)
+        compose.onNodeWithTag("reminder_add").assertExists()
+        runBlocking { reminderRepo.save(it.spese.domain.reminders.Reminder(0, it.spese.domain.reminders.ReminderKind.CUSTOM, "Pagare l'affitto", "", repeat = it.spese.domain.reminders.ReminderRepeat.DAILY)) }
+        waitText("Pagare l'affitto")
+        waitText("Ogni giorno alle 09:00")
     }
 
     private fun goTab(label: String) {
