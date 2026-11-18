@@ -102,6 +102,8 @@ fun TransactionsScreen(
         }
         Spacer(Modifier.height(10.dp))
         FilterPills()
+        if (st.data.managedAccountIds.isNotEmpty() && st.filter.accountId == null && !st.reviewMode) Text("I movimenti dei conti gestiti da altri non compaiono qui: scegli quel conto nel filtro per vederli.",
+            Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (!selecting) PillSegmented(listOf(0 to "Tutti", 1 to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica", 2 to "Scontrini"), if (st.reviewMode) 1 else if (st.receiptsMode) 2 else 0, vm::setView, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
         if (!st.reviewMode) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(if (st.receiptsMode) "${st.items.size} con scontrino" else "${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)

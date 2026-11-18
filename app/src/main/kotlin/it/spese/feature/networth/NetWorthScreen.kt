@@ -64,6 +64,7 @@ private fun Hero(r: NetWorthReport) {
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Column { Eyebrow("Liquidità"); MoneyText(r.liquidity, decimals = false, colored = false) }
             Column { Eyebrow("Investimenti"); MoneyText(r.investments, decimals = false, colored = false) }
+            if (r.managed.signum() != 0) Column { Eyebrow("Gestito da altri"); MoneyText(r.managed, decimals = false, colored = false) }
         }
     }
 }

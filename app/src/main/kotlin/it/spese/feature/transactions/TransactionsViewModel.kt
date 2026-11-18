@@ -60,7 +60,8 @@ class TransactionsViewModel @Inject constructor(
             val d = a[0] as AppData; val f = a[1] as TxFilter; val s = a[2] as Pair<SortKey, Boolean>; val sel = a[3] as Set<Long>; val rm = (a[4] as Pair<Boolean, Boolean>).first; val rc = (a[4] as Pair<Boolean, Boolean>).second
             withContext(Dispatchers.Default) {
                 // i filtri guardano le parti (un prelievo diviso compare cercando una sua categoria), l'elenco mostra il movimento intero
-                val parts = FilterEngine.apply(d.transactions, f, d.categoriesById, d.accounts.associate { it.id to it.name })
+                val base = if (f.accountId != null && f.accountId in d.managedAccountIds) d.everything else d.transactions
+                val parts = FilterEngine.apply(base, f, d.categoriesById, d.accounts.associate { it.id to it.name })
                 val ids = parts.mapTo(HashSet()) { it.id }
                 val filtered = if (rc) d.ledger.filter { it.documentId != null } else d.ledger.filter { it.id in ids }
                 val cmp: Comparator<Transaction> = when (s.first) {

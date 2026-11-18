@@ -78,6 +78,7 @@ class BackupRepositoryImpl @Inject constructor(
     private val incomeNatureRepo = it.spese.data.settings.IncomeNatureRepositoryImpl(context)
     private val goalsRepo = it.spese.data.settings.GoalRepositoryImpl(context)
     private val remindersRepo = it.spese.data.settings.ReminderRepositoryImpl(context)
+    private val managedRepo = it.spese.data.settings.ManagedAccountsRepositoryImpl(context)
     private val valuationsRepo = it.spese.data.settings.ValuationRepositoryImpl(context)
 
     private suspend fun currentEnvelope(): BackupEnvelope {
@@ -92,6 +93,7 @@ class BackupRepositoryImpl @Inject constructor(
             transferIgnored = transferReview.getIgnored().toList(),
             incomeNature = incomeNatureRepo.get().mapNotNull { (id, n) -> catName[id]?.let { nm -> NativeIncomeNature(nm, n == IncomeNature.FIXED) } },
             valuations = valuationsRepo.getAll().mapNotNull { v -> s.accounts.firstOrNull { it.id == v.accountId }?.let { NativeValuation(it.name, v.date, v.value) } },
+            managedAccounts = managedRepo.get().mapNotNull { id -> s.accounts.firstOrNull { a -> a.id == id }?.name },
             reminders = remindersRepo.getAll().map { r -> NativeReminder(r.kind.name, r.title, r.note, r.accountId?.let { id -> s.accounts.firstOrNull { it.id == id }?.name }, r.repeat.name, r.dayOfWeek, r.dayOfMonth, r.date, r.hour, r.minute, r.enabled) },
             goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
@@ -179,6 +181,14 @@ class BackupRepositoryImpl @Inject constructor(
                 val incoming = x.goals.map { g -> it.spese.core.model.Goal(0, g.name, g.target, g.saved, g.deadline, g.monthly, g.priority, g.enabled) }
                 val base = if (mode == RestoreMode.Replace) emptyList() else goalsRepo.getAll()
                 goalsRepo.setAll(base + incoming.filter { n -> base.none { it.name.equals(n.name, ignoreCase = true) } })
+            }
+        }
+        // conti gestiti da altri (DataStore, per nome)
+        env.extras?.let { x ->
+            if (x.managedAccounts.isNotEmpty() || mode == RestoreMode.Replace) {
+                val accIds = db.accounts().getAll().associate { it.name.lowercase() to it.id }
+                val incoming = x.managedAccounts.mapNotNull { n -> accIds[n.lowercase()] }.toSet()
+                managedRepo.setAll(if (mode == RestoreMode.Replace) incoming else managedRepo.get() + incoming)
             }
         }
         // sveglie e promemoria (DataStore, conti per nome): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle che non ci sono già
@@ -375,7 +385,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList()); incomeNatureRepo.setAll(emptyMap()); remindersRepo.setAll(emptyList())
+        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList()); incomeNatureRepo.setAll(emptyMap()); remindersRepo.setAll(emptyList()); managedRepo.setAll(emptySet())
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {

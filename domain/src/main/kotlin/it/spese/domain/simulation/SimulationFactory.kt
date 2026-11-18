@@ -29,7 +29,7 @@ object SimulationFactory {
         val rec = RecurringDetector.detect(accTx, RecurringDetector.defaultExclusions(data.categories))
         val commitments = rec.map { RecurringCommitment(it.key, it.merchant, it.mean, it.categoryId) }
         val scheduled = data.dues.map { ScheduledOutflow("due:${it.id}", it.name, it.amount, YearMonth.from(it.next), it.frequency) }
-        val opening = data.accounts.filter { filter.accountId == null || it.id == filter.accountId }.fold(BigDecimal.ZERO) { a, c -> a + c.openingBalance }
+        val opening = data.accounts.filter { (filter.accountId == null || it.id == filter.accountId) && it.id !in data.managedAccountIds }.fold(BigDecimal.ZERO) { a, c -> a + c.openingBalance }
         val last = StatsEngine.lastDate(accTx)
         val start = YearMonth.from(last ?: realToday)
         return PlanContext(base, rec, commitments, scheduled, StatsEngine.balance(accTx, opening), start)

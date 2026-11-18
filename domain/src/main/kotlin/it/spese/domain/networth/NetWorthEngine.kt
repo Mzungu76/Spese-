@@ -41,7 +41,9 @@ data class NetWorthReport(
     /** Variazione del patrimonio rispetto al primo punto della serie (null con un solo punto). */
     val change: BigDecimal?,
     val fund: EmergencyFund, val margin: InvestableMargin,
-) { val total: BigDecimal get() = liquidity + investments }
+    /** Saldo dei conti gestiti da altri (denaro di famiglia): nel totale, fuori da liquidità, fondo di emergenza e margine. */
+    val managed: BigDecimal = BigDecimal.ZERO,
+) { val total: BigDecimal get() = liquidity + investments + managed }
 
 object NetWorthEngine {
     const val FUND_MIN_MONTHS = 3
@@ -61,7 +63,7 @@ object NetWorthEngine {
     fun compute(data: AppData, goals: List<Goal>, valuations: List<Valuation>, realToday: LocalDate = LocalDate.now()): NetWorthReport? {
         val accounts = data.accounts.filter { !it.archived }
         if (accounts.isEmpty()) return null
-        val tx = data.transactions
+        val tx = data.everything
         val today = if (tx.isEmpty()) realToday else AlertEngine.referenceToday(realToday, tx)
 
         fun point(d: LocalDate): NetWorthPoint {
@@ -73,7 +75,9 @@ object NetWorthEngine {
         val balances = accounts.map { a ->
             AccountBalance(a, balanceAt(a, tx, valuations, today), valuations.filter { it.accountId == a.id && !it.date.isAfter(today) }.maxOfOrNull { it.date }.takeIf { a.type == AccountType.INVESTIMENTO })
         }
-        val liquidity = balances.filter { !it.isInvestment }.fold(BigDecimal.ZERO) { s, b -> s + b.balance }
+        // il denaro di conti gestiti da altri conta nel patrimonio, ma non come liquidità propria (fondo di emergenza e margine investibile)
+        val liquidity = balances.filter { !it.isInvestment && it.account.id !in data.managedAccountIds }.fold(BigDecimal.ZERO) { s, b -> s + b.balance }
+        val managedLiquidity = balances.filter { !it.isInvestment && it.account.id in data.managedAccountIds }.fold(BigDecimal.ZERO) { s, b -> s + b.balance }
         val investments = balances.filter { it.isInvestment }.fold(BigDecimal.ZERO) { s, b -> s + b.balance }
 
         // serie: fine di ogni mese degli ultimi 12 (l'ultimo punto è oggi), dal mese del primo movimento
@@ -87,7 +91,7 @@ object NetWorthEngine {
         val dues = data.dues.filter { (it.frequency == DueFrequency.ONCE || it.frequency == DueFrequency.YEARLY) && !it.next.isAfter(horizon) }.fold(BigDecimal.ZERO) { s, d -> s + d.amount.abs() }
         val target = fund.monthlyEssential.multiply(BigDecimal(FUND_TARGET_MONTHS))
         val margin = (liquidity - target - earmarked - dues).max(BigDecimal.ZERO)
-        return NetWorthReport(today, balances, liquidity, investments, series, if (series.size > 1) series.last().total - series.first().total else null, fund, InvestableMargin(liquidity, target, earmarked, dues, margin))
+        return NetWorthReport(today, balances, liquidity, investments, series, if (series.size > 1) series.last().total - series.first().total else null, fund, InvestableMargin(liquidity, target, earmarked, dues, margin), managedLiquidity)
     }
 
     private fun fund(data: AppData, liquidity: BigDecimal, today: LocalDate): EmergencyFund {

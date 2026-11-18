@@ -34,11 +34,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @HiltViewModel
-class AccountsViewModel @Inject constructor(val data: StateFlow<AppData>, private val repo: AccountRepository, private val messenger: UiMessenger, private val deleteUc: it.spese.domain.usecase.DeleteAccountUseCase) : ViewModel() {
-    fun save(a: Account, newName: String) = viewModelScope.launch {
+class AccountsViewModel @Inject constructor(val data: StateFlow<AppData>, private val repo: AccountRepository, private val messenger: UiMessenger, private val deleteUc: it.spese.domain.usecase.DeleteAccountUseCase, private val managedRepo: it.spese.domain.repository.ManagedAccountsRepository, private val txRepo: it.spese.domain.repository.TransactionRepository) : ViewModel() {
+    fun save(a: Account, newName: String, managed: Boolean? = null) = viewModelScope.launch {
         try {
-            if (a.id == 0L) repo.getOrCreate(newName).let { repo.update(it.copy(type = a.type, openingBalance = a.openingBalance)) }
+            var id = a.id
+            if (a.id == 0L) repo.getOrCreate(newName).let { id = it.id; repo.update(it.copy(type = a.type, openingBalance = a.openingBalance)) }
             else { repo.update(a.copy(name = a.name)); if (newName.isNotBlank() && newName != a.name) repo.renameOrMerge(a.id, newName) }
+            if (managed != null) managedRepo.set(id, managed)
+        } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
+    }
+
+    /** Registra un movimento per la differenza tra saldo reale e saldo dell'app («spese non tracciate»). */
+    fun reconcile(check: it.spese.domain.finance.BalanceCheck) = viewModelScope.launch {
+        try {
+            val t = it.spese.domain.finance.BalanceReconciler.adjustment(check, System.currentTimeMillis()) ?: return@launch
+            txRepo.insertAll(listOf(t))
+            messenger.show("Saldo riallineato: registrato ${it.spese.core.common.Money.eur(t.amount)} il ${it.spese.core.common.Dates.fmt(check.asOf)}")
         } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
     }
 
@@ -70,9 +81,9 @@ fun AccountsScreen(onBack: () -> Unit, vm: AccountsViewModel = hiltViewModel()) 
             item { Text("Rinomina un conto per cambiarne il nome; dando lo stesso nome a due conti li unisci. Il saldo iniziale serve a calcolare il saldo reale e le proiezioni.", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             if (d.unassigned.isNotEmpty()) item { Text("${d.unassigned.size} ${if (d.unassigned.size == 1) "movimento è" else "movimenti sono"} senza conto: li trovi in Movimenti › Verifica e restano fuori da saldi, entrate e spese finché non scegli il conto.", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             items(d.accounts, key = { it.id }) { a ->
-                val txs = d.transactions.filter { it.accountId == a.id }
+                val txs = d.ledger.filter { it.accountId == a.id }
                 val balance = a.openingBalance + txs.fold(BigDecimal.ZERO) { s, t -> s + t.amount }
-                ListRow(a.name + if (a.archived) " (archiviato)" else "", subtitle = "${a.type.label} · ${txs.size} movimenti" + (if (txs.isNotEmpty()) " · ${Dates.fmt(txs.minOf { it.bookingDate })} → ${Dates.fmt(txs.maxOf { it.bookingDate })}" else ""),
+                ListRow(a.name + if (a.archived) " (archiviato)" else "", subtitle = a.type.label + (if (a.id in d.managedAccountIds) " · gestito da altri" else "") + " · ${txs.size} movimenti" + (if (txs.isNotEmpty()) " · ${Dates.fmt(txs.minOf { it.bookingDate })} → ${Dates.fmt(txs.maxOf { it.bookingDate })}" else ""),
                     trailing = { MoneyText(balance, decimals = false) }, onClick = { edit = a })
             }
         }
@@ -81,16 +92,18 @@ fun AccountsScreen(onBack: () -> Unit, vm: AccountsViewModel = hiltViewModel()) 
         var name by remember { mutableStateOf(a.name) }; var type by remember { mutableStateOf(a.type) }
         var opening by remember { mutableStateOf(if (a.openingBalance.signum() != 0) a.openingBalance.toPlainString().replace('.', ',') else "") }
         var archived by remember { mutableStateOf(a.archived) }
+        var managed by remember { mutableStateOf(a.id in d.managedAccountIds) }
         AlertDialog(onDismissRequest = { edit = null }, title = { Text(if (a.id == 0L) "Nuovo conto" else "Modifica conto") },
             text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Nome") }, singleLine = true)
                 DropdownField("Tipo", type, AccountType.entries, { it.label }, { type = it })
                 AmountField(opening, { opening = it }, "Saldo iniziale")
                 LabeledSwitch("Archiviato", archived, { archived = it }, supporting = "Nascosto nelle nuove scelte")
+                LabeledSwitch("Gestito da altri", managed, { managed = it }, Modifier.testTag("managed_switch"), supporting = "Denaro di famiglia: resta nel patrimonio, ma i movimenti non contano in budget, salute del bilancio, ritmo e medie")
                 if (a.id != 0L) TextButton(onClick = { checking = a; edit = null }, Modifier.testTag("check_balance")) { Text("Controlla il saldo…") }
                 if (a.id != 0L) TextButton(onClick = { deleting = a; edit = null }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina il conto…") }
             } },
-            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { vm.save(a.copy(type = type, openingBalance = parseAmountOrNull(opening) ?: BigDecimal.ZERO, archived = archived), name.trim()); edit = null }) { Text("Salva") } },
+            confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { vm.save(a.copy(type = type, openingBalance = parseAmountOrNull(opening) ?: BigDecimal.ZERO, archived = archived), name.trim(), managed); edit = null }) { Text("Salva") } },
             dismissButton = { TextButton(onClick = { edit = null }) { Text("Annulla") } })
     }
     checking?.let { a -> BalanceCheckDialog(a, d, vm) { checking = null } }
@@ -175,6 +188,8 @@ private fun BalanceCheckDialog(a: Account, d: AppData, vm: AccountsViewModel, on
                         result.causes.forEach { c ->
                             Text((if (c.explainsAll) "✓ Spiega tutta la differenza: " else "• ") + c.text, style = MaterialTheme.typography.bodySmall)
                         }
+                        Text("Non hai l'estratto e la differenza sono spese che non vedi? Registrala come un solo movimento «spese non tracciate»: il saldo torna e il buco resta visibile.", style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { vm.reconcile(result); onDismiss() }, Modifier.testTag("reconcile")) { Text("Riallinea: registra ${Money.eur(result.difference)}") }
                     }
                 }
             }
