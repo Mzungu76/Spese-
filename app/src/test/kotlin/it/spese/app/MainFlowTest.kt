@@ -201,11 +201,10 @@ class MainFlowTest {
     }
 
     @Test fun i_widget_condivisi_si_vedono_negli_obiettivi_e_in_movimenti() {
-        val wp = it.spese.domain.widgets.WidgetPage
         try {
             runBlocking {
-                widgetRepo.set(wp.GOALS, listOf(it.spese.domain.widgets.WidgetInstance("a", "shortcuts"), it.spese.domain.widgets.WidgetInstance("b", "goals_list")))
-                widgetRepo.set(wp.TRANSACTIONS, listOf(it.spese.domain.widgets.WidgetInstance("c", "shortcuts"), it.spese.domain.widgets.WidgetInstance("d", "tx_list")))
+                widgetRepo.set(it.spese.domain.widgets.WidgetPage.GOALS, listOf(it.spese.domain.widgets.WidgetInstance("a", "shortcuts"), it.spese.domain.widgets.WidgetInstance("b", "goals_list")))
+                widgetRepo.set(it.spese.domain.widgets.WidgetPage.TRANSACTIONS, listOf(it.spese.domain.widgets.WidgetInstance("c", "shortcuts"), it.spese.domain.widgets.WidgetInstance("d", "tx_list")))
             }
             compose.onNodeWithTag("tab_goals").performClick(); compose.waitForIdle()
             waitText("Scansiona")
