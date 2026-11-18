@@ -48,8 +48,10 @@ data class TransactionsState(
 class TransactionsViewModel @Inject constructor(
     data: StateFlow<AppData>, private val filters: FilterStore, private val repo: TransactionRepository, private val assign: AssignCategoryUseCase,
     private val duplicate: DuplicateTransactionsUseCase, private val exporter: ExportTransactionsUseCase, private val messenger: UiMessenger,
-    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase, private val setDestination: it.spese.domain.usecase.SetTransferDestinationUseCase,
+    private val confirmReview: ConfirmReviewUseCase, private val setSplits: SetSplitsUseCase, private val assignAcc: it.spese.domain.usecase.AssignAccountUseCase, private val setDestination: it.spese.domain.usecase.SetTransferDestinationUseCase, layouts: it.spese.app.common.PageLayouts,
 ) : ViewModel() {
+    /** I widget della pagina, nell'ordine scelto (o quello predefinito). */
+    val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = layouts.state(it.spese.domain.widgets.WidgetPage.TRANSACTIONS, viewModelScope)
     private val reviewMode = MutableStateFlow(false)
     private val receiptsMode = MutableStateFlow(false)
     private val sort = MutableStateFlow(SortKey.DATE to true)

@@ -32,8 +32,9 @@ import java.time.LocalDate
 
 /** Obiettivi di risparmio: ognuno con la sua quota mensile; la somma decide quanto «Disponibile oggi» tiene da parte. */
 @Composable
-fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onOpenBudgets: () -> Unit = {}, vm: GoalsViewModel = hiltViewModel()) {
+fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onOpenBudgets: () -> Unit = {}, onCustomize: () -> Unit = {}, vm: GoalsViewModel = hiltViewModel()) {
     val goals by vm.goals.collectAsStateWithLifecycle()
+    val layout by vm.layout.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
     val today = remember { LocalDate.now() }
     val progress = remember(goals) { GoalEngine.all(goals, today) }
@@ -46,11 +47,17 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
         }
         if (onBack != null) BackHeader("Obiettivi", onBack, actions = addButton) else it.spese.app.common.LargeHeader("Obiettivi", menu = menu, actions = addButton)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
-            item {
+            layout.forEach { inst ->
+                if (inst.enabled) when (inst.widgetId) {
+                    "section" -> { item(key = inst.uid) { SectionHeader(inst.options["title"].orEmpty(), Modifier.padding(horizontal = 24.dp)) } }
+                    "goals_intro" -> {
+            item(key = inst.uid) {
                 Text("Prima metti da parte, poi spendi: ogni obiettivo ha una quota mensile (scelta da te, o calcolata dalla scadenza). La somma delle quote è ciò che «Disponibile oggi» riserva ogni mese.",
                     Modifier.padding(horizontal = 24.dp, vertical = 8.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (progress.isNotEmpty()) item {
+                    }
+                    "goals_summary" -> {
+            if (progress.isNotEmpty()) item(key = inst.uid) {
                 SectionCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     Eyebrow("Da mettere da parte ogni mese")
                     MoneyText(GoalEngine.monthlyTotal(goals, today), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, colored = false)
@@ -59,8 +66,15 @@ fun GoalsScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu
                     OutlinedButton(onClick = onOpenBudgets, Modifier.testTag("goal_open_budgets")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Budget per categoria") }
                 }
             }
-            if (progress.isEmpty()) item { EmptyState(Icons.Default.Savings, "Nessun obiettivo", "Tocca + per aggiungerne uno: fondo di emergenza, vacanza, investimento… Senza obiettivi si usa quello unico del Piano.") }
-            items(progress, key = { it.goal.id }) { p -> GoalRow(p, { edit = p.goal }, { deposit = p.goal }) }
+                    }
+                    "goals_list" -> {
+            if (progress.isEmpty()) item(key = "${inst.uid}-empty") { EmptyState(Icons.Default.Savings, "Nessun obiettivo", "Tocca + per aggiungerne uno: fondo di emergenza, vacanza, investimento… Senza obiettivi si usa quello unico del Piano.") }
+            items(progress, key = { g -> "${inst.uid}-${g.goal.id}" }) { p -> GoalRow(p, { edit = p.goal }, { deposit = p.goal }) }
+                    }
+                    else -> Unit
+                }
+            }
+            item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_goals")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }
         }
     }
     edit?.let { g -> GoalDialog(g, { edit = null }, vm) }

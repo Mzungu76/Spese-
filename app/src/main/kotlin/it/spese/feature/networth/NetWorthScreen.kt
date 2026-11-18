@@ -30,8 +30,9 @@ import java.time.YearMonth
 
 /** Patrimonio: quanto hai, come è cambiato, se il fondo di emergenza è al sicuro e quanto potresti investire. */
 @Composable
-fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), vm: NetWorthViewModel = hiltViewModel()) {
+fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataMenu? = null, bottomPadding: PaddingValues = PaddingValues(), onCustomize: () -> Unit = {}, vm: NetWorthViewModel = hiltViewModel()) {
     val r by vm.report.collectAsStateWithLifecycle()
+    val layout by vm.layout.collectAsStateWithLifecycle()
     var edit by remember { mutableStateOf<AccountBalance?>(null) }
     Column(Modifier.fillMaxSize()) {
         if (onBack != null) BackHeader("Patrimonio", onBack) else it.spese.app.common.LargeHeader("Patrimonio", menu = menu)
@@ -41,12 +42,18 @@ fun NetWorthScreen(onBack: (() -> Unit)? = null, menu: it.spese.app.common.DataM
             return@Column
         }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
-            item { Hero(rep) }
-            if (rep.series.size >= 2) item { Trend(rep) }
-            item { FundCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            item { MarginCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            item { SectionHeader("Conti", Modifier.padding(horizontal = 24.dp)) }
-            items(rep.accounts, key = { it.account.id }) { b -> AccountRow(b) { edit = b } }
+            layout.forEach { inst ->
+                if (inst.enabled) when (inst.widgetId) {
+                    "section" -> { item(key = inst.uid) { SectionHeader(inst.options["title"].orEmpty(), Modifier.padding(horizontal = 24.dp)) } }
+                    "nw_total" -> { item(key = inst.uid) { Hero(rep) } }
+                    "nw_trend" -> { if (rep.series.size >= 2) item(key = inst.uid) { Trend(rep) } }
+                    "nw_fund" -> { item(key = inst.uid) { FundCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
+                    "nw_margin" -> { item(key = inst.uid) { MarginCard(rep, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
+                    "nw_accounts" -> { items(rep.accounts, key = { b -> "${inst.uid}-${b.account.id}" }) { b -> AccountRow(b) { edit = b } } }
+                    else -> Unit
+                }
+            }
+            item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_networth")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la pagina") } }
         }
     }
     edit?.let { b -> ValuationDialog(b, { edit = null }) { date, v -> vm.saveValuation(b.account.id, date, v) } }

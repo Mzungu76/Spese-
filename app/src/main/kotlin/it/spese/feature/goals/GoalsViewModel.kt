@@ -24,7 +24,9 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class GoalsViewModel @Inject constructor(
     val data: StateFlow<AppData>, private val repo: GoalRepository, private val categories: CategoryRepository, private val messenger: UiMessenger,
+    layouts: it.spese.app.common.PageLayouts,
 ) : ViewModel() {
+    val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = layouts.state(it.spese.domain.widgets.WidgetPage.GOALS, viewModelScope)
     val goals: StateFlow<List<Goal>> = repo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Budget proposti dai dati e dagli obiettivi (null senza almeno un mese completo di movimenti). */

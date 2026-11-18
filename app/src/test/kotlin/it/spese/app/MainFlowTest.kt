@@ -180,6 +180,26 @@ class MainFlowTest {
         }
     }
 
+    @Test fun personalizza_un_altra_pagina_con_un_setup_e_l_elenco_dei_movimenti_resta() {
+        try {
+            openMore("customize")
+            waitText("Setup pronti")
+            compose.onNodeWithText("Obiettivi").performClick()
+            waitText("I widget di Obiettivi")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.GOALS]?.size == 1 }
+            assertEquals(listOf("goals_list"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.GOALS).map { w -> w.widgetId })
+            // Movimenti: anche con il setup minimo l'elenco c'è
+            compose.onNodeWithText("Movimenti").performClick()
+            waitText("I widget di Movimenti")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.TRANSACTIONS]?.size == 2 }
+            assertTrue(runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.TRANSACTIONS).any { w -> w.widgetId == "tx_list" })
+        } finally {
+            runBlocking { widgetRepo.setAll(emptyMap()) }
+        }
+    }
+
     private fun goTab(label: String) {
         when (label) {
             "Categorie" -> openMore("categories")

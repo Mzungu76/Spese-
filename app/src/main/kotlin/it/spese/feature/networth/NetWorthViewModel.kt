@@ -24,7 +24,9 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class NetWorthViewModel @Inject constructor(
     data: StateFlow<AppData>, goals: GoalRepository, private val valuations: ValuationRepository, private val messenger: UiMessenger,
+    layouts: it.spese.app.common.PageLayouts,
 ) : ViewModel() {
+    val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = layouts.state(it.spese.domain.widgets.WidgetPage.NETWORTH, viewModelScope)
     /** Null finché i dati non sono pronti o se non c'è alcun conto. */
     val report: StateFlow<NetWorthReport?> = combine(data, goals.observeAll(), valuations.observeAll()) { d, g, v ->
         if (!d.loaded) null else runCatching { NetWorthEngine.compute(d, g, v) }.getOrNull()

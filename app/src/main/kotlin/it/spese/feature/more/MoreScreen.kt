@@ -29,7 +29,7 @@ fun MoreScreen(menu: DataMenu, a: MoreActions, bottomPadding: PaddingValues = Pa
         LargeHeader("Altro", menu = menu)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
             item { SectionHeader("Capire i soldi", Modifier.padding(horizontal = 24.dp)) }
-            item { MoreRow("customize", Icons.Default.Dashboard, "Personalizza la Home", "Scegli e ordina i widget, o parti da un setup pronto", a.onCustomize) }
+            item { MoreRow("customize", Icons.Default.Dashboard, "Personalizza le pagine", "Widget di Home, Movimenti, Obiettivi e Patrimonio, o un setup pronto", a.onCustomize) }
             item { MoreRow("health", Icons.Default.MonitorHeart, "Salute del bilancio", "Giudizio, punteggio e cosa fare, dal tuo storico", a.onHealth) }
             item { MoreRow("categories", Icons.Default.Category, "Categorie", "Dove vanno i soldi, budget e confronti", a.onCategories) }
             item { MoreRow("budgets", Icons.Default.Tune, "Budget per categoria", "Imposta o correggi i budget uno per uno", a.onBudgets) }

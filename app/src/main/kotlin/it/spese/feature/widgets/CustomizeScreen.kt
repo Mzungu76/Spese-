@@ -27,13 +27,15 @@ import it.spese.domain.widgets.WidgetPage
 fun CustomizeScreen(onBack: () -> Unit, vm: CustomizeViewModel = hiltViewModel()) {
     val layout by vm.layout.collectAsStateWithLifecycle()
     val customized by vm.customized.collectAsStateWithLifecycle()
-    val addable = LayoutOps.available(WidgetPage.HOME, layout)
+    val page by vm.page.collectAsStateWithLifecycle()
+    val addable = LayoutOps.available(page, layout)
     Column(Modifier.fillMaxSize()) {
-        BackHeader("Personalizza la Home", onBack)
+        BackHeader("Personalizza", onBack)
+        Box(Modifier.padding(horizontal = 24.dp, vertical = 4.dp)) { ChipChoice(WidgetPage.entries.map { p -> p to p.label }, page, vm::setPage, Modifier.testTag("customize_pages")) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item { SectionHeader("Setup pronti", Modifier.padding(horizontal = 24.dp)) }
             item {
-                Text("Scegline uno per partire: sostituisce l'ordine attuale, poi puoi ritoccarlo.", Modifier.padding(horizontal = 24.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("«Qui» lo applica a ${page.label}, «Ovunque» a tutte le pagine; poi puoi ritoccare l'ordine.", Modifier.padding(horizontal = 24.dp, vertical = 4.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             items(LayoutPresets.all, key = { p -> "preset-${p.id}" }) { p ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -41,13 +43,14 @@ fun CustomizeScreen(onBack: () -> Unit, vm: CustomizeViewModel = hiltViewModel()
                         Text(p.title, style = MaterialTheme.typography.titleMedium)
                         Text(p.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    FilledTonalButton(onClick = { vm.applyPreset(p.id) }, Modifier.testTag("preset_${p.id}")) { Text("Usa") }
+                    FilledTonalButton(onClick = { vm.applyPreset(p.id) }, Modifier.testTag("preset_${p.id}")) { Text("Qui") }
+                    OutlinedButton(onClick = { vm.applyPresetEverywhere(p.id) }, Modifier.testTag("preset_all_${p.id}")) { Text("Ovunque") }
                 }
             }
             if (customized) item {
                 TextButton(onClick = vm::reset, Modifier.padding(horizontal = 12.dp).testTag("widgets_reset")) { Text("Ripristina la composizione predefinita") }
             }
-            item { SectionHeader("I tuoi widget", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
+            item { SectionHeader("I widget di ${page.label}", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
             items(layout, key = { w -> "w-${w.uid}" }) { w -> WidgetRow(w, layout.firstOrNull()?.uid == w.uid, layout.lastOrNull()?.uid == w.uid, vm) }
             if (addable.isNotEmpty()) {
                 item { SectionHeader("Aggiungi", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
@@ -76,7 +79,7 @@ private fun WidgetRow(w: WidgetInstance, first: Boolean, last: Boolean, vm: Cust
     val spec = WidgetCatalog.spec(w.widgetId) ?: return
     Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Switch(w.enabled, { on -> vm.setEnabled(w.uid, on) }, Modifier.testTag("toggle_${w.widgetId}"))
+            Switch(w.enabled, { on -> vm.setEnabled(w.uid, on) }, Modifier.testTag("toggle_${w.widgetId}"), enabled = !spec.required)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(spec.title, style = MaterialTheme.typography.bodyLarge, color = if (w.enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -84,7 +87,7 @@ private fun WidgetRow(w: WidgetInstance, first: Boolean, last: Boolean, vm: Cust
             }
             IconButton(onClick = { vm.move(w.uid, -1) }, enabled = !first) { Icon(Icons.Default.ArrowUpward, "Sposta su") }
             IconButton(onClick = { vm.move(w.uid, 1) }, enabled = !last) { Icon(Icons.Default.ArrowDownward, "Sposta giù") }
-            IconButton(onClick = { vm.remove(w.uid) }) { Icon(Icons.Default.Close, "Rimuovi") }
+            if (!spec.required) IconButton(onClick = { vm.remove(w.uid) }) { Icon(Icons.Default.Close, "Rimuovi") }
         }
         if (w.widgetId == WidgetCatalog.SECTION) {
             OutlinedTextField(w.options["title"].orEmpty(), { t -> vm.setOption(w.uid, "title", t) }, label = { Text("Titolo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
