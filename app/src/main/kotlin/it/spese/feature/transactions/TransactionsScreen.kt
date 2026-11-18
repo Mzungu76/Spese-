@@ -251,9 +251,12 @@ fun TransferDestinationDialog(accounts: List<it.spese.core.model.Account>, count
                     accounts.forEach { a -> TextButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.ToAccount(a.id)) }, Modifier.fillMaxWidth().testTag("dest_account")) { Text(a.name, Modifier.fillMaxWidth()) } }
                 }
                 HorizontalDivider()
-                Text("Fuori dall'app", style = MaterialTheme.typography.labelLarge)
+                Text("Tasca o altro conto che non è nell'app", style = MaterialTheme.typography.labelLarge)
                 OutlinedTextField(label, { label = it }, label = { Text("Nome (es. Tasca Vacanze)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.Outside(label)) }, Modifier.fillMaxWidth().testTag("dest_outside")) { Text("Resta mio, fuori dall'app") }
+                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.SamePocket(label)) }, Modifier.fillMaxWidth().testTag("dest_pocket")) { Text("Tasca dello stesso conto: il saldo non cambia") }
+                Text("Per esempio un salvadanaio dello stesso conto: per la banca i soldi sono ancora lì.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.Outside(label)) }, Modifier.fillMaxWidth().testTag("dest_outside")) { Text("Altro conto fuori dall'app: il saldo scende") }
+                Text("I soldi escono davvero da questo conto (o ci entrano) e vanno su un conto che non hai in app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text("Se è una spesa vera (soldi dati a qualcuno), usa invece «Cambia categoria».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },

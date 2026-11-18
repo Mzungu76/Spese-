@@ -194,6 +194,8 @@ sealed interface TransferDestination {
     data class ToAccount(val accountId: Long) : TransferDestination
     /** Fuori dall'app (una tasca, un conto che non importi): resta un giroconto fuori da entrate e spese, con il nome della destinazione. */
     data class Outside(val label: String) : TransferDestination
+    /** Una tasca dello stesso conto (es. un salvadanaio di Revolut): per la banca il conto è lo stesso, quindi il saldo non cambia. Si registra la metà opposta sullo stesso conto. */
+    data class SamePocket(val label: String) : TransferDestination
 }
 
 /**
@@ -220,6 +222,14 @@ class SetTransferDestinationUseCase @Inject constructor(
                         (if (t.amount.signum() < 0) "Giroconto da " else "Giroconto verso ") + (accs[from]?.name ?: "altro conto"), t.amount.negate(), TxKind.TRASFERIMENTO, cat.id, true, null,
                         notes = "Metà speculare di «${t.description}»", origin = TxOrigin.NOTIFICATION))
                 }
+                is TransferDestination.SamePocket -> {
+                    // metà opposta sullo STESSO conto, non provvisoria: il saldo del conto resta uguale e l'importo esce solo da entrate e spese
+                    val key = "pocket|${t.externalId}"
+                    val name = dest.label.trim()
+                    mirrors.add(NewTransaction(key, key, from, t.bookingDate, t.valueDate,
+                        (if (t.amount.signum() < 0) "Giroconto verso tasca" else "Giroconto da tasca") + (if (name.isNotEmpty()) " $name" else ""), t.amount.negate(), TxKind.TRASFERIMENTO, cat.id, true, null,
+                        notes = "Compensa «${t.description}»: il denaro resta sullo stesso conto", origin = TxOrigin.MANUAL))
+                }
                 is TransferDestination.Outside -> {
                     val keep = t.notes.lines().filter { l -> !l.startsWith("Destinazione:") && l.isNotBlank() }
                     val notes = (keep + (if (dest.label.isNotBlank()) listOf("Destinazione: ${dest.label.trim()}") else emptyList())).joinToString("\n")
@@ -231,8 +241,8 @@ class SetTransferDestinationUseCase @Inject constructor(
         if (done.isEmpty()) return 0
         assign(done, cat.id)
         if (mirrors.isNotEmpty() && tx.insertAll(mirrors) > 0) {
-            val keys = mirrors.map { m -> m.externalId }.toSet()
-            confirm(tx.getAll().filter { m -> m.externalId in keys }.map { m -> m.id })
+            val keys = mirrors.filter { m -> m.origin != TxOrigin.MANUAL }.map { m -> m.externalId }.toSet()
+            if (keys.isNotEmpty()) confirm(tx.getAll().filter { m -> m.externalId in keys }.map { m -> m.id })
         }
         return done.size
     }

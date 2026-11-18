@@ -53,5 +53,17 @@ class TransferDestinationDbTest {
         assertEquals(1, data().ledger.size)
     }
 
+    @Test fun `tasca dello stesso conto - il saldo del conto non cambia e l'importo esce da entrate e spese`() = runBlocking {
+        val a = env.accounts.getOrCreate("Revolut")
+        env.tx.insertAll(listOf(nt("p0", a.id, "1000"), nt("p1", a.id, "-300")))
+        val out = env.tx.getAll().single { it.amount.signum() < 0 }.id
+        uc()(listOf(out), TransferDestination.SamePocket("Vacanze"))
+        uc()(listOf(out), TransferDestination.SamePocket("Vacanze"))                // ripetuto: nessun doppione
+        val d = data()
+        assertEquals(3, d.ledger.size)
+        assertEquals(0, BigDecimal(1000).compareTo(d.ledger.fold(BigDecimal.ZERO) { s, t -> s + t.amount }))      // il saldo resta 1.000
+        assertEquals(2, d.ledger.count { it.kind == TxKind.TRASFERIMENTO })
+    }
+
     private fun it.spese.domain.repository.AppData.review() = it.spese.domain.finance.ReviewEngine.items(ledger, splits, categories, rules, unassigned).map { it.tx.id to it.tx.accountId }
 }

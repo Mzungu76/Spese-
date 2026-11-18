@@ -103,6 +103,7 @@ class TransactionsViewModel @Inject constructor(
             messenger.show(when {
                 n == 0 -> "Nessun movimento cambiato"
                 dest is it.spese.domain.usecase.TransferDestination.ToAccount -> "$n ${if (n == 1) "giroconto registrato" else "giroconti registrati"}: l'altra metà è sul conto scelto"
+                dest is it.spese.domain.usecase.TransferDestination.SamePocket -> "$n ${if (n == 1) "giroconto registrato" else "giroconti registrati"}: il saldo del conto non cambia"
                 else -> "$n ${if (n == 1) "giroconto registrato" else "giroconti registrati"} fuori dall'app: escono da entrate e spese"
             })
         } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") }
