@@ -181,6 +181,8 @@ data class AppSettings(
     val incomeMonthAskDays: Int = 7,
     /** Margine di sicurezza del budget giornaliero: % di ciò che resta dopo risparmio e uscite fisse, tenuta da parte (0–50). */
     val budgetMarginPct: Int = 10,
+    /** Il budget giornaliero parte dai soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) invece che dalle sole entrate del mese. */
+    val budgetFromBalance: Boolean = true,
 )
 
 interface SettingsRepository {

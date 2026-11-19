@@ -49,10 +49,20 @@ private fun SafeToSpendDetails(r: SafeToSpendReport, onDismiss: () -> Unit) {
             Text("Come si calcola", style = MaterialTheme.typography.titleLarge)
             Text("Periodo ${Dates.fmt(r.periodStart)} – ${Dates.fmt(r.periodEnd)} · ${r.daysLeft} giorni compreso oggi", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
-            Line("Entrate attese${if (r.incomeEstimated) "" else " (media degli ultimi mesi)"}", r.expectedIncome, "già incassate ${Money.eur0(r.incomeToDate)}")
-            Line("Da mettere da parte", r.savingsTarget.negate(), if (r.savingsFromGoals) "somma delle quote dei tuoi obiettivi" else "obiettivo di risparmio mensile del Piano")
-            Line("Già speso nel periodo", r.spentToDate.negate(), "di cui spese fisse ${Money.eur0(r.fixedPaid)}")
-            Line("Uscite già note in arrivo", r.upcomingTotal.negate(), if (r.upcoming.isEmpty()) "nessuna" else "${r.upcoming.size} voci, qui sotto")
+            if (r.cashSpendable != null) {
+                // calcolo dai saldi: soldi sui conti (meno i bloccati) + entrate ancora attese, meno ciò che è già deciso
+                Line("Soldi sui conti, non bloccati", r.cashSpendable!!, "saldo meno i soldi negli obiettivi")
+                Line("Entrate ancora attese", r.incomeRemaining, "fino al ${Dates.fmt(r.periodEnd)}; già incassate ${Money.eur0(r.incomeToDate)}")
+                Line("Risparmio ancora da mettere da parte", r.savingsDue.negate(), if (r.savingsFromGoals) "quote degli obiettivi, meno i versamenti del periodo" else "obiettivo di risparmio mensile del Piano")
+                Line("Uscite già note in arrivo", r.upcomingTotal.negate(), if (r.upcoming.isEmpty()) "nessuna" else "${r.upcoming.size} voci, qui sotto")
+                Line("Margine di sicurezza", r.safetyReserve.negate(), "quota non spendibile, impostabile")
+            } else {
+                Line("Entrate attese${if (r.incomeEstimated) "" else " (stima dei mesi passati)"}", r.expectedIncome, "già incassate ${Money.eur0(r.incomeToDate)}")
+                Line("Da mettere da parte", r.savingsTarget.negate(), if (r.savingsFromGoals) "somma delle quote dei tuoi obiettivi" else "obiettivo di risparmio mensile del Piano")
+                Line("Margine di sicurezza", r.safetyReserve.negate(), "quota non spendibile, impostabile")
+                Line("Già speso nel periodo", r.spentToDate.negate(), "di cui spese fisse ${Money.eur0(r.fixedPaid)}")
+                Line("Uscite già note in arrivo", r.upcomingTotal.negate(), if (r.upcoming.isEmpty()) "nessuna" else "${r.upcoming.size} voci, qui sotto")
+            }
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
             Line("Resta da spendere", r.available, if (r.perDay != null) "${Money.eur0(r.perDay!!)} al giorno" else "", bold = true)
             if (r.upcoming.isNotEmpty()) {

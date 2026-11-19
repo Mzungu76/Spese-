@@ -51,7 +51,8 @@ object GoalEngine {
         goals.fold(BigDecimal.ZERO) { a, g -> a + progress(g, today).monthlyQuota }
 
     /** Aggiunge (o toglie, se negativo) un versamento senza scendere sotto zero. */
-    fun deposit(g: Goal, amount: BigDecimal): Goal = g.copy(saved = (g.saved + amount).max(BigDecimal.ZERO))
+    fun deposit(g: Goal, amount: BigDecimal, today: LocalDate = LocalDate.now()): Goal =
+        g.copy(saved = (g.saved + amount).max(BigDecimal.ZERO), deposits = if (amount.signum() > 0) (g.deposits + it.spese.core.model.GoalDeposit(today, amount)).takeLast(24) else g.deposits)
 
     fun describe(p: GoalProgress): String = when (p.status) {
         GoalStatus.COMPLETED -> "Obiettivo raggiunto"

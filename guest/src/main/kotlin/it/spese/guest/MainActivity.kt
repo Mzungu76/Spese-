@@ -301,13 +301,21 @@ private fun DetailCard(s: ShareSnapshot) {
         }
         if (open) {
             @Composable fun line(label: String, v: java.math.BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(sign + Money.eur0(v)) } }
-            line("Entrate attese", s.incomeExpected)
-            line("Risparmio", s.savings, "− ")
-            line("Margine", s.reserve, "− ")
-            line("Limite", s.limit)
-            line("Speso", s.spentToDate, "− ")
-            line("Da pagare", s.upcomingTotal, "− ")
             val left = s.limit?.let { l -> l - s.spentToDate - (s.upcomingTotal ?: java.math.BigDecimal.ZERO) }
+            if (s.cashSpendable != null) {
+                line("Soldi spendibili", s.cashSpendable)
+                line("Entrate ancora attese", s.incomeRemaining)
+                line("Risparmio da mettere da parte", s.savingsDue, "− ")
+                line("Da pagare", s.upcomingTotal, "− ")
+                line("Margine", s.reserve, "− ")
+            } else {
+                line("Entrate attese", s.incomeExpected)
+                line("Risparmio", s.savings, "− ")
+                line("Margine", s.reserve, "− ")
+                line("Limite", s.limit)
+                line("Speso", s.spentToDate, "− ")
+                line("Da pagare", s.upcomingTotal, "− ")
+            }
             line("Resta", left)
             Text("${s.days - s.dayIndex} giorni · ${GuestSummary.perDay(s)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }

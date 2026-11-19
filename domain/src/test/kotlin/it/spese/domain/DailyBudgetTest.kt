@@ -105,7 +105,7 @@ class DailyBudgetTest {
     }
 
     @Test fun `il riepilogo condiviso ha la stessa cifra al giorno in tutti i periodi e il limite scalato`() {
-        val all = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal)))
+        val all = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal), fromBalance = false))
         assertEquals(listOf("WEEK", "MONTH", "QUARTER"), all.map { it.unit })
         val m = all.first { it.unit == "MONTH" }
         eq("1590", m.limit); eq("110", m.reserve); eq("0", m.upcomingTotal)
@@ -113,9 +113,9 @@ class DailyBudgetTest {
         eq("4770", all.first { it.unit == "QUARTER" }.limit)                          // 1590 × 3
         assertEquals(1, all.map { it.dailyRemaining!!.toPlainString() }.distinct().size); eq("32.86", m.dailyRemaining)
         // un tetto fissato a mano e un margine diverso cambiano il risultato come previsto
-        val manual = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(budgetMonthly = BigDecimal(1500)), 1L, today, inputs = BudgetInputs(goals = listOf(goal)))
+        val manual = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(budgetMonthly = BigDecimal(1500)), 1L, today, inputs = BudgetInputs(goals = listOf(goal), fromBalance = false))
         eq("1500", manual.first { it.unit == "MONTH" }.limit); eq("28.57", manual.first { it.unit == "MONTH" }.dailyRemaining)
-        val safer = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal), marginPct = 20))
+        val safer = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal), marginPct = 20, fromBalance = false))
         eq("1480", safer.first { it.unit == "MONTH" }.limit)                          // 2000 − 300 − 220
     }
 
@@ -124,14 +124,76 @@ class DailyBudgetTest {
         val mine = RecurringRule(1, "Palestra", TxKind.SPESA, BigDecimal(50), accountId = 1, dayOfMonth = 25, startDate = d("2026-01-01"), lastGenerated = d("2026-10-25"))
         val other = RecurringRule(2, "Mutuo", TxKind.SPESA, BigDecimal(900), accountId = 2, dayOfMonth = 25, startDate = d("2026-01-01"), lastGenerated = d("2026-10-25"))
         val data = data(history(), listOf(due)).copy(accounts = listOf(Account(1, "Carta"), Account(2, "Altro")))
-        val b = ShareSnapshotBuilder.budgetFor(data, listOf(1L), ShareConfig(), today, BudgetInputs(rules = listOf(mine, other), goals = listOf(goal)))!!
+        val b = ShareSnapshotBuilder.budgetFor(data, listOf(1L), ShareConfig(), today, BudgetInputs(rules = listOf(mine, other), goals = listOf(goal), fromBalance = false))!!
         eq("50", b.upcomingTotal)                                  // solo la palestra del conto condiviso: né il mutuo di un altro conto né la scadenza generica
         // senza entrate sui conti condivisi il limite è zero e la spiegazione sta nel calcolo
         val noIncome = AppData(transactions = listOf(tx("2026-10-05", -300, 1), tx("2026-11-03", -120, 1)), categories = cats, accounts = listOf(Account(1, "Carta")), loaded = true)
-        val z = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(), today)!!
+        val z = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(), today, BudgetInputs(fromBalance = false))!!
         eq("0", z.expectedIncome); eq("0", z.limit); eq("0", z.perDay)
         // con un budget mensile fissato a mano il conto senza entrate funziona
-        val manual = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(budgetMonthly = BigDecimal(900)), today)!!
+        val manual = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(budgetMonthly = BigDecimal(900)), today, BudgetInputs(fromBalance = false))!!
         eq("900", manual.limit); eq("780", manual.remaining)         // 900 − 120
+    }
+
+    // ---- calcolo dai saldi: l'esempio del mese contabile che chiude il 20 ----
+    /** Stipendio 1.000 il 27 di ogni mese e spese uguali; mese che chiude il 20; il 15 novembre arrivano 900 di extra. */
+    private fun exampleData(extraOn15: Boolean = true): AppData {
+        val l = ArrayList<Transaction>()
+        listOf("2026-07", "2026-08", "2026-09", "2026-10").forEach { m -> l.add(tx("$m-27", 1000, 2)); l.add(tx("$m-28", -1000, 1)) }
+        if (extraOn15) l.add(tx("2026-11-15", 900, 3))
+        return AppData(transactions = l, categories = cats, accounts = listOf(Account(1, "Conto")), loaded = true, calendar = it.spese.core.common.MonthCalendar(21))
+    }
+    private val fondo = Goal(1, "Fondo sicurezza", BigDecimal(5000), BigDecimal(500), accountId = 1)       // 500 già accantonati e bloccati sul conto
+    private val twentyFifth = d("2026-11-25")
+
+    @Test fun `esempio - 1000 di stipendio ancora atteso piu 400 disponibili, fino al 20 del mese dopo, con il 10 per cento di margine`() {
+        val data = exampleData()
+        val cash: (LocalDate) -> it.spese.domain.finance.CashPosition? = { day -> it.spese.domain.finance.CashCalculator.compute(data, null, listOf(fondo), emptyList(), day) }
+        val b = DailyBudgetEngine.compute(data, goals = listOf(fondo), realToday = twentyFifth, patterns = emptyList(), cashSource = cash)!!
+        assertEquals(d("2026-11-21"), b.periodStart); assertEquals(d("2026-12-20"), b.periodEnd); assertEquals(26, b.daysLeft)    // dal 25/11 al 20/12 compreso
+        eq("900", b.cash!!.balance); eq("500", b.cash!!.blocked); eq("400", b.cash!!.spendable)       // 900 − 500
+        eq("1000", b.incomeRemaining)                                                                  // lo stipendio atteso resta 1000: l'extra del 15 non lo riduce
+        eq("140", b.reserve)                                                                           // 10% di 1.400
+        eq("1260", b.remaining); eq("48.46", b.perDay)                                                 // (400 + 1000) × 0,9 / 26
+    }
+
+    @Test fun `l'extra già incassato non riduce lo stipendio atteso nemmeno quando arriva nello stesso periodo`() {
+        val data = exampleData(extraOn15 = false)
+        val tx = data.transactions + tx("2026-11-23", 900, 3)                                           // extra dentro il periodo in corso (dal 21)
+        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), realToday = twentyFifth, patterns = emptyList())!!
+        eq("900", b.incomeToDate); eq("1000", b.incomeRemaining); eq("1900", b.expectedIncome)         // 900 + 1000, non max(1000, 900)
+        // lo stipendio già arrivato, invece, non si conta due volte
+        val paid = DailyBudgetEngine.compute(data.copy(transactions = tx + tx("2026-11-22", 1000, 2)), realToday = twentyFifth, patterns = emptyList())!!
+        eq("0", paid.incomeRemaining); eq("1900", paid.expectedIncome)
+    }
+
+    @Test fun `la quota degli obiettivi già versata nel periodo non si riserva di nuovo`() {
+        val data = exampleData()
+        val plan = Goal(1, "Fondo", BigDecimal(5000), BigDecimal(500), monthly = BigDecimal(300), accountId = 1)
+        val cash: (LocalDate) -> it.spese.domain.finance.CashPosition? = { day -> it.spese.domain.finance.CashCalculator.compute(data, null, listOf(plan), emptyList(), day) }
+        val notYet = DailyBudgetEngine.compute(data, goals = listOf(plan), realToday = twentyFifth, patterns = emptyList(), cashSource = cash)!!
+        eq("300", notYet.savingsDue)                                                                   // 300 ancora da mettere da parte
+        val deposited = plan.copy(deposits = listOf(it.spese.core.model.GoalDeposit(d("2026-11-23"), BigDecimal(200))))
+        val half = DailyBudgetEngine.compute(data, goals = listOf(deposited), realToday = twentyFifth, patterns = emptyList(), cashSource = cash)!!
+        eq("100", half.savingsDue)                                                                     // 300 − 200 già versati dopo l'inizio del periodo
+        val old = DailyBudgetEngine.compute(data, goals = listOf(plan.copy(deposits = listOf(it.spese.core.model.GoalDeposit(d("2026-11-10"), BigDecimal(300))))), realToday = twentyFifth, patterns = emptyList(), cashSource = cash)!!
+        eq("300", old.savingsDue)                                                                      // un versamento del periodo precedente non conta
+    }
+
+    @Test fun `senza obiettivi i soldi bloccati non esistono e il saldo intero è spendibile`() {
+        val data = exampleData()
+        val c = it.spese.domain.finance.CashCalculator.compute(data, null, emptyList(), emptyList(), twentyFifth)!!
+        eq("900", c.balance); eq("0", c.blocked); eq("900", c.spendable)
+        // un obiettivo legato a un altro conto non blocca questo
+        val other = Goal(2, "Altro", BigDecimal(100), BigDecimal(300), accountId = 7)
+        eq("0", it.spese.domain.finance.CashCalculator.compute(data, setOf(1L), listOf(other), emptyList(), twentyFifth)!!.blocked)
+        // il bloccato non supera mai il saldo
+        eq("900", it.spese.domain.finance.CashCalculator.compute(data, setOf(1L), listOf(fondo.copy(saved = BigDecimal(5000))), emptyList(), twentyFifth)!!.blocked)
+    }
+
+    @Test fun `con un budget fissato a mano il saldo non entra nel calcolo`() {
+        val data = exampleData()
+        val b = DailyBudgetEngine.compute(data, manualLimit = BigDecimal(1500), realToday = twentyFifth, cashSource = { day -> it.spese.domain.finance.CashCalculator.compute(data, null, emptyList(), emptyList(), day) })!!
+        assertNull(b.cash); eq("1500", b.limit)
     }
 }

@@ -254,7 +254,11 @@ data class Goal(
     val enabled: Boolean = true,
     /** Conto su cui i soldi dell'obiettivo sono depositati: restano nel suo saldo ma contano come «bloccati». null = non legato a un conto. */
     val accountId: Long? = null,
+    /** Versamenti registrati (data e importo): servono a non riservare due volte la quota di un mese già messa da parte. */
+    val deposits: List<GoalDeposit> = emptyList(),
 )
+
+data class GoalDeposit(val day: LocalDate, val amount: BigDecimal)
 
 /** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */
 data class Valuation(val accountId: Long, val date: LocalDate, val value: BigDecimal)

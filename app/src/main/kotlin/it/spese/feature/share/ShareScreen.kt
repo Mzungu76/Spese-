@@ -224,16 +224,26 @@ private fun BudgetCalcCard(b: it.spese.domain.finance.DailyBudget?, link: ShareL
     SectionCard(title = "Calcolo del budget") {
         if (b == null) { Text("Non ci sono ancora movimenti sui conti condivisi.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); return@SectionCard }
         @Composable fun line(label: String, v: BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(sign + it.spese.core.common.Money.eur0(v), style = MaterialTheme.typography.bodyMedium) } }
-        line("Entrate attese", b.expectedIncome)
-        line("Risparmio (obiettivi)", b.savings, "− ")
-        line("Margine di sicurezza", b.reserve, "− ")
-        line("Limite del mese", b.limit)
-        line("Speso finora", b.spent, "− ")
-        line("Uscite fisse ancora da pagare", b.upcomingTotal, "− ")
-        line("Resta", b.remaining)
+        if (b.cash != null) {
+            // calcolo dai saldi: soldi sui conti non bloccati + entrate ancora attese, meno quanto già deciso
+            line("Soldi sui conti condivisi (saldo " + it.spese.core.common.Money.eur0(b.cash!!.balance) + ")", b.cash!!.spendable)
+            line("Entrate ancora attese", b.incomeRemaining)
+            line("Risparmio ancora da mettere da parte", b.savingsDue, "− ")
+            line("Uscite note ancora da pagare", b.upcomingTotal, "− ")
+            line("Margine di sicurezza", b.reserve, "− ")
+            line("Resta", b.remaining)
+        } else {
+            line("Entrate attese", b.expectedIncome)
+            line("Risparmio (obiettivi)", b.savings, "− ")
+            line("Margine di sicurezza", b.reserve, "− ")
+            line("Limite del mese", b.limit)
+            line("Speso finora", b.spent, "− ")
+            line("Uscite note ancora da pagare", b.upcomingTotal, "− ")
+            line("Resta", b.remaining)
+        }
         Text("${b.daysLeft} giorni (oggi compreso) · al giorno " + (b.perDay?.let { v -> it.spese.core.common.Money.eur(v) } ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val est = b.income
-        if (b.expectedIncome.signum() == 0 && link.budgetMonthly == null)
+        if (b.cash == null && b.expectedIncome.signum() == 0 && link.budgetMonthly == null)
             Text("I conti condivisi non hanno entrate (i giroconti non contano come entrate): per questo il limite è zero. Fissa un budget mensile qui sotto.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         else if (est != null) Text("Entrate stimate su ${est.months} mesi: fisse ${it.spese.core.common.Money.eur0(est.fixed)}, variabili prudenti ${it.spese.core.common.Money.eur0(est.variablePrudent)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("Solo movimenti, ricorrenze e abbonamenti dei conti condivisi; le scadenze non legate a un conto restano fuori. Il risparmio è quello dei tuoi obiettivi (scrivi 0 nel campo risparmio per non toglierlo).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

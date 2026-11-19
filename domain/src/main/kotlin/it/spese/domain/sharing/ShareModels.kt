@@ -40,6 +40,8 @@ data class ShareSnapshot(
     val upcomingTotal: BigDecimal? = null, val reserve: BigDecimal? = null,
     /** Come è costruito il limite: entrate attese, risparmio per gli obiettivi, uscite fisse già pagate. */
     val incomeExpected: BigDecimal? = null, val savings: BigDecimal? = null, val fixedPaid: BigDecimal? = null,
+    /** Soldi spendibili sui conti condivisi (saldo meno bloccato), entrate ancora attese e risparmio ancora da mettere da parte: null se il calcolo non parte dai saldi. */
+    val cashSpendable: BigDecimal? = null, val incomeRemaining: BigDecimal? = null, val savingsDue: BigDecimal? = null,
 )
 
 data class ShareRecent(val day: LocalDate, val description: String, val amount: BigDecimal, val account: String = "")

@@ -84,7 +84,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                 SectionCard(title = "Budget giornaliero") {
                     Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
                     ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, s.budgetMarginPct, { p -> vm.update { st -> st.copy(budgetMarginPct = p) } })
-                    Text("Quota di ciò che resta dopo risparmio e uscite fisse che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate variabili che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Quota di ciò che puoi spendere dopo risparmio e uscite note che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LabeledSwitch("Parti dai soldi sui conti", s.budgetFromBalance, { on -> vm.update { st -> st.copy(budgetFromBalance = on) } },
+                        supporting = "Il budget usa i soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) più le entrate ancora attese fino a fine mese contabile. Serve che i saldi dei conti siano giusti. Se lo spegni conta solo il flusso del mese.")
                 }
             }
             item {

@@ -64,7 +64,7 @@ class AlertsWorker @AssistedInject constructor(
     @Assisted context: Context, @Assisted params: WorkerParameters,
     private val data: StateFlow<AppData>, private val settings: SettingsRepository, private val notifier: Notifier,
     private val recurring: RecurringRepository, private val goals: GoalRepository, private val review: it.spese.domain.finance.SubscriptionReviewRepository,
-    private val natures: it.spese.domain.health.IncomeNatureRepository,
+    private val natures: it.spese.domain.health.IncomeNatureRepository, private val valuations: ValuationRepository,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val s = settings.get()
@@ -89,7 +89,7 @@ class AlertsWorker @AssistedInject constructor(
         }
         it.spese.app.widget.SafeToSpendWidget.refresh(applicationContext)
         if (s.notifyDailySpend) {
-            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll(), incomeOverrides = natures.get(), marginPct = s.budgetMarginPct) }.getOrNull()
+            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll(), incomeOverrides = natures.get(), marginPct = s.budgetMarginPct, valuations = valuations.getAll(), fromBalance = s.budgetFromBalance) }.getOrNull()
             if (r != null && r.status != it.spese.domain.finance.SafeStatus.NOT_ENOUGH && !r.stale)
                 notifier.post(1002, "Oggi: " + it.spese.domain.finance.SafeToSpendText.perDay(r), it.spese.domain.finance.SafeToSpendText.comment(r))
         }
