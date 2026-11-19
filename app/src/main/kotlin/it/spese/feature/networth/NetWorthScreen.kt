@@ -73,7 +73,8 @@ private fun Hero(r: NetWorthReport) {
             Text((if (c.signum() >= 0) "+" else "−") + Money.eur0(c.abs()) + " da " + Dates.monthLabel(YearMonth.from(r.series.first().date)), style = MaterialTheme.typography.bodyMedium, color = if (c.signum() >= 0) fin.positive else fin.negative)
         }
         Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-            Column { Eyebrow("Liquidità"); MoneyText(r.liquidity, decimals = false, colored = false) }
+            Column { Eyebrow(if (r.blocked.signum() > 0) "Disponibile" else "Liquidità"); MoneyText(if (r.blocked.signum() > 0) r.spendable else r.liquidity, decimals = false, colored = false) }
+            if (r.blocked.signum() > 0) Column { Eyebrow("Bloccati negli obiettivi"); MoneyText(r.blocked, decimals = false, colored = false) }
             Column { Eyebrow("Investimenti"); MoneyText(r.investments, decimals = false, colored = false) }
             if (r.managed.signum() != 0) Column { Eyebrow("Gestito da altri"); MoneyText(r.managed, decimals = false, colored = false) }
         }
@@ -130,6 +131,7 @@ private fun AccountRow(b: AccountBalance, onUpdate: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(b.account.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+            if (b.blocked.signum() > 0) Text("di cui ${Money.eur0(b.blocked)} bloccati: " + b.blockedFor.joinToString(", "), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             Text(b.account.type.label + if (b.isInvestment) (b.valuationDate?.let { " · valore al " + Dates.fmt(it) } ?: " · valore dai movimenti") else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         MoneyText(b.balance, decimals = false, colored = false)

@@ -272,7 +272,7 @@ fun LazyListScope.homeWidget(inst: WidgetInstance, c: HomeCtx) {
                     SectionCard(Modifier.homeCard().clickable(onClick = c.cb.onOpenNetWorth), title = "Patrimonio") {
                         MoneyText(r.total, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, colored = false, decimals = false)
                         r.change?.let { ch -> Text((if (ch.signum() >= 0) "+" else "−") + Money.eur0(ch.abs()) + " nei mesi scorsi", style = MaterialTheme.typography.bodyMedium, color = if (ch.signum() >= 0) fin.positive else fin.negative) }
-                        Text("Liquidità ${Money.eur0(r.liquidity)} · Investimenti ${Money.eur0(r.investments)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text((if (r.blocked.signum() > 0) "Disponibile ${Money.eur0(r.spendable)} · Bloccati negli obiettivi ${Money.eur0(r.blocked)}" else "Liquidità ${Money.eur0(r.liquidity)}") + " · Investimenti ${Money.eur0(r.investments)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

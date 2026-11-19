@@ -251,6 +251,8 @@ data class Goal(
     /** 0 = la più importante. */
     val priority: Int = 0,
     val enabled: Boolean = true,
+    /** Conto su cui i soldi dell'obiettivo sono depositati: restano nel suo saldo ma contano come «bloccati». null = non legato a un conto. */
+    val accountId: Long? = null,
 )
 
 /** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */
