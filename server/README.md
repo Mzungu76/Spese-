@@ -21,4 +21,4 @@ cd server && node --test
 3. **Chiave di creazione**: scegli una frase lunga e casuale e salvala come segreto `CREATE_KEY` del Worker (Impostazioni › Variabili e segreti, oppure `npx wrangler secret put CREATE_KEY`). Serve solo all'app madre per creare condivisioni; non va condivisa.
 4. **Pubblicazione**: da questa cartella `npx wrangler deploy`, oppure collega il repository a Cloudflare (Workers › Crea › Importa un repository) con cartella radice `server`.
 
-L'indirizzo del Worker (`https://spese-condivisione.<tuo-nome>.workers.dev`) e la chiave di creazione si inseriscono una volta nell'app madre.
+L'indirizzo del Worker (`https://spese.<tuo-nome>.workers.dev`) e la chiave di creazione si inseriscono una volta nell'app madre.
