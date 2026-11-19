@@ -81,18 +81,6 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                 }
             }
             item {
-                SectionCard(title = "Budget giornaliero") {
-                    Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
-                    ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, s.budgetMarginPct, { p -> vm.update { st -> st.copy(budgetMarginPct = p) } })
-                    Text("Quota di ciò che puoi spendere dopo risparmio e uscite note che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Paracadute: ritardo delle entrate fisse", style = MaterialTheme.typography.labelLarge)
-                    ChipChoice(listOf(0, 3, 5, 7, 10, 14).map { p -> p to (if (p == 0) "Nessuno" else "$p giorni") }, s.budgetDelayDays, { p -> vm.update { st -> st.copy(budgetDelayDays = p) } })
-                    Text("Se lo stipendio (o un'altra entrata fissa) arrivasse in ritardo di questi giorni, i soldi devono bastare lo stesso: fino ad allora non conto su quell'entrata. La cifra lo dichiara. Serve partire dai soldi sui conti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    LabeledSwitch("Parti dai soldi sui conti", s.budgetFromBalance, { on -> vm.update { st -> st.copy(budgetFromBalance = on) } },
-                        supporting = "Il budget usa i soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) più le entrate ancora attese fino a fine mese contabile. Serve che i saldi dei conti siano giusti. Se lo spegni conta solo il flusso del mese.")
-                }
-            }
-            item {
                 SectionCard(title = "Aspetto") {
                     ChipChoice(listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Chiaro", ThemeMode.DARK to "Scuro"), s.themeMode, { m -> vm.update { it.copy(themeMode = m) } })
                 }
@@ -154,6 +142,18 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         LabeledSwitch("Spese non previste", s.notifyUnexpected, { v -> vm.update { it.copy(notifyUnexpected = v) } })
                         DropdownField("Ora del controllo", s.notifyHour, (6..22).toList(), { "%02d:00".format(it) }, { h -> vm.update { it.copy(notifyHour = h) } })
                     }
+                }
+            }
+            item {
+                SectionCard(title = "Budget giornaliero") {
+                    Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, s.budgetMarginPct, { p -> vm.update { st -> st.copy(budgetMarginPct = p) } })
+                    Text("Quota di ciò che puoi spendere dopo risparmio e uscite note che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Paracadute: ritardo delle entrate fisse", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0, 3, 5, 7, 10, 14).map { p -> p to (if (p == 0) "Nessuno" else "$p giorni") }, s.budgetDelayDays, { p -> vm.update { st -> st.copy(budgetDelayDays = p) } })
+                    Text("Se lo stipendio (o un'altra entrata fissa) arrivasse in ritardo di questi giorni, i soldi devono bastare lo stesso: fino ad allora non conto su quell'entrata. La cifra lo dichiara. Serve partire dai soldi sui conti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LabeledSwitch("Parti dai soldi sui conti", s.budgetFromBalance, { on -> vm.update { st -> st.copy(budgetFromBalance = on) } },
+                        supporting = "Il budget usa i soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) più le entrate ancora attese fino a fine mese contabile. Serve che i saldi dei conti siano giusti. Se lo spegni conta solo il flusso del mese.")
                 }
             }
             item {
