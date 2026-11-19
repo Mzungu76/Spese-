@@ -182,4 +182,22 @@ class MigrationTest {
         assertTrue("l'eliminazione del conto con movimenti doveva essere rifiutata", blocked.isFailure)
         db.close()
     }
+
+    @Test fun `la migrazione 8-9 aggiunge il mese contabile dei movimenti senza toccare i dati`() {
+        helper.createDatabase("test-accmonth", 8).apply {
+            execSQL("INSERT INTO accounts (name, type, openingCents, archived) VALUES ('Intesa', 'CONTO', 0, 0)")
+            execSQL(
+                "INSERT INTO transactions (externalId, dedupKey, accountId, bookingDate, valueDate, description, amountCents, kind, manualCategory, manualUpdatedAt, notes, origin, createdAt) " +
+                    "VALUES ('e1', 'k1', 1, 20000, 20000, 'Stipendio', 200000, 'entrata', 0, 0, '', 'MANUAL', 0)",
+            )
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-accmonth", 9, true, AppDatabase.MIGRATION_8_9)
+        db.query("SELECT description, amountCents, accountingMonth FROM transactions").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Stipendio", c.getString(0)); assertEquals(200000L, c.getLong(1)); assertTrue(c.isNull(2))
+        }
+        db.execSQL("UPDATE transactions SET accountingMonth = '2026-12' WHERE externalId = 'e1'")
+        db.query("SELECT accountingMonth FROM transactions").use { c -> assertTrue(c.moveToFirst()); assertEquals("2026-12", c.getString(0)) }
+        db.close()
+    }
 }

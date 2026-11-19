@@ -14,6 +14,11 @@ import java.time.temporal.TemporalAdjusters
 
 enum class PaceUnit(val label: String, val article: String) { WEEK("settimana", "la"), MONTH("mese", "il"), QUARTER("trimestre", "il") }
 
+/** Su cosa poggia il limite di spesa ottimale. */
+enum class OptimalBasis(val label: String) {
+    NONE(""), GOALS("entrate recenti meno la quota dei tuoi obiettivi"), RATE("entrate recenti meno il 20% da risparmiare"), BUDGETS("budget delle categorie scelte")
+}
+
 enum class PaceVerdict(val label: String) {
     IN_LINE("In linea con la media"), ABOVE("Sopra la media"), BELOW("Sotto la media"), NOT_ENOUGH("Storico insufficiente")
 }
@@ -45,7 +50,23 @@ data class PaceReport(
     val drivers: List<PaceDriver>, val verdict: PaceVerdict,
     /** Categorie scelte in Home: se non è vuoto il ritmo riguarda solo la spesa di queste (con le loro sottocategorie) e le entrate non c'entrano. */
     val filtered: List<Category> = emptyList(),
+    /**
+     * Spesa ottimale: la curva cumulata che rispetta il limite di spesa del periodo (entrate recenti − risparmio da mettere da parte,
+     * oppure la somma dei budget delle categorie scelte), distribuita come di solito si spende. Vuota se non calcolabile.
+     */
+    val optimal: List<BigDecimal> = emptyList(),
+    /** Il limite di spesa dell'intero periodo (null se non calcolabile). */
+    val optimalTotal: BigDecimal? = null,
+    /** Entrate medie recenti e risparmio del periodo su cui si basa il limite (0 se il ritmo è filtrato per categoria). */
+    val recentIncome: BigDecimal = BigDecimal.ZERO, val savingsTarget: BigDecimal = BigDecimal.ZERO,
+    val optimalBasis: OptimalBasis = OptimalBasis.NONE,
 ) {
+    /** Quanto sarebbe «ottimale» aver speso a questo punto del periodo. */
+    val optimalToDate: BigDecimal? get() = optimal.getOrNull(dayIndex)
+    /** Quanto si può spendere al giorno da qui a fine periodo per restare nel limite (negativo = limite già superato). */
+    val optimalDailyRemaining: BigDecimal? get() = if (optimalTotal == null || remainingDays <= 0) null else (optimalTotal - spentToDate).divide(BigDecimal(remainingDays), 2, RoundingMode.HALF_UP)
+    /** Il limite diviso per i giorni del periodo: la media giornaliera «ideale». */
+    val optimalDailyAverage: BigDecimal? get() = optimalTotal?.divide(BigDecimal(days), 2, RoundingMode.HALF_UP)
     val deltaToDate: BigDecimal get() = spentToDate - averageToDate
     val deltaPercent: BigDecimal? get() = if (averageToDate.signum() <= 0) null else deltaToDate.multiply(BigDecimal(100)).divide(averageToDate, 0, RoundingMode.HALF_UP)
     val remainingDays: Int get() = days - dayIndex - 1
@@ -72,7 +93,7 @@ object PaceEngine {
         else -> PaceUnit.MONTH
     }
 
-    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now(), categoryIds: Set<Long> = emptySet()): PaceReport? {
+    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now(), categoryIds: Set<Long> = emptySet(), savingsMonthly: BigDecimal? = null): PaceReport? {
         val ids0 = categoryIds.flatMapTo(HashSet()) { CategoryTree.withChildren(it, data.categories) }
         val tx = data.transactions.filter { (filter.accountId == null || it.accountId == filter.accountId) && it.kind != TxKind.TRASFERIMENTO }
             .filter { categoryIds.isEmpty() || (it.kind == TxKind.SPESA && it.categoryId in ids0) }
@@ -156,9 +177,32 @@ object PaceEngine {
             avgToDate.signum() <= 0 -> if (spent.signum() > 0) PaceVerdict.ABOVE else PaceVerdict.IN_LINE
             else -> { val d = (spent - avgToDate).toDouble() / avgToDate.toDouble(); if (d > TOLERANCE) PaceVerdict.ABOVE else if (d < -TOLERANCE) PaceVerdict.BELOW else PaceVerdict.IN_LINE }
         }
+        // limite di spesa ottimale: entrate recenti − risparmio (obiettivi, altrimenti il 20%), oppure i budget delle categorie scelte
+        val recentN = when (unit) { PaceUnit.WEEK -> 8; PaceUnit.MONTH -> 3; PaceUnit.QUARTER -> 2 }
+        val recent = pastData.take(recentN)
+        val recentIncome = if (chosen.isNotEmpty() || recent.isEmpty()) BigDecimal.ZERO else recent.fold(BigDecimal.ZERO) { a, p -> a + p.third }.divide(BigDecimal(recent.size), 2, RoundingMode.HALF_UP)
+        val perUnit = when (unit) { PaceUnit.WEEK -> BigDecimal(12).divide(BigDecimal(52), 10, RoundingMode.HALF_UP); PaceUnit.MONTH -> BigDecimal.ONE; PaceUnit.QUARTER -> BigDecimal(3) }
+        var basis = OptimalBasis.NONE; var optTotal: BigDecimal? = null; var saveTarget = BigDecimal.ZERO
+        if (chosen.isNotEmpty()) {
+            val budgets = chosen.mapNotNull { it.budgetMonthly }.fold(BigDecimal.ZERO) { a, b -> a + b }
+            if (budgets.signum() > 0) { optTotal = budgets.multiply(perUnit).setScale(2, RoundingMode.HALF_UP); basis = OptimalBasis.BUDGETS }
+        } else if (recentIncome.signum() > 0) {
+            val goalsShare = savingsMonthly?.takeIf { it.signum() > 0 }?.multiply(perUnit)
+            saveTarget = (goalsShare ?: recentIncome.multiply(BigDecimal("0.20"))).setScale(2, RoundingMode.HALF_UP)
+            basis = if (goalsShare != null) OptimalBasis.GOALS else OptimalBasis.RATE
+            optTotal = (recentIncome - saveTarget).max(BigDecimal.ZERO)
+        }
+        // la curva segue la forma di quella media (affitto il 1°, ecc.), scalata sul limite; senza forma storica è una retta
+        val optimal = optTotal?.let { t ->
+            (0 until current.days).map { i ->
+                if (avgTotal.signum() > 0) avg[i].multiply(t).divide(avgTotal, 2, RoundingMode.HALF_UP)
+                else t.multiply(BigDecimal(i + 1)).divide(BigDecimal(current.days), 2, RoundingMode.HALF_UP)
+            }
+        } ?: emptyList()
         return PaceReport(unit, current.start, current.end, today, current.days, dayIndex, cur, avg, low, high,
             pastData.map { (w, c, inc) -> PaceWindow(label(unit, w.start, cal), w.start, c.last(), inc) }.reversed(),
-            spent, avgToDate, avgTotal, spent + (avgTotal - avgToDate), projectLinear(spent, dayIndex, current.days), avgIncome, curIncome, drivers, verdict, chosen)
+            spent, avgToDate, avgTotal, spent + (avgTotal - avgToDate), projectLinear(spent, dayIndex, current.days), avgIncome, curIncome, drivers, verdict, chosen,
+            optimal, optTotal, recentIncome, saveTarget, basis)
     }
 
     private fun projectLinear(spent: BigDecimal, dayIndex: Int, days: Int): BigDecimal = spent.multiply(BigDecimal(days)).divide(BigDecimal(dayIndex + 1), 2, RoundingMode.HALF_UP)

@@ -10,7 +10,7 @@ import it.spese.core.model.TxOrigin
 import java.math.BigDecimal
 import java.math.RoundingMode
 
-enum class ReviewReason { NO_ACCOUNT, AUTO_SPLIT, PROVISIONAL, RECURRING, THRESHOLD_RULE, UNUSUAL }
+enum class ReviewReason { NO_ACCOUNT, AUTO_SPLIT, PROVISIONAL, RECURRING, THRESHOLD_RULE, UNUSUAL, INCOME_MONTH }
 
 data class ReviewNote(val reason: ReviewReason, val text: String)
 data class ReviewItem(val tx: Transaction, val notes: List<ReviewNote>, val splits: List<TransactionSplit>)
@@ -28,7 +28,7 @@ data class ReviewItem(val tx: Transaction, val notes: List<ReviewNote>, val spli
 object ReviewEngine {
     const val RECENT_DAYS = 60L
 
-    fun items(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: List<Category>, rules: List<Rule>, unassigned: List<Transaction> = emptyList()): List<ReviewItem> {
+    fun items(ledger: List<Transaction>, splits: Map<Long, List<TransactionSplit>>, categories: List<Category>, rules: List<Rule>, unassigned: List<Transaction> = emptyList(), calendar: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR, askDays: Int = 0): List<ReviewItem> {
         if (ledger.isEmpty() && unassigned.isEmpty()) return emptyList()
         val names = categories.associate { it.id to it.name }
         val rulesById = rules.associateBy { it.id }
@@ -52,6 +52,10 @@ object ReviewEngine {
                     notes.add(ReviewNote(ReviewReason.THRESHOLD_RULE, "Assegnato da una regola con soglia di importo ($limit)"))
                 }
                 unusual(t, history[t.categoryId].orEmpty())?.let { notes.add(it) }
+            }
+            if (askDays > 0 && t.bookingDate >= recentFrom && AccountingMonth.needsChoice(t, calendar, askDays)) {
+                val cur = calendar.monthOf(t.bookingDate)
+                notes.add(ReviewNote(ReviewReason.INCOME_MONTH, "Entrata a fine mese contabile (finisce il ${it.spese.core.common.Dates.fmt(calendar.end(cur)).take(5)}): scegli se contarla per ${it.spese.core.common.Dates.monthLabelLong(cur)} o per il mese dopo"))
             }
             if (notes.isNotEmpty()) out.add(ReviewItem(t, notes, parts))
         }

@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -45,6 +46,16 @@ fun TransactionEditScreen(onBack: () -> Unit, vm: TransactionEditViewModel = hil
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DateField(f.date, { d -> vm.edit { it.copy(date = d, valueDate = if (it.valueDate == it.date) d else it.valueDate) } }, "Data contabile", Modifier.weight(1f))
                 DateField(f.valueDate, { d -> vm.edit { it.copy(valueDate = d) } }, "Data valuta", Modifier.weight(1f))
+            }
+            if (f.isIncome && vm.txId != 0L) {
+                val cal = data.calendar
+                val opts = it.spese.domain.finance.AccountingMonth.choices(f.date, cal)
+                Text("Mese contabile dell'entrata", style = MaterialTheme.typography.labelLarge)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(f.accountingMonth == null, { vm.edit { it.copy(accountingMonth = null) } }, { Text("Come la data") }, Modifier.testTag("edit_month_auto"))
+                    opts.forEachIndexed { i, m -> FilterChip(f.accountingMonth == m, { vm.edit { it.copy(accountingMonth = m) } }, { Text(it.spese.core.common.Dates.monthLabelLong(m)) }, Modifier.testTag("edit_month_$i")) }
+                }
+                Text("Un'entrata arrivata prima della fine del mese puoi contarla per il mese dopo: i limiti di spesa e il budget la considerano lì. Saldi ed elenco restano alla data reale.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             it.spese.app.common.CategoryField("Categoria", data.categories.firstOrNull { it.id == f.categoryId }.takeIf { f.manualCategory }, data.categories,
                 { c -> vm.edit { it.copy(categoryId = c.id, manualCategory = true) } }, nullLabel = if (vm.txId == 0L || !f.manualCategory) "Automatica (regole)" + (data.categoriesById[f.categoryId]?.let { " → ${it.name}" } ?: "") else "Automatica (regole)",

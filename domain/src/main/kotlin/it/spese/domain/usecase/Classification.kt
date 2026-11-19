@@ -49,6 +49,9 @@ data class TransactionDraft(
     val notes: String = "",
     val documentId: Long? = null,
     val origin: TxOrigin = TxOrigin.MANUAL,
+    /** Mese contabile scelto per un'entrata: applicato solo se [setAccountingMonth] (altrimenti la modifica lo lascia com'è). */
+    val accountingMonth: java.time.YearMonth? = null,
+    val setAccountingMonth: Boolean = false,
 )
 
 /** Inserimento e modifica manuale di un movimento. */
@@ -75,7 +78,8 @@ class SaveTransactionUseCase @Inject constructor(
         val old = tx.get(d.id) ?: error("Movimento inesistente")
         tx.update(old.copy(accountId = d.accountId, bookingDate = d.bookingDate, valueDate = d.valueDate, description = d.description.trim(),
             amount = amount, kind = c.kind, categoryId = c.categoryId, manualCategory = c.manual, ruleId = c.ruleId,
-            merchantOverride = d.merchant?.takeIf { it.isNotBlank() }, notes = d.notes, documentId = d.documentId ?: old.documentId), key)
+            merchantOverride = d.merchant?.takeIf { it.isNotBlank() }, notes = d.notes, documentId = d.documentId ?: old.documentId,
+            accountingMonth = if (d.setAccountingMonth) (if (c.kind == it.spese.core.model.TxKind.ENTRATA) d.accountingMonth else null) else old.accountingMonth), key)
         return d.id
     }
 }

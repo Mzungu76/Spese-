@@ -31,6 +31,33 @@ class NetWorthTest {
         assertEquals(d("2026-01-31"), r.accounts.first { it.isInvestment }.valuationDate)
     }
 
+    @Test fun `i soldi negli obiettivi restano nel patrimonio e nel conto ma sono bloccati`() {
+        val g = Goal(1, "Fondo di sicurezza", BigDecimal(3000), BigDecimal(1500), accountId = 1)
+        val r = NetWorthEngine.compute(data(), listOf(g), valuation, today)!!
+        eq("10150", r.total)                       // il totale non cambia
+        eq("4650", r.liquidity); eq("1500", r.blocked); eq("3150", r.spendable)
+        val conto = r.accounts.first { it.account.id == 1L }
+        eq("4650", conto.balance); eq("1500", conto.blocked)    // il conto resta tra quelli disponibili, con la parte bloccata
+        assertEquals(listOf("Fondo di sicurezza"), conto.blockedFor)
+    }
+
+    @Test fun `il bloccato non supera il saldo del conto e un obiettivo spento non blocca`() {
+        val big = Goal(1, "Grande", BigDecimal(9000), BigDecimal(9000), accountId = 1)
+        eq("4650", NetWorthEngine.compute(data(), listOf(big), valuation, today)!!.blocked)
+        eq("0", NetWorthEngine.compute(data(), listOf(big.copy(enabled = false)), valuation, today)!!.blocked)
+        // senza conto indicato è bloccato sulla liquidità in generale
+        eq("200", NetWorthEngine.compute(data(), listOf(Goal(2, "Libero", BigDecimal(500), BigDecimal(200))), valuation, today)!!.blocked)
+    }
+
+    @Test fun `il conto dell'obiettivo viaggia nel salvataggio e nel backup`() {
+        val back = it.spese.domain.goals.GoalCodec.decode(it.spese.domain.goals.GoalCodec.encode(listOf(Goal(1, "F", BigDecimal(10), BigDecimal(5), accountId = 7))))
+        assertEquals(7L, back.single().accountId)
+        val state = it.spese.domain.backup.LegacyState(emptyList(), emptyList(), emptyList(), emptyList(), emptyMap(), emptyMap(),
+            it.spese.domain.backup.LegacyGoal(GoalMode.MONTHLY, BigDecimal(300), 12, null), emptyMap(), emptyMap())
+        val json = it.spese.domain.backup.LegacyBackupCodec.encode(it.spese.domain.backup.BackupEnvelope("2026-03-15", "t", state, it.spese.domain.backup.NativeExtras(goals = listOf(it.spese.domain.backup.NativeGoal("F", BigDecimal(10), BigDecimal(5), null, null, 0, true, "Conto")))))
+        assertEquals("Conto", it.spese.domain.backup.LegacyBackupCodec.parse(json).extras!!.goals.single().account)
+    }
+
     @Test fun `senza valori inseriti l'investimento vale il saldo iniziale più i movimenti`() {
         eq("5000", NetWorthEngine.compute(data(), emptyList(), emptyList(), today)!!.investments)
         // movimenti dopo il valore inserito si sommano a quel valore

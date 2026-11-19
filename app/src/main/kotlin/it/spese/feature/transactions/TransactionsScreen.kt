@@ -233,6 +233,13 @@ private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOp
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        if (x.accountId != null && r.notes.any { n -> n.reason == it.spese.domain.finance.ReviewReason.INCOME_MONTH }) {
+                            it.spese.domain.finance.AccountingMonth.choices(x.bookingDate, st.data.calendar).forEachIndexed { i, m ->
+                                val pick = { vm.setAccountingMonth(listOf(x.id), m); Unit }
+                                if (i == 0) FilledTonalButton(onClick = pick, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.testTag("income_month_$i")) { Text(it.spese.core.common.Dates.monthLabelLong(m)) }
+                                else Button(onClick = pick, contentPadding = PaddingValues(horizontal = 12.dp), modifier = Modifier.testTag("income_month_$i")) { Text(it.spese.core.common.Dates.monthLabelLong(m)) }
+                            }
+                        } else
                         if (x.accountId == null) Button(onClick = { onPickAccount(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp), modifier = Modifier.testTag("review_assign")) { Text("Scegli il conto") }
                         else Button(onClick = { vm.confirm(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Conferma") }
                         TextButton(onClick = { onPickCategory(x.id) }) { Text("Categoria") }

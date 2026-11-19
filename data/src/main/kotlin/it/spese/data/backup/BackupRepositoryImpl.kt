@@ -97,7 +97,7 @@ class BackupRepositoryImpl @Inject constructor(
             widgetLayouts = widgetRepo.get().let { m -> if (m.isEmpty()) "" else it.spese.domain.widgets.LayoutCodec.encode(m) },
             managedAccounts = managedRepo.get().mapNotNull { id -> s.accounts.firstOrNull { a -> a.id == id }?.name },
             reminders = remindersRepo.getAll().map { r -> NativeReminder(r.kind.name, r.title, r.note, r.accountId?.let { id -> s.accounts.firstOrNull { it.id == id }?.name }, r.repeat.name, r.dayOfWeek, r.dayOfMonth, r.date, r.hour, r.minute, r.enabled) },
-            goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
+            goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled, it.accountId?.let { id -> s.accounts.firstOrNull { a -> a.id == id }?.name }) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
             itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
@@ -113,6 +113,7 @@ class BackupRepositoryImpl @Inject constructor(
             },
             quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled, q.mode, Money.fromCents(q.toleranceCents), q.everyMonths, q.dayFrom, q.dayTo) } },
             reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
+            accountingMonths = db.transactions().getAll().mapNotNull { r -> r.accountingMonth?.let { m -> NativeAccountingMonth(r.externalId, m) } },
             recurring = run {
                 val accName = db.accounts().getAll().associate { it.id to it.name }
                 db.recurring().getAll().map { r -> NativeRecurring(r.name, r.kind, Money.fromCents(r.amountCents), r.accountId?.let { accName[it] }, r.categoryId?.let { catName[it] }, r.everyMonths, r.dayOfMonth,
@@ -180,7 +181,8 @@ class BackupRepositoryImpl @Inject constructor(
         // obiettivi di risparmio (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelli con un nome nuovo
         env.extras?.let { x ->
             if (x.goals.isNotEmpty() || mode == RestoreMode.Replace) {
-                val incoming = x.goals.map { g -> it.spese.core.model.Goal(0, g.name, g.target, g.saved, g.deadline, g.monthly, g.priority, g.enabled) }
+                val accIds = db.accounts().getAll().associate { acc -> acc.name to acc.id }
+                val incoming = x.goals.map { g -> it.spese.core.model.Goal(0, g.name, g.target, g.saved, g.deadline, g.monthly, g.priority, g.enabled, g.account?.let { n -> accIds[n] }) }
                 val base = if (mode == RestoreMode.Replace) emptyList() else goalsRepo.getAll()
                 goalsRepo.setAll(base + incoming.filter { n -> base.none { it.name.equals(n.name, ignoreCase = true) } })
             }
@@ -370,6 +372,7 @@ class BackupRepositoryImpl @Inject constructor(
             }
             val reviewedIds = extras.reviewed.mapNotNull { td.findByExternalId(it)?.id }
             if (reviewedIds.isNotEmpty()) reviewedIds.chunked(500).forEach { td.setReviewed(it, true) }
+            extras.accountingMonths.forEach { am -> td.setAccountingMonthByExternal(am.txId, am.month) }
         }
         return added
     }

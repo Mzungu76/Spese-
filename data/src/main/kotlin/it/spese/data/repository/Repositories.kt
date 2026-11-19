@@ -36,7 +36,7 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
             accountId = tx.accountId, dedupKey = dedupKey, bookingDate = tx.bookingDate.toEpochDay(), valueDate = tx.valueDate.toEpochDay(),
             description = tx.description, amountCents = Money.toCents(tx.amount), kind = tx.kind.key, categoryId = tx.categoryId,
             manualCategory = tx.manualCategory, manualUpdatedAt = manualAt, ruleId = tx.ruleId, merchantOverride = tx.merchantOverride,
-            notes = tx.notes, documentId = tx.documentId,
+            notes = tx.notes, documentId = tx.documentId, accountingMonth = tx.accountingMonth?.toString(),
         ))
     }
 
@@ -65,6 +65,8 @@ class TransactionRepositoryImpl @Inject constructor(private val db: AppDatabase)
         }
     }
     override suspend fun setReviewed(ids: Collection<Long>, reviewed: Boolean) { db.withTransaction { ids.chunked(500).forEach { dao.setReviewed(it, reviewed) } } }
+    override suspend fun setAccountingMonth(ids: Collection<Long>, month: java.time.YearMonth?) { db.withTransaction { ids.chunked(500).forEach { dao.setAccountingMonth(it, month?.toString()) } } }
+    override suspend fun setAccountingMonthByExternal(months: Map<String, java.time.YearMonth>) { db.withTransaction { months.forEach { (ext, m) -> dao.setAccountingMonthByExternal(ext, m.toString()) } } }
 }
 
 @Singleton
