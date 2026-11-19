@@ -302,7 +302,12 @@ private fun DetailCard(s: ShareSnapshot) {
         }
         if (open) {
             @Composable fun line(label: String, v: java.math.BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(sign + Money.eur0(v)) } }
-            val left = s.limit?.let { l -> l - s.spentToDate - (s.upcomingTotal ?: java.math.BigDecimal.ZERO) }
+            val zero = java.math.BigDecimal.ZERO
+            val left = if (s.cashSpendable != null) (s.cashSpendable!! + (s.incomeRemaining ?: zero) - (s.savingsDue ?: zero) - (s.upcomingTotal ?: zero) - (s.reserve ?: zero)).max(zero)
+                else s.limit?.let { l -> l - s.spentToDate - (s.upcomingTotal ?: zero) }
+            // i giorni su cui si dividono i soldi sono quelli del mese contabile, non quelli della settimana mostrata
+            val base = s.perDayOnTime ?: s.dailyRemaining
+            val covered = if (left != null && base != null && base.signum() > 0) left.divide(base, 0, java.math.RoundingMode.HALF_UP).toInt() else null
             if (s.cashSpendable != null) {
                 line("Soldi spendibili", s.cashSpendable)
                 line("Entrate ancora attese", s.incomeRemaining)
@@ -319,7 +324,8 @@ private fun DetailCard(s: ShareSnapshot) {
             }
             line("Resta", left)
             if (s.delayDays != null && s.perDayOnTime != null) Text("Con entrate puntuali: ${Money.eur(s.perDayOnTime!!)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("${s.days - s.dayIndex} giorni · ${GuestSummary.perDay(s)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val daysText = if (s.cashSpendable != null && covered != null) (if (s.delayDays != null) "$covered ${if (covered == 1) "giorno" else "giorni"} + ${s.delayDays} di ritardo" else "$covered ${if (covered == 1) "giorno" else "giorni"}") else "${s.days - s.dayIndex} giorni"
+            Text("$daysText · ${GuestSummary.perDay(s)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
