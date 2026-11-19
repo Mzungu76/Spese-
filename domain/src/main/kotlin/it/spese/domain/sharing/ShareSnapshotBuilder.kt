@@ -3,6 +3,7 @@ package it.spese.domain.sharing
 import it.spese.domain.finance.PaceEngine
 import it.spese.domain.finance.Period
 import it.spese.domain.finance.CategoryTree
+import it.spese.domain.finance.DailyBudget
 import it.spese.domain.finance.DailyBudgetEngine
 import it.spese.core.model.TxKind
 import it.spese.domain.classification.merchant
@@ -20,16 +21,26 @@ object ShareSnapshotBuilder {
      * ed è lo stesso per tutti i periodi: settimana e trimestre lo scalano, la cifra al giorno è sempre quella vera.
      */
     fun buildAll(data: AppData, accountIds: List<Long>, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now(), thread: List<ThreadMsg> = emptyList(), inputs: BudgetInputs = BudgetInputs()): List<ShareSnapshot> {
-        val ids = accountIds.distinct().filter { id -> data.accountsById[id] != null }.toSet()
-        if (ids.isEmpty()) return emptyList()
-        val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids })
-        val budget = DailyBudgetEngine.compute(scoped, inputs.rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly)
+        val budget = budgetFor(data, accountIds, cfg, realToday, inputs)
+        if (accountIds.none { id -> data.accountsById[id] != null }) return emptyList()
         val cfg2 = if (budget?.limit != null) cfg.copy(budgetMonthly = budget.limit) else cfg
         return listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p ->
             build(data, accountIds, cfg2, nowMillis, realToday, p, thread)?.let { s ->
-                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve)
+                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve, incomeExpected = budget.expectedIncome, savings = budget.savings, fixedPaid = budget.fixedPaid)
             }
         }
+    }
+
+    /**
+     * Il budget giornaliero dei soli conti condivisi: i loro movimenti, le loro ricorrenze e i loro abbonamenti.
+     * Le scadenze non sono legate a un conto e restano fuori; il risparmio degli obiettivi vale se non lo si fissa a mano (0 = nessuno).
+     */
+    fun budgetFor(data: AppData, accountIds: List<Long>, cfg: ShareConfig, realToday: LocalDate = LocalDate.now(), inputs: BudgetInputs = BudgetInputs()): DailyBudget? {
+        val ids = accountIds.distinct().filter { id -> data.accountsById[id] != null }.toSet()
+        if (ids.isEmpty()) return null
+        val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids }, dues = emptyList())
+        val rules = inputs.rules.filter { r -> r.accountId in ids }
+        return DailyBudgetEngine.compute(scoped, rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly)
     }
 
     fun build(data: AppData, accountId: Long, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now()): ShareSnapshot? = build(data, listOf(accountId), cfg, nowMillis, realToday)

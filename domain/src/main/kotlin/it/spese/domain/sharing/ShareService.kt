@@ -83,6 +83,13 @@ class ShareService @Inject constructor(
         return imported
     }
 
+    /** Il calcolo del budget com'è adesso, con gli stessi dati che si pubblicano (per mostrarlo e confrontarlo). */
+    suspend fun preview(): it.spese.domain.finance.DailyBudget? {
+        val link = links.get() ?: return null
+        val d = data.first { it.loaded }
+        return ShareSnapshotBuilder.budgetFor(d, link.sharedIds, link.config(), inputs = inputs.get())
+    }
+
     /** Scrive all'altra persona: il messaggio entra nella conversazione e si pubblica subito. */
     suspend fun sendMessage(text: String, now: Long = System.currentTimeMillis()): ShareLink {
         val t = text.trim().take(500)

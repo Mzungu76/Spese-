@@ -60,6 +60,9 @@ class ShareViewModel @Inject constructor(
 
     fun create(url: String, createKey: String, accountIds: List<Long>, captureAccountId: Long, cfg: ShareConfig) = run("Condivisione creata") { service.create(url, createKey, accountIds, captureAccountId, cfg); scheduler.setShareSync(true) }
     fun saveConfig(cfg: ShareConfig, accountIds: List<Long>, captureAccountId: Long) = run("Scelte salvate e pubblicate") { service.updateConfig(cfg, accountIds, captureAccountId) }
+    private val _preview = MutableStateFlow<it.spese.domain.finance.DailyBudget?>(null)
+    val preview: StateFlow<it.spese.domain.finance.DailyBudget?> = _preview
+    fun refreshPreview() = viewModelScope.launch { _preview.value = runCatching { service.preview() }.getOrNull() }
     fun sendMessage(text: String) = run(null) { service.sendMessage(text) }
     fun sync() = run(null) {
         val r = service.sync()
@@ -147,6 +150,9 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
             }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Invia") }
         }
     }
+    val preview by vm.preview.collectAsStateWithLifecycle()
+    LaunchedEffect(link, d.transactions.size, d.loaded) { vm.refreshPreview() }
+    BudgetCalcCard(preview, link)
     ThreadCard(link, busy) { t -> vm.sendMessage(t) }
     ConfigCard(link, d, busy) { cfg, ids, capture -> vm.saveConfig(cfg, ids, capture) }
     OutlinedButton(onClick = { confirmRevoke = true }, enabled = !busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth().testTag("share_revoke")) { Text("Revoca la condivisione") }
@@ -209,5 +215,27 @@ private fun ThreadCard(link: ShareLink, busy: Boolean, onSend: (String) -> Unit)
         }
         OutlinedTextField(text, { v -> text = v }, label = { Text("Scrivi") }, modifier = Modifier.fillMaxWidth().testTag("share_msg"))
         Button(enabled = !busy && text.isNotBlank(), onClick = { onSend(text); text = "" }, modifier = Modifier.fillMaxWidth().testTag("share_msg_send")) { Text("Invia") }
+    }
+}
+
+/** Come si arriva alla cifra al giorno, con i numeri dei conti condivisi: serve a controllare che i conti tornino. */
+@Composable
+private fun BudgetCalcCard(b: it.spese.domain.finance.DailyBudget?, link: ShareLink) {
+    SectionCard(title = "Calcolo del budget") {
+        if (b == null) { Text("Non ci sono ancora movimenti sui conti condivisi.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); return@SectionCard }
+        fun line(label: String, v: BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(sign + it.spese.core.common.Money.eur0(v), style = MaterialTheme.typography.bodyMedium) } }
+        line("Entrate attese", b.expectedIncome)
+        line("Risparmio (obiettivi)", b.savings, "− ")
+        line("Margine di sicurezza", b.reserve, "− ")
+        line("Limite del mese", b.limit)
+        line("Speso finora", b.spent, "− ")
+        line("Uscite fisse ancora da pagare", b.upcomingTotal, "− ")
+        line("Resta", b.remaining)
+        Text("${b.daysLeft} giorni (oggi compreso) · al giorno " + (b.perDay?.let { v -> it.spese.core.common.Money.eur(v) } ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        val est = b.income
+        if (b.expectedIncome.signum() == 0 && link.budgetMonthly == null)
+            Text("I conti condivisi non hanno entrate (i giroconti non contano come entrate): per questo il limite è zero. Fissa un budget mensile qui sotto.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+        else if (est != null) Text("Entrate stimate su ${est.months} mesi: fisse ${it.spese.core.common.Money.eur0(est.fixed)}, variabili prudenti ${it.spese.core.common.Money.eur0(est.variablePrudent)}.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Solo movimenti, ricorrenze e abbonamenti dei conti condivisi; le scadenze non legate a un conto restano fuori. Il risparmio è quello dei tuoi obiettivi (scrivi 0 nel campo risparmio per non toglierlo).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

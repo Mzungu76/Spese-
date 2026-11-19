@@ -38,6 +38,8 @@ data class ShareSnapshot(
     val thread: List<ThreadMsg> = emptyList(),
     /** Uscite note ancora da pagare nel mese (ricorrenze, abbonamenti, scadenze) e margine di sicurezza trattenuto. */
     val upcomingTotal: BigDecimal? = null, val reserve: BigDecimal? = null,
+    /** Come è costruito il limite: entrate attese, risparmio per gli obiettivi, uscite fisse già pagate. */
+    val incomeExpected: BigDecimal? = null, val savings: BigDecimal? = null, val fixedPaid: BigDecimal? = null,
 )
 
 data class ShareRecent(val day: LocalDate, val description: String, val amount: BigDecimal, val account: String = "")

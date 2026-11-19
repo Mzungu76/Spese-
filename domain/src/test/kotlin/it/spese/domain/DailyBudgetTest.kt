@@ -118,4 +118,20 @@ class DailyBudgetTest {
         val safer = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal), marginPct = 20))
         eq("1480", safer.first { it.unit == "MONTH" }.limit)                          // 2000 − 300 − 220
     }
+
+    @Test fun `il budget condiviso guarda solo i conti condivisi - ricorrenze e scadenze di altri non pesano`() {
+        val due = Due(1, "d1", "Assicurazione", BigDecimal(500), d("2026-11-20"), DueFrequency.ONCE)
+        val mine = RecurringRule(1, "Palestra", TxKind.SPESA, BigDecimal(50), accountId = 1, dayOfMonth = 25, startDate = d("2026-01-01"), lastGenerated = d("2026-10-25"))
+        val other = RecurringRule(2, "Mutuo", TxKind.SPESA, BigDecimal(900), accountId = 2, dayOfMonth = 25, startDate = d("2026-01-01"), lastGenerated = d("2026-10-25"))
+        val data = data(history(), listOf(due)).copy(accounts = listOf(Account(1, "Carta"), Account(2, "Altro")))
+        val b = ShareSnapshotBuilder.budgetFor(data, listOf(1L), ShareConfig(), today, BudgetInputs(rules = listOf(mine, other), goals = listOf(goal)))!!
+        eq("50", b.upcomingTotal)                                  // solo la palestra del conto condiviso: né il mutuo di un altro conto né la scadenza generica
+        // senza entrate sui conti condivisi il limite è zero e la spiegazione sta nel calcolo
+        val noIncome = AppData(transactions = listOf(tx("2026-10-05", -300, 1), tx("2026-11-03", -120, 1)), categories = cats, accounts = listOf(Account(1, "Carta")), loaded = true)
+        val z = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(), today)!!
+        eq("0", z.expectedIncome); eq("0", z.limit); eq("0", z.perDay)
+        // con un budget mensile fissato a mano il conto senza entrate funziona
+        val manual = ShareSnapshotBuilder.budgetFor(noIncome, listOf(1L), ShareConfig(budgetMonthly = BigDecimal(900)), today)!!
+        eq("900", manual.limit); eq("780", manual.remaining)         // 900 − 120
+    }
 }

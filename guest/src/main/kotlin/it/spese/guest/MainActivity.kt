@@ -118,6 +118,7 @@ private fun HomeScreen(app: GuestApp, st: GuestState) {
     } else {
         BudgetCard(snap)
         if (snap.features.showChart) ChartCard(snap)
+        DetailCard(snap)
         if (snap.recent.isNotEmpty()) RecentCard(snap)
         if (snap.categories.isNotEmpty()) CategoriesCard(snap)
     }
@@ -286,5 +287,29 @@ private fun AlertsCard(app: GuestApp, st: GuestState) {
 private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label); Switch(checked, onChange)
+    }
+}
+
+/** Come si arriva alla cifra al giorno: tutti i numeri del calcolo, per ricontrollarli. */
+@Composable
+private fun DetailCard(s: ShareSnapshot) {
+    var open by remember { mutableStateOf(false) }
+    SectionCard {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Calcolo", fontWeight = FontWeight.SemiBold)
+            TextButton(onClick = { open = !open }) { Text(if (open) "Nascondi" else "Mostra") }
+        }
+        if (open) {
+            fun line(label: String, v: java.math.BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(sign + Money.eur0(v)) } }
+            line("Entrate attese", s.incomeExpected)
+            line("Risparmio", s.savings, "− ")
+            line("Margine", s.reserve, "− ")
+            line("Limite", s.limit)
+            line("Speso", s.spentToDate, "− ")
+            line("Da pagare", s.upcomingTotal, "− ")
+            val left = s.limit?.let { l -> l - s.spentToDate - (s.upcomingTotal ?: java.math.BigDecimal.ZERO) }
+            line("Resta", left)
+            Text("${s.days - s.dayIndex} giorni · ${GuestSummary.perDay(s)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
