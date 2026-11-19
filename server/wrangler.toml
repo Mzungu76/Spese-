@@ -1,6 +1,8 @@
 name = "spese"
 main = "src/worker.js"
 compatibility_date = "2025-01-01"
+# a ogni deploy (anche da GitHub) si tengono le variabili e i segreti impostati dalla dashboard, come CREATE_KEY
+keep_vars = true
 
 # Il database D1 va creato una volta sola (vedi README) e qui si riporta il suo id.
 [[d1_databases]]
