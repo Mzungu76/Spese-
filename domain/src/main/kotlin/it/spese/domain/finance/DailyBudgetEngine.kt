@@ -198,7 +198,9 @@ object DailyBudgetEngine {
             // fino al suo arrivo (data tipica o oggi se è già in ritardo, più il ritardo) si vive solo di ciò che c'è e delle entrate precedenti.
             val delay = delayDays.coerceIn(0, 30)
             var cap: BigDecimal? = null; var until: LocalDate? = null
-            if (delay > 0 && daysLeft > 0) {
+            // il paracadute vale solo finché c'è almeno un'entrata fissa ancora attesa: arrivata quella, non c'è più nulla che possa ritardare
+            val fixedPending = if (manualIncome != null) outlook.remaining.signum() > 0 else outlook.fixedDue.isNotEmpty()
+            if (delay > 0 && daysLeft > 0 && fixedPending) {
                 cap = allowed.max(BigDecimal.ZERO).divide(BigDecimal(daysLeft + delay), 2, RoundingMode.HALF_UP)
                 until = end.plusDays(delay.toLong())
                 if (manualIncome == null) {
