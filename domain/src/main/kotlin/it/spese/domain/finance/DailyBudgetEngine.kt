@@ -131,6 +131,8 @@ data class DailyBudget(
 
 object DailyBudgetEngine {
     const val DEFAULT_MARGIN_PCT = 10
+    /** Orizzonte su cui si distribuisce l'eccedenza di liquidità (soldi oltre ciò che il reddito stabile consente di spendere nel periodo): circa sei mesi. */
+    const val WINDFALL_HORIZON_DAYS = 180
 
     /**
      * [data] contiene i movimenti da considerare (per un conto condiviso, i suoi). [manualLimit] = tetto mensile fissato a mano (sostituisce quello calcolato).
@@ -140,7 +142,7 @@ object DailyBudgetEngine {
     fun compute(
         data: AppData, rules: List<RecurringRule> = emptyList(), ignoredPatterns: Set<String> = emptySet(), goals: List<Goal> = emptyList(),
         incomeOverrides: Map<Long, IncomeNature> = emptyMap(), marginPct: Int = DEFAULT_MARGIN_PCT, manualLimit: BigDecimal? = null, realToday: LocalDate = LocalDate.now(), savingsOverride: BigDecimal? = null, patterns: List<RecurringPattern>? = null,
-        cashSource: ((LocalDate) -> CashPosition?)? = null, delayDays: Int = 0,
+        cashSource: ((LocalDate) -> CashPosition?)? = null, delayDays: Int = 0, horizonDays: Int = 0,
     ): DailyBudget? {
         val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
         if (tx.isEmpty()) return null
@@ -179,7 +181,17 @@ object DailyBudgetEngine {
             val pool = cash.spendable + outlook.remaining - upcomingTotal - savingsDue
             val reserve = pool.max(BigDecimal.ZERO).multiply(pct).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
             val available = pool - reserve
-            val limit = spent + upcomingTotal + available
+            // Reddito permanente: il tetto del periodo poggia sul reddito stabile (fisso + parte prudente delle variabili), non sui soldi accumulati né sulle entrate straordinarie già incassate.
+            // La liquidità oltre quel tetto (eccedenza) non si consuma in un periodo: si distribuisce su [horizonDays] giorni. La liquidità resta comunque un freno: mai oltre ciò che c'è.
+            var allowed = available
+            if (horizonDays > 0 && daysLeft > 0 && (est != null || manualIncome != null)) {
+                val stable = manualIncome ?: est!!.let { e -> e.fixed + e.variablePrudent }
+                val flowReserve = (stable - savings - fixedPaid - upcomingTotal).max(BigDecimal.ZERO).multiply(pct).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+                val flowLeft = (stable - savings - flowReserve - spent - upcomingTotal).max(BigDecimal.ZERO)
+                val excess = (available - flowLeft).max(BigDecimal.ZERO)
+                allowed = minOf(available, flowLeft + excess.multiply(BigDecimal(daysLeft)).divide(BigDecimal(horizonDays), 2, RoundingMode.HALF_UP))
+            }
+            val limit = spent + upcomingTotal + allowed
             val status = if (available.signum() < 0) BudgetStatus.OVER else BudgetStatus.OK
             // paracadute: se le entrate fisse ritardassero di [delayDays] giorni, gli stessi soldi devono coprire quei giorni in più
             // (il periodo da coprire si allunga: giorni rimasti + ritardo); inoltre, per ogni entrata fissa ancora attesa nel periodo,
@@ -187,7 +199,7 @@ object DailyBudgetEngine {
             val delay = delayDays.coerceIn(0, 30)
             var cap: BigDecimal? = null; var until: LocalDate? = null
             if (delay > 0 && daysLeft > 0) {
-                cap = available.max(BigDecimal.ZERO).divide(BigDecimal(daysLeft + delay), 2, RoundingMode.HALF_UP)
+                cap = allowed.max(BigDecimal.ZERO).divide(BigDecimal(daysLeft + delay), 2, RoundingMode.HALF_UP)
                 until = end.plusDays(delay.toLong())
                 if (manualIncome == null) {
                     var assumed = BigDecimal.ZERO

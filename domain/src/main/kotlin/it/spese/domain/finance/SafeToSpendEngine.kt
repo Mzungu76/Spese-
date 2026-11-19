@@ -90,7 +90,7 @@ object SafeToSpendEngine {
     /** La cifra «disponibile oggi» è il budget giornaliero ([DailyBudgetEngine]): entrate prudenti, obiettivi, uscite note e margine; qui solo il confronto con il piano. */
     private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>, overrides: Map<Long, it.spese.domain.health.IncomeNature>, marginPct: Int, accountId: Long?, valuations: List<it.spese.core.model.Valuation>, fromBalance: Boolean, delayDays: Int): SafeToSpendReport? {
         val cashSource: ((LocalDate) -> CashPosition?)? = if (fromBalance) { d -> CashCalculator.compute(data, accountId?.let { id -> setOf(id) }, goals, valuations, d) } else null
-        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), rules, emptySet(), goals, overrides, marginPct, null, realToday, null, patterns, cashSource, delayDays) ?: return null
+        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), rules, emptySet(), goals, overrides, marginPct, null, realToday, null, patterns, cashSource, delayDays, DailyBudgetEngine.WINDFALL_HORIZON_DAYS) ?: return null
         val limit = b.limit ?: (b.expectedIncome - b.savings)
         val variableBudget = limit - b.fixedPaid - b.upcomingTotal
         val available = limit - b.spent - b.upcomingTotal

@@ -41,7 +41,7 @@ object ShareSnapshotBuilder {
         val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids }, dues = emptyList())
         val rules = inputs.rules.filter { r -> r.accountId in ids }
         val cash: ((LocalDate) -> it.spese.domain.finance.CashPosition?)? = if (inputs.fromBalance) { d -> it.spese.domain.finance.CashCalculator.compute(data, ids, inputs.goals, inputs.valuations, d) } else null
-        return DailyBudgetEngine.compute(scoped, rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly, cashSource = cash, delayDays = inputs.delayDays)
+        return DailyBudgetEngine.compute(scoped, rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly, cashSource = cash, delayDays = inputs.delayDays, horizonDays = it.spese.domain.finance.DailyBudgetEngine.WINDFALL_HORIZON_DAYS)
     }
 
     fun build(data: AppData, accountId: Long, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now()): ShareSnapshot? = build(data, listOf(accountId), cfg, nowMillis, realToday)

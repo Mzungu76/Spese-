@@ -250,4 +250,21 @@ class DailyBudgetTest {
         assertTrue(b.perDay!! <= b.perDayWithoutDelay!!.divide(BigDecimal(6), 2, java.math.RoundingMode.HALF_UP))  // al massimo gli stessi soldi su 1 + 5 giorni
         assertEquals(d("2026-12-25"), b.delayUntil)
     }
+
+    @Test fun `i soldi accumulati non gonfiano il tetto ma si distribuiscono su sei mesi`() {
+        val data = exampleData()
+        val rich = { _: java.time.LocalDate -> it.spese.domain.finance.CashPosition(BigDecimal(20000), BigDecimal.ZERO) }
+        val all = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = rich)!!
+        val smooth = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = rich, horizonDays = 180)!!
+        assertTrue("il tetto con 20.000 € sul conto non cresce di 20.000 €", smooth.limit!! < all.limit!!)
+        assertTrue(smooth.perDay!! < all.perDay!!)
+        // il tetto non supera reddito stabile + la quota dell'eccedenza che spetta al periodo
+        val cap = smooth.expectedIncome + BigDecimal(20000).multiply(BigDecimal(smooth.daysLeft)).divide(BigDecimal(180), 2, java.math.RoundingMode.HALF_UP)
+        assertTrue("limite ${smooth.limit} oltre $cap", smooth.limit!! <= cap)
+        // con pochi soldi sul conto la cifra non supera mai quella basata solo sulla liquidità
+        val poor = { _: java.time.LocalDate -> it.spese.domain.finance.CashPosition(BigDecimal(50), BigDecimal.ZERO) }
+        val a = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = poor)!!
+        val b = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = poor, horizonDays = 180)!!
+        assertTrue("con pochi soldi ${b.perDay} oltre ${a.perDay}", b.perDay!! <= a.perDay!!)
+    }
 }
