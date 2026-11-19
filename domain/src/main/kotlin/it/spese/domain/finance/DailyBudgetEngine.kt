@@ -24,10 +24,15 @@ data class IncomeEstimate(
     val months: Int,
     /** Le fonti fisse (categoria principale → mediana mensile): servono a sapere quale parte è ancora attesa. */
     val fixedSources: Map<Long?, BigDecimal> = emptyMap(),
+    /** Giorno tipico di arrivo di ogni fonte fissa: giorni dopo l'inizio del mese contabile (mediana dei mesi passati). */
+    val fixedDays: Map<Long?, Int> = emptyMap(),
 ) { val prudent: BigDecimal get() = fixed + variablePrudent }
 
 /** Entrate del periodo in corso: quelle già arrivate e quelle ancora attese (non si sottraggono mai a vicenda: uno stipendio atteso resta atteso anche dopo un extra). */
-data class IncomeOutlook(val received: BigDecimal, val remaining: BigDecimal, val estimate: IncomeEstimate?)
+data class IncomeOutlook(val received: BigDecimal, val remaining: BigDecimal, val estimate: IncomeEstimate?, val fixedDue: List<ExpectedIncome> = emptyList())
+
+/** Un'entrata fissa ancora attesa nel periodo: quanto e quando arriva di solito (può essere già passato: allora è in ritardo). */
+data class ExpectedIncome(val amount: BigDecimal, val date: LocalDate)
 
 object IncomeEstimator {
     private const val WINDOW = 6
@@ -60,7 +65,11 @@ object IncomeEstimator {
         val fixedM = months.map { m -> by.getValue(m).filterKeys { nature[it] == IncomeNature.FIXED }.values.fold(BigDecimal.ZERO) { a, v -> a + v } }
         val varM = months.map { m -> by.getValue(m).filterKeys { nature[it] != IncomeNature.FIXED }.values.fold(BigDecimal.ZERO) { a, v -> a + v } }
         val fixedSources = ids.filter { nature[it] == IncomeNature.FIXED }.associateWith { id -> HealthStats.median(values(id)) }
-        return IncomeEstimate(HealthStats.median(fixedM), HealthStats.median(varM), HealthStats.percentile(varM, 0.25), n, fixedSources)
+        val fixedDays = fixedSources.keys.associateWith { id ->
+            val offs = months.mapNotNull { m -> incomes.filter { t -> cal.monthOf(t.bookingDate) == m && CategoryTree.rootId(t.categoryId, byId) == id }.minOfOrNull { t -> t.bookingDate }?.let { d -> ChronoUnit.DAYS.between(cal.start(m), d).toInt() } }.sorted()
+            if (offs.isEmpty()) 0 else offs[offs.size / 2]
+        }
+        return IncomeEstimate(HealthStats.median(fixedM), HealthStats.median(varM), HealthStats.percentile(varM, 0.25), n, fixedSources, fixedDays)
     }
 
     /**
@@ -78,7 +87,11 @@ object IncomeEstimator {
         val fixedLeft = est.fixedSources.entries.fold(BigDecimal.ZERO) { a, e -> a + (e.value - (byRoot[e.key] ?: BigDecimal.ZERO)).max(BigDecimal.ZERO) }
         val varGot = byRoot.filterKeys { it !in est.fixedSources.keys }.values.fold(BigDecimal.ZERO) { a, v -> a + v }
         val varLeft = (est.variablePrudent - varGot).max(BigDecimal.ZERO)
-        return IncomeOutlook(received, fixedLeft + varLeft, est)
+        val due = est.fixedSources.entries.mapNotNull { e ->
+            val left = (e.value - (byRoot[e.key] ?: BigDecimal.ZERO))
+            if (left.signum() <= 0) null else ExpectedIncome(left, from.plusDays((est.fixedDays[e.key] ?: 0).toLong()))
+        }
+        return IncomeOutlook(received, fixedLeft + varLeft, est, due)
     }
 }
 
@@ -104,12 +117,16 @@ data class DailyBudget(
     val incomeRemaining: BigDecimal = BigDecimal.ZERO, val savingsDue: BigDecimal = BigDecimal.ZERO,
     /** Saldo dei conti e soldi bloccati, se il calcolo parte dai saldi. */
     val cash: CashPosition? = null,
+    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse ancora attese, e la data fino a cui non si conta su di esse. `perDayCap` = cifra massima al giorno con quel ritardo. */
+    val delayDays: Int = 0, val delayUntil: LocalDate? = null, val perDayCap: BigDecimal? = null,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
     /** Quanto resta da spendere in modo libero nel periodo (negativo = già oltre). */
     val remaining: BigDecimal? get() = limit?.let { it - spent - upcomingTotal }
     /** La cifra al giorno da oggi a fine periodo (compreso oggi); mai negativa. Null se non c'è un limite o il periodo è finito. */
-    val perDay: BigDecimal? get() = if (daysLeft <= 0) null else remaining?.max(BigDecimal.ZERO)?.divide(BigDecimal(daysLeft), 2, RoundingMode.HALF_UP)
+    val perDay: BigDecimal? get() = perDayWithoutDelay?.let { b -> perDayCap?.let { c -> minOf(b, c) } ?: b }
+    /** La cifra al giorno se tutte le entrate arrivassero puntuali. */
+    val perDayWithoutDelay: BigDecimal? get() = if (daysLeft <= 0) null else remaining?.max(BigDecimal.ZERO)?.divide(BigDecimal(daysLeft), 2, RoundingMode.HALF_UP)
 }
 
 object DailyBudgetEngine {
@@ -123,7 +140,7 @@ object DailyBudgetEngine {
     fun compute(
         data: AppData, rules: List<RecurringRule> = emptyList(), ignoredPatterns: Set<String> = emptySet(), goals: List<Goal> = emptyList(),
         incomeOverrides: Map<Long, IncomeNature> = emptyMap(), marginPct: Int = DEFAULT_MARGIN_PCT, manualLimit: BigDecimal? = null, realToday: LocalDate = LocalDate.now(), savingsOverride: BigDecimal? = null, patterns: List<RecurringPattern>? = null,
-        cashSource: ((LocalDate) -> CashPosition?)? = null,
+        cashSource: ((LocalDate) -> CashPosition?)? = null, delayDays: Int = 0,
     ): DailyBudget? {
         val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
         if (tx.isEmpty()) return null
@@ -164,7 +181,22 @@ object DailyBudgetEngine {
             val available = pool - reserve
             val limit = spent + upcomingTotal + available
             val status = if (available.signum() < 0) BudgetStatus.OVER else BudgetStatus.OK
-            return DailyBudget(start, end, today, daysTotal, daysLeft, expected, incomeToDate, est, savings, reserve, spent, fixedPaid, upcoming, limit, status, stale, outlook.remaining, savingsDue, cash)
+            // paracadute: se ogni entrata fissa ancora attesa arrivasse con [delayDays] giorni di ritardo, fino ad allora si vive solo di ciò che c'è (e delle entrate precedenti)
+            val delay = delayDays.coerceIn(0, 30)
+            var cap: BigDecimal? = null; var until: LocalDate? = null
+            if (delay > 0 && manualIncome == null && daysLeft > 0) {
+                var assumed = BigDecimal.ZERO
+                outlook.fixedDue.sortedBy { it.date }.forEach { inc ->
+                    val arrival = maxOf(inc.date, today).plusDays(delay.toLong())
+                    val days = ChronoUnit.DAYS.between(today, arrival).toInt().coerceIn(1, daysLeft)
+                    val before = upcoming.filter { u -> u.date <= arrival }.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
+                    val early = (cash.spendable + assumed - before).max(BigDecimal.ZERO).multiply(BigDecimal(100).subtract(pct)).divide(BigDecimal(100), 10, RoundingMode.HALF_UP).divide(BigDecimal(days), 2, RoundingMode.HALF_UP)
+                    if (cap == null || early < cap!!) cap = early
+                    if (until == null) until = arrival
+                    assumed += inc.amount
+                }
+            }
+            return DailyBudget(start, end, today, daysTotal, daysLeft, expected, incomeToDate, est, savings, reserve, spent, fixedPaid, upcoming, limit, status, stale, outlook.remaining, savingsDue, cash, if (until != null) delay else 0, until, cap)
         }
 
         val canEstimate = est != null || incomeToDate.signum() > 0 || manualIncome != null

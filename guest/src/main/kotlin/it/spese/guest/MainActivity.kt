@@ -165,6 +165,7 @@ private fun BudgetCard(s: ShareSnapshot) {
             Text(GuestSummary.perDay(s), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, color = if (perDay != null && perDay.signum() <= 0) fin.negative else fin.positive)
             Text("al giorno", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
         }
+        if (s.delayDays != null && s.delayUntil != null) Text("Con un ritardo di ${s.delayDays} giorni sulle entrate fisse (non conto su di esse prima del ${Dates.fmt(s.delayUntil!!).take(5)})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         s.limit?.takeIf { l -> l.signum() > 0 }?.let { l ->
             val used = (s.spentToDate.toFloat() / l.toFloat()).coerceIn(0f, 1f)
             LinearProgressIndicator(progress = { used }, Modifier.fillMaxWidth().height(10.dp), color = if (s.spentToDate > l) fin.negative else fin.positive, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
@@ -317,6 +318,7 @@ private fun DetailCard(s: ShareSnapshot) {
                 line("Da pagare", s.upcomingTotal, "− ")
             }
             line("Resta", left)
+            if (s.delayDays != null && s.perDayOnTime != null) Text("Con entrate puntuali: ${Money.eur(s.perDayOnTime!!)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("${s.days - s.dayIndex} giorni · ${GuestSummary.perDay(s)} al giorno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

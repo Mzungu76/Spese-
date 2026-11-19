@@ -17,6 +17,8 @@ data class BudgetInputs(
     val marginPct: Int = 10,
     /** Saldi dei conti d'investimento e flag: il calcolo parte dai soldi sui conti (meno quelli bloccati) invece che dalle sole entrate del mese. */
     val valuations: List<it.spese.core.model.Valuation> = emptyList(), val fromBalance: Boolean = true,
+    /** Giorni di ritardo ipotizzati sulle entrate fisse (paracadute). */
+    val delayDays: Int = 5,
 )
 
 interface BudgetInputsSource { suspend fun get(): BudgetInputs }
@@ -27,5 +29,5 @@ class RepoBudgetInputs @Inject constructor(
     private val recurring: RecurringRepository, private val review: SubscriptionReviewRepository, private val goals: GoalRepository, private val natures: IncomeNatureRepository, private val settings: it.spese.domain.repository.SettingsRepository,
     private val valuations: it.spese.domain.repository.ValuationRepository,
 ) : BudgetInputsSource {
-    override suspend fun get() = BudgetInputs(recurring.getAll(), review.getIgnored(), goals.getAll(), natures.get(), settings.get().budgetMarginPct, valuations.getAll(), settings.get().budgetFromBalance)
+    override suspend fun get() = BudgetInputs(recurring.getAll(), review.getIgnored(), goals.getAll(), natures.get(), settings.get().budgetMarginPct, valuations.getAll(), settings.get().budgetFromBalance, settings.get().budgetDelayDays)
 }

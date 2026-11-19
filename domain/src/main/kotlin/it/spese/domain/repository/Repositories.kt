@@ -183,6 +183,8 @@ data class AppSettings(
     val budgetMarginPct: Int = 10,
     /** Il budget giornaliero parte dai soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) invece che dalle sole entrate del mese. */
     val budgetFromBalance: Boolean = true,
+    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse ancora attese (0 = nessuno). */
+    val budgetDelayDays: Int = 5,
 )
 
 interface SettingsRepository {

@@ -42,6 +42,8 @@ data class ShareSnapshot(
     val incomeExpected: BigDecimal? = null, val savings: BigDecimal? = null, val fixedPaid: BigDecimal? = null,
     /** Soldi spendibili sui conti condivisi (saldo meno bloccato), entrate ancora attese e risparmio ancora da mettere da parte: null se il calcolo non parte dai saldi. */
     val cashSpendable: BigDecimal? = null, val incomeRemaining: BigDecimal? = null, val savingsDue: BigDecimal? = null,
+    /** Paracadute dichiarato: giorni di ritardo ipotizzati sulle entrate fisse, fino a che data non si conta su di esse, e la cifra al giorno con entrate puntuali. */
+    val delayDays: Int? = null, val delayUntil: LocalDate? = null, val perDayOnTime: BigDecimal? = null,
 )
 
 data class ShareRecent(val day: LocalDate, val description: String, val amount: BigDecimal, val account: String = "")

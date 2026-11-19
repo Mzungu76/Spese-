@@ -196,4 +196,47 @@ class DailyBudgetTest {
         val b = DailyBudgetEngine.compute(data, manualLimit = BigDecimal(1500), realToday = twentyFifth, cashSource = { day -> it.spese.domain.finance.CashCalculator.compute(data, null, emptyList(), emptyList(), day) })!!
         assertNull(b.cash); eq("1500", b.limit)
     }
+
+    // ---- paracadute: ritardo delle entrate fisse ----
+    private fun cashFor(data: AppData, goals: List<Goal> = emptyList()): (LocalDate) -> it.spese.domain.finance.CashPosition? = { day -> it.spese.domain.finance.CashCalculator.compute(data, null, goals, emptyList(), day) }
+
+    @Test fun `il giorno tipico dello stipendio si ricava dallo storico`() {
+        val data = exampleData()
+        val est = IncomeEstimator.estimate(data.transactions, data.calendar, java.time.YearMonth.of(2026, 11), cats.associateBy { it.id })!!
+        assertEquals(6, est.fixedDays.values.single())                         // il 27, con il mese contabile che inizia il 21: sesto giorno dopo l'inizio
+    }
+
+    @Test fun `con soldi sufficienti il ritardo non cambia la cifra ma viene dichiarato`() {
+        val data = exampleData()
+        val b = DailyBudgetEngine.compute(data, goals = listOf(fondo), realToday = twentyFifth, patterns = emptyList(), cashSource = cashFor(data, listOf(fondo)), delayDays = 5)!!
+        assertEquals(5, b.delayDays); assertEquals(d("2026-12-02"), b.delayUntil)       // atteso il 27/11 + 5 giorni
+        eq("48.46", b.perDayWithoutDelay); eq("48.46", b.perDay)                       // 400 × 0,9 / 7 = 51,43: il tetto non scatta
+    }
+
+    @Test fun `con pochi soldi il ritardo dello stipendio abbassa la cifra al giorno`() {
+        val data = exampleData(extraOn15 = false).copy(transactions = exampleData(false).transactions + tx("2026-11-15", 160, 3))      // sul conto restano 160
+        val b = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = cashFor(data), delayDays = 5)!!
+        eq("160", b.cash!!.spendable)
+        eq("40.15", b.perDayWithoutDelay)                                              // (160 + 1000) × 0,9 / 26 con stipendio puntuale
+        eq("20.57", b.perDay)                                                          // senza stipendio fino al 2/12: 160 × 0,9 / 7 giorni
+        assertEquals(d("2026-12-02"), b.delayUntil)
+        // senza paracadute vale la cifra normale
+        eq("40.15", DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = cashFor(data), delayDays = 0)!!.perDay)
+    }
+
+    @Test fun `uno stipendio già in ritardo non si dà per arrivato oggi`() {
+        val data = exampleData(extraOn15 = false)
+        val late = data.copy(transactions = data.transactions + tx("2026-11-10", 300, 3))              // 300 sul conto; lo stipendio del 27 non è ancora arrivato
+        val b = DailyBudgetEngine.compute(late, realToday = d("2026-12-01"), patterns = emptyList(), cashSource = cashFor(late), delayDays = 5)!!
+        // lo stipendio atteso il 27/11 non è arrivato: parto da oggi e aggiungo 5 giorni di ritardo
+        assertEquals(d("2026-12-06"), b.delayUntil)
+    }
+
+    @Test fun `senza partire dai saldi o con un budget a mano il paracadute non c'e`() {
+        val data = exampleData()
+        val flow = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), delayDays = 5)!!
+        assertNull(flow.delayUntil); assertEquals(0, flow.delayDays)
+        val manual = DailyBudgetEngine.compute(data, manualLimit = BigDecimal(1500), realToday = twentyFifth, patterns = emptyList(), cashSource = cashFor(data), delayDays = 5)!!
+        assertNull(manual.delayUntil)
+    }
 }

@@ -89,7 +89,7 @@ class AlertsWorker @AssistedInject constructor(
         }
         it.spese.app.widget.SafeToSpendWidget.refresh(applicationContext)
         if (s.notifyDailySpend) {
-            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll(), incomeOverrides = natures.get(), marginPct = s.budgetMarginPct, valuations = valuations.getAll(), fromBalance = s.budgetFromBalance) }.getOrNull()
+            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll(), incomeOverrides = natures.get(), marginPct = s.budgetMarginPct, valuations = valuations.getAll(), fromBalance = s.budgetFromBalance, delayDays = s.budgetDelayDays) }.getOrNull()
             if (r != null && r.status != it.spese.domain.finance.SafeStatus.NOT_ENOUGH && !r.stale)
                 notifier.post(1002, "Oggi: " + it.spese.domain.finance.SafeToSpendText.perDay(r), it.spese.domain.finance.SafeToSpendText.comment(r))
         }

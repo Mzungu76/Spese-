@@ -51,6 +51,8 @@ data class SafeToSpendReport(
     val safetyReserve: BigDecimal = BigDecimal.ZERO,
     /** Soldi spendibili sui conti (saldo − bloccato), se il calcolo parte dai saldi; entrate ancora attese e risparmio ancora da mettere da parte. */
     val cashSpendable: BigDecimal? = null, val incomeRemaining: BigDecimal = BigDecimal.ZERO, val savingsDue: BigDecimal = BigDecimal.ZERO,
+    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse (0 = nessuno), fino a che data non si conta su di esse e la cifra al giorno se arrivassero puntuali. */
+    val delayDays: Int = 0, val delayUntil: LocalDate? = null, val perDayOnTime: BigDecimal? = null,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
     val variableSpent: BigDecimal get() = spentToDate - fixedPaid
@@ -68,30 +70,32 @@ object SafeToSpendEngine {
         marginPct: Int = DailyBudgetEngine.DEFAULT_MARGIN_PCT,
         valuations: List<it.spese.core.model.Valuation> = emptyList(),
         fromBalance: Boolean = false,
+        delayDays: Int = 0,
     ): SafeToSpendReport? = compute(
         data.transactions.filter { accountId == null || it.accountId == accountId }.filter { it.kind != TxKind.TRASFERIMENTO },
-        data, rules, patterns, realToday, goals, incomeOverrides, marginPct, accountId, valuations, fromBalance,
+        data, rules, patterns, realToday, goals, incomeOverrides, marginPct, accountId, valuations, fromBalance, delayDays,
     )
 
     /** Come [compute], rilevando da sé abbonamenti e rate dai movimenti (senza quelli ignorati dall'utente o già coperti da una ricorrenza). Unico ingresso per Home, notifica e widget. */
     fun forApp(
         data: AppData, rules: List<RecurringRule>, ignoredPatterns: Set<String> = emptySet(), accountId: Long? = null, realToday: LocalDate = LocalDate.now(), goals: List<Goal> = emptyList(),
         incomeOverrides: Map<Long, it.spese.domain.health.IncomeNature> = emptyMap(), marginPct: Int = DailyBudgetEngine.DEFAULT_MARGIN_PCT,
-        valuations: List<it.spese.core.model.Valuation> = emptyList(), fromBalance: Boolean = false,
+        valuations: List<it.spese.core.model.Valuation> = emptyList(), fromBalance: Boolean = false, delayDays: Int = 0,
     ): SafeToSpendReport? {
         if (!data.loaded) return null
         val patterns = SubscriptionDetector.detect(data.transactions, SubscriptionDetector.excludedCategories(data.categories), realToday, rules).filter { it.key !in ignoredPatterns }
-        return compute(data, rules, patterns, accountId, realToday, goals, incomeOverrides, marginPct, valuations, fromBalance)
+        return compute(data, rules, patterns, accountId, realToday, goals, incomeOverrides, marginPct, valuations, fromBalance, delayDays)
     }
 
     /** La cifra «disponibile oggi» è il budget giornaliero ([DailyBudgetEngine]): entrate prudenti, obiettivi, uscite note e margine; qui solo il confronto con il piano. */
-    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>, overrides: Map<Long, it.spese.domain.health.IncomeNature>, marginPct: Int, accountId: Long?, valuations: List<it.spese.core.model.Valuation>, fromBalance: Boolean): SafeToSpendReport? {
+    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>, overrides: Map<Long, it.spese.domain.health.IncomeNature>, marginPct: Int, accountId: Long?, valuations: List<it.spese.core.model.Valuation>, fromBalance: Boolean, delayDays: Int): SafeToSpendReport? {
         val cashSource: ((LocalDate) -> CashPosition?)? = if (fromBalance) { d -> CashCalculator.compute(data, accountId?.let { id -> setOf(id) }, goals, valuations, d) } else null
-        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), rules, emptySet(), goals, overrides, marginPct, null, realToday, null, patterns, cashSource) ?: return null
+        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), rules, emptySet(), goals, overrides, marginPct, null, realToday, null, patterns, cashSource, delayDays) ?: return null
         val limit = b.limit ?: (b.expectedIncome - b.savings)
         val variableBudget = limit - b.fixedPaid - b.upcomingTotal
         val available = limit - b.spent - b.upcomingTotal
-        val perDay = if (b.daysLeft <= 0) null else available.divide(BigDecimal(b.daysLeft), 2, RoundingMode.HALF_UP)
+        val onTime = if (b.daysLeft <= 0) null else available.divide(BigDecimal(b.daysLeft), 2, RoundingMode.HALF_UP)
+        val perDay = onTime?.let { v -> b.perDayCap?.let { c -> minOf(v, c) } ?: v }
         val elapsed = (b.daysTotal - b.daysLeft + 1).coerceIn(1, b.daysTotal)
         val idealToDate = variableBudget.max(BigDecimal.ZERO).multiply(BigDecimal(elapsed)).divide(BigDecimal(b.daysTotal), 2, RoundingMode.HALF_UP)
         val delta = idealToDate - (b.spent - b.fixedPaid)
@@ -102,7 +106,7 @@ object SafeToSpendEngine {
             else -> SafeStatus.OK
         }
         return SafeToSpendReport(b.today, b.periodStart, b.periodEnd, b.daysLeft, b.daysTotal, b.expectedIncome, b.incomeToDate, b.income == null || b.income.prudent < b.incomeToDate, b.savings,
-            b.spent, b.fixedPaid, b.upcoming, variableBudget, available, perDay, delta, b.stale, status, goals.isNotEmpty(), b.reserve, b.cash?.spendable, b.incomeRemaining, b.savingsDue)
+            b.spent, b.fixedPaid, b.upcoming, variableBudget, available, perDay, delta, b.stale, status, goals.isNotEmpty(), b.reserve, b.cash?.spendable, b.incomeRemaining, b.savingsDue, b.delayDays, b.delayUntil, onTime)
     }
 
     /** Uscite note da oggi a fine periodo: ricorrenze manuali, abbonamenti/rate rilevati, scadenze. Niente doppioni tra ricorrenze e rilevati. */

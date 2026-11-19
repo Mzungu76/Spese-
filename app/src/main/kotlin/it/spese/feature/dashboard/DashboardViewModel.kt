@@ -55,9 +55,9 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     val transferPairs: StateFlow<Int> = combine(data, transferReview.observeIgnored()) { d, ign -> runCatching { it.spese.domain.classification.TransferSuggestions.compute(d, ign).size }.getOrDefault(0) }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     /** «Disponibile oggi»: quanto si può spendere ancora nel mese, tenendo conto di risparmio e uscite note (conto del filtro, se scelto). */
-    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll(), natures.observe(), settings.observe().map { s -> s.budgetMarginPct to s.budgetFromBalance }.distinctUntilChanged(), valuations.observeAll()) { v ->
+    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll(), natures.observe(), settings.observe().map { s -> Triple(s.budgetMarginPct, s.budgetFromBalance, s.budgetDelayDays) }.distinctUntilChanged(), valuations.observeAll()) { v ->
         @Suppress("UNCHECKED_CAST")
-        runCatching { SafeToSpendEngine.forApp(v[0] as AppData, v[1] as List<it.spese.core.model.RecurringRule>, v[2] as Set<String>, (v[3] as it.spese.domain.finance.TxFilter).accountId, goals = v[4] as List<it.spese.core.model.Goal>, incomeOverrides = v[5] as Map<Long, it.spese.domain.health.IncomeNature>, marginPct = (v[6] as Pair<Int, Boolean>).first, valuations = v[7] as List<it.spese.core.model.Valuation>, fromBalance = (v[6] as Pair<Int, Boolean>).second) }.getOrNull()
+        runCatching { SafeToSpendEngine.forApp(v[0] as AppData, v[1] as List<it.spese.core.model.RecurringRule>, v[2] as Set<String>, (v[3] as it.spese.domain.finance.TxFilter).accountId, goals = v[4] as List<it.spese.core.model.Goal>, incomeOverrides = v[5] as Map<Long, it.spese.domain.health.IncomeNature>, marginPct = (v[6] as Triple<Int, Boolean, Int>).first, valuations = v[7] as List<it.spese.core.model.Valuation>, fromBalance = (v[6] as Triple<Int, Boolean, Int>).second, delayDays = (v[6] as Triple<Int, Boolean, Int>).third) }.getOrNull()
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Consigli in evidenza (i più importanti) e mese da chiudere, se siamo nei primi giorni del nuovo mese contabile. */
     val advice: StateFlow<HomeAdvice> = combine(data, goals.observeAll(), valuations.observeAll(), recurring.observeAll(), review.observeIgnored()) { d, g, v, r, ign ->
@@ -80,11 +80,11 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     private val selected = MutableStateFlow<Set<Long>>(emptySet())
     private val compareMode = MutableStateFlow(false)
 
-    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode, goals.observeAll(), recurring.observeAll(), review.observeIgnored(), natures.observe(), settings.observe().map { s -> s.budgetMarginPct to s.budgetFromBalance }.distinctUntilChanged(), valuations.observeAll()) { arr: Array<Any?> -> arr }
+    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode, goals.observeAll(), recurring.observeAll(), review.observeIgnored(), natures.observe(), settings.observe().map { s -> Triple(s.budgetMarginPct, s.budgetFromBalance, s.budgetDelayDays) }.distinctUntilChanged(), valuations.observeAll()) { arr: Array<Any?> -> arr }
         .mapLatest { a ->
             @Suppress("UNCHECKED_CAST")
             val d = a[0] as AppData; val f = a[1] as TxFilter; val sel = a[2] as Set<Long>; val cm = a[3] as Boolean; val gl = a[4] as List<it.spese.core.model.Goal>
-            val rules = a[5] as List<it.spese.core.model.RecurringRule>; val ign = a[6] as Set<String>; val nat = a[7] as Map<Long, it.spese.domain.health.IncomeNature>; val margin = (a[8] as Pair<Int, Boolean>).first; val fromBal = (a[8] as Pair<Int, Boolean>).second; val vals = a[9] as List<it.spese.core.model.Valuation>
+            val rules = a[5] as List<it.spese.core.model.RecurringRule>; val ign = a[6] as Set<String>; val nat = a[7] as Map<Long, it.spese.domain.health.IncomeNature>; val margin = (a[8] as Triple<Int, Boolean, Int>).first; val fromBal = (a[8] as Triple<Int, Boolean, Int>).second; val vals = a[9] as List<it.spese.core.model.Valuation>
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)

@@ -26,7 +26,7 @@ object ShareSnapshotBuilder {
         val cfg2 = if (budget?.limit != null) cfg.copy(budgetMonthly = budget.limit) else cfg
         return listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p ->
             build(data, accountIds, cfg2, nowMillis, realToday, p, thread)?.let { s ->
-                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve, incomeExpected = budget.expectedIncome, savings = budget.savings, fixedPaid = budget.fixedPaid, cashSpendable = budget.cash?.spendable, incomeRemaining = budget.incomeRemaining, savingsDue = budget.savingsDue)
+                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve, incomeExpected = budget.expectedIncome, savings = budget.savings, fixedPaid = budget.fixedPaid, cashSpendable = budget.cash?.spendable, incomeRemaining = budget.incomeRemaining, savingsDue = budget.savingsDue, delayDays = budget.delayDays.takeIf { it > 0 }, delayUntil = budget.delayUntil, perDayOnTime = budget.perDayWithoutDelay.takeIf { budget.delayUntil != null })
             }
         }
     }
@@ -41,7 +41,7 @@ object ShareSnapshotBuilder {
         val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids }, dues = emptyList())
         val rules = inputs.rules.filter { r -> r.accountId in ids }
         val cash: ((LocalDate) -> it.spese.domain.finance.CashPosition?)? = if (inputs.fromBalance) { d -> it.spese.domain.finance.CashCalculator.compute(data, ids, inputs.goals, inputs.valuations, d) } else null
-        return DailyBudgetEngine.compute(scoped, rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly, cashSource = cash)
+        return DailyBudgetEngine.compute(scoped, rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly, cashSource = cash, delayDays = inputs.delayDays)
     }
 
     fun build(data: AppData, accountId: Long, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now()): ShareSnapshot? = build(data, listOf(accountId), cfg, nowMillis, realToday)
