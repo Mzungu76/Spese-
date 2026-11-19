@@ -16,7 +16,7 @@ enum class PaceUnit(val label: String, val article: String) { WEEK("settimana", 
 
 /** Su cosa poggia il limite di spesa ottimale. */
 enum class OptimalBasis(val label: String) {
-    NONE(""), GOALS("entrate recenti meno la quota dei tuoi obiettivi"), RATE("entrate recenti meno il 20% da risparmiare"), BUDGETS("budget delle categorie scelte")
+    NONE(""), CUSTOM("budget fissato da te"), GOALS("entrate recenti meno la quota dei tuoi obiettivi"), RATE("entrate recenti meno il 20% da risparmiare"), BUDGETS("budget delle categorie scelte")
 }
 
 enum class PaceVerdict(val label: String) {
@@ -93,7 +93,7 @@ object PaceEngine {
         else -> PaceUnit.MONTH
     }
 
-    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now(), categoryIds: Set<Long> = emptySet(), savingsMonthly: BigDecimal? = null): PaceReport? {
+    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now(), categoryIds: Set<Long> = emptySet(), savingsMonthly: BigDecimal? = null, budgetMonthly: BigDecimal? = null): PaceReport? {
         val ids0 = categoryIds.flatMapTo(HashSet()) { CategoryTree.withChildren(it, data.categories) }
         val tx = data.transactions.filter { (filter.accountId == null || it.accountId == filter.accountId) && it.kind != TxKind.TRASFERIMENTO }
             .filter { categoryIds.isEmpty() || (it.kind == TxKind.SPESA && it.categoryId in ids0) }
@@ -149,9 +149,14 @@ object PaceEngine {
 
         val (cur, curIncome) = daily(current, dayIndex)
         val pastData = windows.map { w -> daily(w, w.days - 1).let { (c, inc) -> Triple(w, c, inc) } }
+        val perUnit = when (unit) { PaceUnit.WEEK -> BigDecimal(12).divide(BigDecimal(52), 10, RoundingMode.HALF_UP); PaceUnit.MONTH -> BigDecimal.ONE; PaceUnit.QUARTER -> BigDecimal(3) }
+        // un budget fissato a mano vale anche senza storico: la curva è una retta
+        val custom = budgetMonthly?.takeIf { it.signum() > 0 }?.multiply(perUnit)?.setScale(2, RoundingMode.HALF_UP)
         if (pastData.isEmpty()) {
+            val line = custom?.let { t -> (0 until current.days).map { i -> t.multiply(BigDecimal(i + 1)).divide(BigDecimal(current.days), 2, RoundingMode.HALF_UP) } } ?: emptyList()
             return PaceReport(unit, current.start, current.end, today, current.days, dayIndex, cur, emptyList(), emptyList(), emptyList(), emptyList(), cur.last(), BigDecimal.ZERO, BigDecimal.ZERO,
-                cur.last(), projectLinear(cur.last(), dayIndex, current.days), BigDecimal.ZERO, curIncome, emptyList(), PaceVerdict.NOT_ENOUGH, chosen)
+                cur.last(), projectLinear(cur.last(), dayIndex, current.days), BigDecimal.ZERO, curIncome, emptyList(), PaceVerdict.NOT_ENOUGH, chosen,
+                line, custom, BigDecimal.ZERO, BigDecimal.ZERO, if (custom != null) OptimalBasis.CUSTOM else OptimalBasis.NONE)
         }
         // curve medie/minime/massime giorno per giorno (un periodo più corto resta al suo totale)
         fun valueAt(c: List<BigDecimal>, i: Int) = c.getOrElse(i) { c.last() }
@@ -181,9 +186,9 @@ object PaceEngine {
         val recentN = when (unit) { PaceUnit.WEEK -> 8; PaceUnit.MONTH -> 3; PaceUnit.QUARTER -> 2 }
         val recent = pastData.take(recentN)
         val recentIncome = if (chosen.isNotEmpty() || recent.isEmpty()) BigDecimal.ZERO else recent.fold(BigDecimal.ZERO) { a, p -> a + p.third }.divide(BigDecimal(recent.size), 2, RoundingMode.HALF_UP)
-        val perUnit = when (unit) { PaceUnit.WEEK -> BigDecimal(12).divide(BigDecimal(52), 10, RoundingMode.HALF_UP); PaceUnit.MONTH -> BigDecimal.ONE; PaceUnit.QUARTER -> BigDecimal(3) }
         var basis = OptimalBasis.NONE; var optTotal: BigDecimal? = null; var saveTarget = BigDecimal.ZERO
-        if (chosen.isNotEmpty()) {
+        if (custom != null) { optTotal = custom; basis = OptimalBasis.CUSTOM }
+        else if (chosen.isNotEmpty()) {
             val budgets = chosen.mapNotNull { it.budgetMonthly }.fold(BigDecimal.ZERO) { a, b -> a + b }
             if (budgets.signum() > 0) { optTotal = budgets.multiply(perUnit).setScale(2, RoundingMode.HALF_UP); basis = OptimalBasis.BUDGETS }
         } else if (recentIncome.signum() > 0) {
