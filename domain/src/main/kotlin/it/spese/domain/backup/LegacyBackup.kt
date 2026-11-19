@@ -80,6 +80,8 @@ data class NativeReminder(
     val kind: String, val title: String, val note: String, val account: String?, val repeat: String, val dayOfWeek: Int, val dayOfMonth: Int,
     val date: java.time.LocalDate?, val hour: Int, val minute: Int, val enabled: Boolean,
 )
+/** Mese contabile scelto per un'entrata (movimento per identificativo, mese come AAAA-MM). */
+data class NativeAccountingMonth(val txId: String, val month: String)
 data class NativeIgnoreRule(val source: String, val phrase: String, val createdMs: Long, val enabled: Boolean)
 data class NativeExtras(
     val accounts: List<NativeAccount> = emptyList(), val scenarios: List<NativeScenario> = emptyList(), val documents: List<NativeDocument> = emptyList(),
@@ -101,6 +103,8 @@ data class NativeExtras(
     val managedAccounts: List<String> = emptyList(),
     /** Composizioni dei widget (testo JSON, vuoto = nessuna personalizzazione). */
     val widgetLayouts: String = "",
+    /** Entrate contate in un mese contabile diverso da quello della data. */
+    val accountingMonths: List<NativeAccountingMonth> = emptyList(),
 )
 
 data class BackupEnvelope(val savedAt: String, val device: String, val state: LegacyState, val extras: NativeExtras? = null)
@@ -198,6 +202,7 @@ object LegacyBackupCodec {
             NativeQuota(q["name"].str() ?: return@let null, q["cat"].str() ?: return@let null, q["amt"].dec() ?: return@let null, q["on"]?.let { flag(it) } ?: true,
                 q["mode"].str() ?: "c", q["tol"].dec() ?: BigDecimal.ZERO, q["every"].dec()?.toInt() ?: 1, q["from"].dec()?.toInt() ?: 0, q["to"].dec()?.toInt() ?: 0) } } ?: emptyList(),
         reviewed = o["reviewed"].arr()?.mapNotNull { it.str() } ?: emptyList(),
+        accountingMonths = o["acctMonths"].arr()?.mapNotNull { e -> e.obj()?.let { m -> NativeAccountingMonth(m["tx"].str() ?: return@let null, m["m"].str()?.takeIf { v -> runCatching { java.time.YearMonth.parse(v) }.isSuccess } ?: return@let null) } } ?: emptyList(),
         recurring = o["recurring"].arr()?.mapNotNull { e -> e.obj()?.let { r ->
             NativeRecurring(r["name"].str() ?: return@let null, r["kind"].str() ?: "entrata", r["amt"].dec() ?: return@let null, r["acc"].str()?.takeIf { it.isNotBlank() }, r["cat"].str()?.takeIf { it.isNotBlank() },
                 r["every"].dec()?.toInt() ?: 1, r["day"].dec()?.toInt() ?: 1, Dates.parseIso(r["start"].str()) ?: return@let null, Dates.parseIso(r["end"].str()), r["on"]?.let { flag(it) } ?: true, flag(r["auto"]), Dates.parseIso(r["last"].str())) } } ?: emptyList(),
@@ -285,6 +290,7 @@ object LegacyBackupCodec {
                 if (x.quotas.isNotEmpty()) put("quotas", buildJsonArray { x.quotas.forEach { q -> add(buildJsonObject {
                     put("name", q.name); put("cat", q.category); put("amt", jnum(q.amount)); put("on", if (q.enabled) 1 else 0)
                     put("mode", q.mode); put("tol", jnum(q.tolerance)); put("every", q.everyMonths); put("from", q.dayFrom); put("to", q.dayTo) }) } })
+                if (x.accountingMonths.isNotEmpty()) put("acctMonths", buildJsonArray { x.accountingMonths.forEach { m -> add(buildJsonObject { put("tx", m.txId); put("m", m.month) }) } })
                 if (x.reviewed.isNotEmpty()) putJsonArray("reviewed") { x.reviewed.forEach { add(JsonPrimitive(it)) } }
                 if (x.recurring.isNotEmpty()) put("recurring", buildJsonArray { x.recurring.forEach { r -> add(buildJsonObject {
                     put("name", r.name); put("kind", r.kind); put("amt", jnum(r.amount)); r.account?.let { put("acc", it) }; r.category?.let { put("cat", it) }

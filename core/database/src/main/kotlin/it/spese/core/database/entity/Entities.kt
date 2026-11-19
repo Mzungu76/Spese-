@@ -116,6 +116,8 @@ data class TransactionEntity(
     val createdAt: Long = 0,
     /** 1 = controllato dall'utente (esce da Verifica). Schema 5. */
     @ColumnInfo(defaultValue = "0") val reviewed: Boolean = false,
+    /** Mese contabile scelto («2026-12»), nullo = quello della data. Schema 9. */
+    val accountingMonth: String? = null,
 )
 
 /** Parti di un movimento diviso su più categorie. Eliminando il movimento si eliminano anche le parti. Schema 5. */

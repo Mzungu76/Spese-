@@ -75,6 +75,9 @@ class CommitImportUseCase @Inject constructor(
                 if (prov.reviewed) tx.setReviewed(listOf(now.id), true)
             }
         }
+        // il mese contabile scelto per un'entrata provvisoria passa alla riga dell'estratto conto
+        val months = matches.mapNotNull { (i, prov) -> prov.accountingMonth?.let { m -> items[i].externalId to m } }.toMap()
+        if (months.isNotEmpty()) tx.setAccountingMonthByExternal(months)
         applyQuotas()
         settings.update { it.copy(lastUndo = "batch:$batch") }
         return ImportOutcome(added, preview.duplicateCount, preview.skipped.size, batch, matches.size)

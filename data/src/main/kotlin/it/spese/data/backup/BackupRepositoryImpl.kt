@@ -113,6 +113,7 @@ class BackupRepositoryImpl @Inject constructor(
             },
             quotas = db.quotas().getAll().mapNotNull { q -> catName[q.categoryId]?.let { NativeQuota(q.name, it, Money.fromCents(q.amountCents), q.enabled, q.mode, Money.fromCents(q.toleranceCents), q.everyMonths, q.dayFrom, q.dayTo) } },
             reviewed = db.transactions().getAll().filter { it.reviewed }.map { it.externalId },
+            accountingMonths = db.transactions().getAll().mapNotNull { r -> r.accountingMonth?.let { m -> NativeAccountingMonth(r.externalId, m) } },
             recurring = run {
                 val accName = db.accounts().getAll().associate { it.id to it.name }
                 db.recurring().getAll().map { r -> NativeRecurring(r.name, r.kind, Money.fromCents(r.amountCents), r.accountId?.let { accName[it] }, r.categoryId?.let { catName[it] }, r.everyMonths, r.dayOfMonth,
@@ -370,6 +371,7 @@ class BackupRepositoryImpl @Inject constructor(
             }
             val reviewedIds = extras.reviewed.mapNotNull { td.findByExternalId(it)?.id }
             if (reviewedIds.isNotEmpty()) reviewedIds.chunked(500).forEach { td.setReviewed(it, true) }
+            extras.accountingMonths.forEach { am -> td.setAccountingMonthByExternal(am.txId, am.month) }
         }
         return added
     }

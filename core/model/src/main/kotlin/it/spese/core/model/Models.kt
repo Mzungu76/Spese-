@@ -135,6 +135,8 @@ data class Transaction(
     val createdAt: Long = 0,
     /** true = l'utente ha controllato il movimento: esce dalla sezione Verifica. */
     val reviewed: Boolean = false,
+    /** Mese contabile scelto per questo movimento (tipicamente un'entrata arrivata prima della fine del mese): `null` = quello della data. */
+    val accountingMonth: java.time.YearMonth? = null,
 )
 
 /**

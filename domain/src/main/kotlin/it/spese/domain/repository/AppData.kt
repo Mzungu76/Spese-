@@ -75,11 +75,14 @@ class AppDataSource(
         val managedIds = values[9] as Set<Long>
         val byId = categories.associateBy { c -> c.id }
         val everything = it.spese.domain.finance.SplitExpander.expand(raw, splits, byId)
+        val cal = it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28))
+        // le analisi usano il mese contabile scelto per le entrate; saldi ed elenchi la data reale
+        val analytic = it.spese.domain.finance.AccountingMonth.shift(everything, cal)
         AppData(
-            if (managedIds.isEmpty()) everything else everything.filter { t -> t.accountId !in managedIds }, categories, values[2] as List<Account>,
+            if (managedIds.isEmpty()) analytic else analytic.filter { t -> t.accountId !in managedIds }, categories, values[2] as List<Account>,
             values[3] as List<Rule>, values[4] as List<Due>, values[5] as List<Scenario>, true,
-            raw, splits, values[7] as List<CashQuota>, it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28)), unassigned,
-            managedIds, if (managedIds.isEmpty()) null else everything,
+            raw, splits, values[7] as List<CashQuota>, cal, unassigned,
+            managedIds, if (managedIds.isEmpty() && analytic === everything) null else everything,
         )
     }
 }
