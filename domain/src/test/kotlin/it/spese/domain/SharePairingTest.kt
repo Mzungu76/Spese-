@@ -34,4 +34,10 @@ class SharePairingTest {
         assertEquals(l, back); assertEquals(0, java.math.BigDecimal("450.50").compareTo(back.config().budgetMonthly)); assertFalse(back.config().features.captureNotifications)
         assertNull(ShareLinkCodec.decode("rotto")); assertNull(ShareLinkCodec.decode(null))
     }
+
+    @Test fun `una condivisione salvata prima dei conti multipli condivide il suo conto`() {
+        val old = """{"serverUrl":"https://a.b.workers.dev","shareId":"i","ownerToken":"o","guestToken":"g","keyText":"$key","accountId":3}"""
+        val l = ShareLinkCodec.decode(old)!!
+        assertEquals(listOf(3L), l.sharedIds); assertEquals(listOf(3L, 5L), l.copy(accountIds = listOf(3L, 5L)).sharedIds)
+    }
 }

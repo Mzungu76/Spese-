@@ -12,13 +12,17 @@ object ShareDefaults { const val SERVER_URL = "https://spese.mansedario.workers.
 @Serializable
 data class ShareLink(
     val serverUrl: String, val shareId: String, val ownerToken: String, val guestToken: String, val keyText: String,
+    /** Conto su cui finiscono le spese rilevate dall'altro telefono. */
     val accountId: Long,
+    /** Tutti i conti condivisi (budget e ritmo sono la somma dei loro movimenti); vuoto = solo [accountId] (condivisioni create prima dei conti multipli). */
+    val accountIds: List<Long> = emptyList(),
     val budgetMonthly: String? = null, val savingsMonthly: String? = null,
     val captureNotifications: Boolean = true, val showChart: Boolean = true, val note: String = "",
     /** Ultima spesa dell'altro telefono già importata, ultimo riepilogo pubblicato e ultimo controllo. */
     val lastInSeq: Long = 0, val lastPublishedAt: Long = 0, val lastPulledAt: Long = 0, val importedCount: Int = 0,
 ) {
     val key: ByteArray? get() = ShareCrypto.keyFromText(keyText)
+    val sharedIds: List<Long> get() = accountIds.ifEmpty { listOf(accountId) }
     fun config() = ShareConfig(budgetMonthly?.toBigDecimalOrNull(), savingsMonthly?.toBigDecimalOrNull(), ShareFeatures(captureNotifications, showChart), note)
     fun withConfig(c: ShareConfig) = copy(budgetMonthly = c.budgetMonthly?.toPlainString(), savingsMonthly = c.savingsMonthly?.toPlainString(),
         captureNotifications = c.features.captureNotifications, showChart = c.features.showChart, note = c.note)

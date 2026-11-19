@@ -182,7 +182,8 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
     )
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbar) }, contentWindowInsets = WindowInsets(0),
+        // senza la barra inferiore il messaggio finirebbe sotto la barra di navigazione di sistema
+        snackbarHost = { SnackbarHost(snackbar, if (isTab) Modifier else Modifier.navigationBarsPadding()) }, contentWindowInsets = WindowInsets(0),
         bottomBar = { if (isTab) SpeseBottomBar(route, ::goTab) },
     ) { pad ->
         NavHost(nav, Routes.DASHBOARD, Modifier, enterTransition = { fadeIn() }, exitTransition = { fadeOut() }, popEnterTransition = { fadeIn() }, popExitTransition = { fadeOut() }) {

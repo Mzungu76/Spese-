@@ -71,6 +71,30 @@ class ShareServiceDbTest {
         assertEquals("guest1", pairing.guestToken); assertEquals(link.keyText, pairing.keyText); assertFalse(SharePairing.encode(link).contains("owner1"))
     }
 
+    @Test fun `piu conti condivisi - il riepilogo somma i loro movimenti e le spese rilevate vanno sul conto scelto`() = runBlocking {
+        val api = FakeShareApi(); val links = FakeLinks()
+        val a1 = env.accounts.getOrCreate("Carta famiglia"); val a2 = env.accounts.getOrCreate("Carta figlio"); val altro = env.accounts.getOrCreate("Personale")
+        val first = LocalDate.now().withDayOfMonth(1)
+        env.tx.insertAll(listOf(nt("m1", a1.id, "-20", first), nt("m2", a2.id, "-35", first), nt("m3", altro.id, "-999", first)))
+        val d = AppDataSource(env.tx, env.cats, env.accounts, env.rules, env.dues, env.scenarios, env.quotas, env.settings).observe().first()
+        val svc = ShareService(links, api, env.tx, MutableStateFlow(d))
+        val link = svc.create("https://spese.example.workers.dev", "chiave", listOf(a1.id, a2.id), a2.id, ShareConfig(budgetMonthly = BigDecimal(600)))
+        assertEquals(listOf(a1.id, a2.id), link.sharedIds); assertEquals(a2.id, link.accountId)
+        val snap = ShareCodec.decodeSnapshot(ShareCrypto.decrypt(api.out!!, link.key!!)!!)!!
+        assertEquals("Carta famiglia + Carta figlio", snap.title)
+        assertEquals(0, BigDecimal(55).compareTo(snap.spentToDate))                  // 20 + 35: il conto «Personale» resta fuori
+        val ev = listOf(ShareEvent("z1", BigDecimal("-5"), "Caffe", System.currentTimeMillis()))
+        api.inbox.add(InboxItem(1, ShareCrypto.encrypt(ShareCodec.encodeEvents(ev), link.key!!)))
+        assertEquals(1, svc.pull())
+        assertEquals(a2.id, env.tx.getAll().single { t -> t.externalId == "share|z1" }.accountId)
+        // il capture deve essere tra i conti condivisi
+        assertTrue(runCatching { svc.create("https://spese.example.workers.dev", "chiave", listOf(a1.id), a2.id, ShareConfig()) }.exceptionOrNull() is ShareApiException)
+        // si possono cambiare i conti dopo
+        svc.updateConfig(ShareConfig(budgetMonthly = BigDecimal(600)), listOf(a1.id), a1.id)
+        assertEquals(listOf(a1.id), links.get()!!.sharedIds)
+        assertEquals(0, BigDecimal(20).compareTo(ShareCodec.decodeSnapshot(ShareCrypto.decrypt(api.out!!, links.get()!!.key!!)!!)!!.spentToDate))
+    }
+
     @Test fun `chiave di creazione sbagliata - errore chiaro e nessuna condivisione`() = runBlocking {
         val api = FakeShareApi(); val links = FakeLinks()
         val (svc, acc) = service(api, links)

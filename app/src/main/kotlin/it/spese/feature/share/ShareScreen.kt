@@ -58,8 +58,8 @@ class ShareViewModel @Inject constructor(
         finally { _busy.value = false }
     }
 
-    fun create(url: String, createKey: String, accountId: Long, cfg: ShareConfig) = run("Condivisione creata") { service.create(url, createKey, accountId, cfg); scheduler.setShareSync(true) }
-    fun saveConfig(cfg: ShareConfig) = run("Scelte salvate e pubblicate") { service.updateConfig(cfg) }
+    fun create(url: String, createKey: String, accountIds: List<Long>, captureAccountId: Long, cfg: ShareConfig) = run("Condivisione creata") { service.create(url, createKey, accountIds, captureAccountId, cfg); scheduler.setShareSync(true) }
+    fun saveConfig(cfg: ShareConfig, accountIds: List<Long>, captureAccountId: Long) = run("Scelte salvate e pubblicate") { service.updateConfig(cfg, accountIds, captureAccountId) }
     fun sync() = run(null) {
         val r = service.sync()
         messenger.show(r.problem ?: if (r.imported > 0) "Importate ${r.imported} spese dall'altro telefono" else "Tutto aggiornato")
@@ -85,7 +85,7 @@ fun ShareScreen(onBack: () -> Unit, vm: ShareViewModel = hiltViewModel()) {
             val link = ui?.link
             when {
                 ui == null -> Unit
-                link == null -> CreateCard(d, busy) { url, key, acc, cfg -> vm.create(url, key, acc, cfg) }
+                link == null -> CreateCard(d, busy) { url, key, ids, capture, cfg -> vm.create(url, key, ids, capture, cfg) }
                 else -> ActiveCards(link, d, busy, vm)
             }
         }
@@ -93,10 +93,11 @@ fun ShareScreen(onBack: () -> Unit, vm: ShareViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun CreateCard(d: AppData, busy: Boolean, onCreate: (String, String, Long, ShareConfig) -> Unit) {
+private fun CreateCard(d: AppData, busy: Boolean, onCreate: (String, String, List<Long>, Long, ShareConfig) -> Unit) {
     var url by remember { mutableStateOf(ShareDefaults.SERVER_URL) }
     var key by remember { mutableStateOf("") }
-    var accountId by remember { mutableStateOf<Long?>(null) }
+    var picked by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var captureId by remember { mutableStateOf<Long?>(null) }
     var budget by remember { mutableStateOf("") }
     var savings by remember { mutableStateOf("") }
     var capture by remember { mutableStateOf(true) }
@@ -107,16 +108,16 @@ private fun CreateCard(d: AppData, busy: Boolean, onCreate: (String, String, Lon
         Text("L'altra persona vede solo il budget di spesa quotidiano e il grafico del ritmo del conto che scegli. I dati sono cifrati sul telefono: il servizio online non vede importi né descrizioni.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedTextField(url, { v -> url = v }, label = { Text("Indirizzo del servizio") }, singleLine = true, modifier = Modifier.fillMaxWidth().testTag("share_url"))
         OutlinedTextField(key, { v -> key = v }, label = { Text("Chiave di creazione (impostata su Cloudflare)") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth().testTag("share_key"))
-        Text("Conto da condividere", style = MaterialTheme.typography.labelLarge)
         if (accounts.isEmpty()) Text("Crea prima un conto in Altro › Conti.", style = MaterialTheme.typography.bodySmall)
-        else ChipChoice(accounts.map { a -> a.id to a.name }, accountId ?: -1L, { id -> accountId = id })
+        else AccountPicker(accounts, picked, captureId, { set -> picked = set }, { id -> captureId = id })
         AmountField(budget, { v -> budget = v }, "Budget mensile (vuoto = dalle entrate recenti del conto)", Modifier.fillMaxWidth())
         AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese (facoltativo)", Modifier.fillMaxWidth())
         LabeledSwitch("Rileva le spese dalle notifiche", capture, { v -> capture = v }, supporting = "L'app dell'altra persona le manda a te come movimenti provvisori del conto")
         LabeledSwitch("Mostra il grafico del ritmo", chart, { v -> chart = v }, supporting = "Se spento vede solo la cifra giornaliera")
         OutlinedTextField(note, { v -> note = v }, label = { Text("Messaggio per l'altra persona (facoltativo)") }, modifier = Modifier.fillMaxWidth())
-        Button(enabled = !busy && accountId != null && key.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("share_create"), onClick = {
-            onCreate(url, key, accountId ?: return@Button, ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim()))
+        Button(enabled = !busy && picked.isNotEmpty() && key.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("share_create"), onClick = {
+            val ids = accounts.map { a -> a.id }.filter { id -> id in picked }
+            onCreate(url, key, ids, captureId?.takeIf { id -> id in ids } ?: ids.first(), ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim()))
         }) { Text("Crea la condivisione") }
     }
 }
@@ -128,7 +129,7 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
     val code = remember(link.shareId, link.keyText, link.guestToken) { SharePairing.encode(link) }
     var confirmRevoke by remember { mutableStateOf(false) }
     SectionCard(title = "Condivisione attiva") {
-        Text("Conto: " + d.accountName(link.accountId), style = MaterialTheme.typography.titleMedium)
+        Text((if (link.sharedIds.size > 1) "Conti: " else "Conto: ") + link.sharedIds.joinToString(", ") { id -> d.accountName(id) }, style = MaterialTheme.typography.titleMedium)
         Text("Ultimo riepilogo pubblicato: " + whenText(link.lastPublishedAt) + " · ultimo controllo spese: " + whenText(link.lastPulledAt), style = MaterialTheme.typography.bodyMedium)
         Text("Spese importate dall'altro telefono: ${link.importedCount}", style = MaterialTheme.typography.bodyMedium)
         Button(enabled = !busy, onClick = { vm.sync() }, modifier = Modifier.fillMaxWidth().testTag("share_sync")) { Icon(Icons.Default.Sync, null); Spacer(Modifier.width(8.dp)); Text("Sincronizza ora") }
@@ -145,7 +146,7 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
             }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Invia") }
         }
     }
-    ConfigCard(link, busy) { cfg -> vm.saveConfig(cfg) }
+    ConfigCard(link, d, busy) { cfg, ids, capture -> vm.saveConfig(cfg, ids, capture) }
     OutlinedButton(onClick = { confirmRevoke = true }, enabled = !busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth().testTag("share_revoke")) { Text("Revoca la condivisione") }
     if (confirmRevoke) AlertDialog(onDismissRequest = { confirmRevoke = false }, title = { Text("Revocare la condivisione?") },
         text = { Text("L'altra persona non vedrà più nulla e le spese non ancora importate sul servizio vengono cancellate. I movimenti già importati restano nell'app.") },
@@ -154,18 +155,43 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
 }
 
 @Composable
-private fun ConfigCard(link: ShareLink, busy: Boolean, onSave: (ShareConfig) -> Unit) {
+private fun ConfigCard(link: ShareLink, d: AppData, busy: Boolean, onSave: (ShareConfig, List<Long>, Long) -> Unit) {
     var budget by remember(link.budgetMonthly) { mutableStateOf(plain(link.budgetMonthly)) }
     var savings by remember(link.savingsMonthly) { mutableStateOf(plain(link.savingsMonthly)) }
     var capture by remember(link.captureNotifications) { mutableStateOf(link.captureNotifications) }
     var chart by remember(link.showChart) { mutableStateOf(link.showChart) }
     var note by remember(link.note) { mutableStateOf(link.note) }
+    var picked by remember(link.sharedIds) { mutableStateOf(link.sharedIds.toSet()) }
+    var captureId by remember(link.accountId) { mutableStateOf<Long?>(link.accountId) }
+    val accounts = d.accounts.filter { a -> !a.archived || a.id in link.sharedIds }
     SectionCard(title = "Cosa vede l'altra persona") {
+        AccountPicker(accounts, picked, captureId, { set -> picked = set }, { id -> captureId = id })
         AmountField(budget, { v -> budget = v }, "Budget mensile (vuoto = dalle entrate recenti)", Modifier.fillMaxWidth())
         AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese", Modifier.fillMaxWidth())
         LabeledSwitch("Rileva le spese dalle notifiche", capture, { v -> capture = v })
         LabeledSwitch("Mostra il grafico del ritmo", chart, { v -> chart = v })
         OutlinedTextField(note, { v -> note = v }, label = { Text("Messaggio per l'altra persona") }, modifier = Modifier.fillMaxWidth())
-        Button(enabled = !busy, onClick = { onSave(ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim())) }, modifier = Modifier.fillMaxWidth().testTag("share_save")) { Text("Salva e aggiorna") }
+        Button(enabled = !busy && picked.isNotEmpty(), onClick = {
+            val ids = accounts.map { a -> a.id }.filter { id -> id in picked }
+            onSave(ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim()), ids, captureId?.takeIf { id -> id in ids } ?: ids.first())
+        }, modifier = Modifier.fillMaxWidth().testTag("share_save")) { Text("Salva e aggiorna") }
+    }
+}
+
+/** Scelta di uno o più conti da condividere e, se sono più d'uno, di quello che riceve le spese rilevate dall'altro telefono. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AccountPicker(accounts: List<it.spese.core.model.Account>, picked: Set<Long>, captureId: Long?, onPicked: (Set<Long>) -> Unit, onCapture: (Long) -> Unit) {
+    Text("Conti da condividere", style = MaterialTheme.typography.labelLarge)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        accounts.forEach { a ->
+            FilterChip(a.id in picked, { onPicked(if (a.id in picked) picked - a.id else picked + a.id) }, { Text(a.name) }, Modifier.testTag("share_acc_${a.id}"))
+        }
+    }
+    Text("Budget e ritmo sono quelli di tutti i conti scelti insieme.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val chosen = accounts.filter { a -> a.id in picked }
+    if (chosen.size > 1) {
+        Text("Le spese rilevate dall'altro telefono vanno su", style = MaterialTheme.typography.labelLarge)
+        ChipChoice(chosen.map { a -> a.id to a.name }, captureId?.takeIf { id -> id in picked } ?: chosen.first().id, { id -> onCapture(id) })
     }
 }

@@ -12,21 +12,36 @@ data class ShareSyncResult(val imported: Int, val published: Boolean, val proble
 class ShareService @Inject constructor(
     private val links: ShareLinkRepository, private val api: ShareApi, private val tx: TransactionRepository, private val data: StateFlow<AppData>,
 ) {
-    suspend fun create(serverUrl: String, createKey: String, accountId: Long, cfg: ShareConfig): ShareLink {
+    suspend fun create(serverUrl: String, createKey: String, accountId: Long, cfg: ShareConfig): ShareLink = create(serverUrl, createKey, listOf(accountId), accountId, cfg)
+
+    /** [accountIds]: i conti condivisi; [captureAccountId]: il conto che riceve le spese rilevate dall'altro telefono (uno dei conti condivisi). */
+    suspend fun create(serverUrl: String, createKey: String, accountIds: List<Long>, captureAccountId: Long, cfg: ShareConfig): ShareLink {
         val base = ShareUrl.normalize(serverUrl) ?: throw ShareApiException("Indirizzo del servizio non valido: deve iniziare con https://")
         if (createKey.isBlank()) throw ShareApiException("Inserisci la chiave di creazione impostata su Cloudflare")
         val d = data.first { it.loaded }
-        if (d.accountsById[accountId] == null) throw ShareApiException("Scegli il conto da condividere")
+        val ids = checkAccounts(d, accountIds, captureAccountId)
         val created = api.create(base, createKey.trim())
-        links.set(ShareLink(base, created.id, created.ownerToken, created.guestToken, ShareCrypto.keyToText(ShareCrypto.newKey()), accountId).withConfig(cfg))
+        links.set(ShareLink(base, created.id, created.ownerToken, created.guestToken, ShareCrypto.keyToText(ShareCrypto.newKey()), captureAccountId, ids).withConfig(cfg))
         // se il budget non è ancora calcolabile la condivisione esiste comunque: il riepilogo partirà alla prima sincronizzazione riuscita
         runCatching { publish() }
         return links.get()!!
     }
 
-    /** Cambia le scelte (budget, risparmio, funzioni, nota) e le pubblica subito. */
-    suspend fun updateConfig(cfg: ShareConfig): ShareLink {
-        links.update { l -> l.withConfig(cfg) }
+    private fun checkAccounts(d: AppData, accountIds: List<Long>, captureAccountId: Long): List<Long> {
+        val ids = accountIds.distinct()
+        if (ids.isEmpty() || ids.any { id -> d.accountsById[id] == null }) throw ShareApiException("Scegli almeno un conto da condividere")
+        if (captureAccountId !in ids) throw ShareApiException("Il conto che riceve le spese rilevate deve essere uno di quelli condivisi")
+        return ids
+    }
+
+    /** Cambia le scelte (budget, risparmio, funzioni, nota ed eventualmente i conti) e le pubblica subito. */
+    suspend fun updateConfig(cfg: ShareConfig, accountIds: List<Long>? = null, captureAccountId: Long? = null): ShareLink {
+        val cur = links.get() ?: throw ShareApiException("Nessuna condivisione attiva")
+        if (accountIds != null) {
+            val capture = captureAccountId ?: cur.accountId.takeIf { it in accountIds } ?: accountIds.firstOrNull() ?: 0L
+            val ids = checkAccounts(data.first { it.loaded }, accountIds, capture)
+            links.update { l -> l.withConfig(cfg).copy(accountIds = ids, accountId = capture) }
+        } else links.update { l -> l.withConfig(cfg) }
         publish()
         return links.get()!!
     }
@@ -35,8 +50,8 @@ class ShareService @Inject constructor(
         val link = links.get() ?: throw ShareApiException("Nessuna condivisione attiva")
         val key = link.key ?: throw ShareApiException("La chiave della condivisione non è valida")
         val d = data.first { it.loaded }
-        val snap = ShareSnapshotBuilder.build(d, link.accountId, link.config(), now)
-            ?: throw ShareApiException("Servono più movimenti sul conto condiviso (o un budget fissato a mano) per calcolare il limite")
+        val snap = ShareSnapshotBuilder.build(d, link.sharedIds, link.config(), now)
+            ?: throw ShareApiException("Servono più movimenti sui conti condivisi (o un budget fissato a mano) per calcolare il limite")
         api.publish(link.serverUrl, link.shareId, link.ownerToken, ShareCrypto.encrypt(ShareCodec.encodeSnapshot(snap), key))
         links.update { l -> l.copy(lastPublishedAt = now) }
         return links.get() ?: link
