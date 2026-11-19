@@ -10,7 +10,7 @@ data class ShareSyncResult(val imported: Int, val published: Boolean, val proble
 
 /** Crea, aggiorna e revoca la condivisione, pubblica il riepilogo e importa le spese rilevate dall'altro telefono. */
 class ShareService @Inject constructor(
-    private val links: ShareLinkRepository, private val api: ShareApi, private val tx: TransactionRepository, private val data: StateFlow<AppData>,
+    private val links: ShareLinkRepository, private val api: ShareApi, private val tx: TransactionRepository, private val data: StateFlow<AppData>, private val inputs: BudgetInputsSource,
 ) {
     suspend fun create(serverUrl: String, createKey: String, accountId: Long, cfg: ShareConfig): ShareLink = create(serverUrl, createKey, listOf(accountId), accountId, cfg)
 
@@ -50,7 +50,7 @@ class ShareService @Inject constructor(
         val link = links.get() ?: throw ShareApiException("Nessuna condivisione attiva")
         val key = link.key ?: throw ShareApiException("La chiave della condivisione non è valida")
         val d = data.first { it.loaded }
-        val snaps = ShareSnapshotBuilder.buildAll(d, link.sharedIds, link.config(), now, thread = link.thread.takeLast(THREAD))
+        val snaps = ShareSnapshotBuilder.buildAll(d, link.sharedIds, link.config(), now, thread = link.thread.takeLast(THREAD), inputs = inputs.get())
         if (snaps.isEmpty()) throw ShareApiException("Servono più movimenti sui conti condivisi (o un budget fissato a mano) per calcolare il limite")
         api.publish(link.serverUrl, link.shareId, link.ownerToken, ShareCrypto.encrypt(ShareCodec.encodeBundle(snaps), key))
         links.update { l -> l.copy(lastPublishedAt = now) }

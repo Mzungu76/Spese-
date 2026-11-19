@@ -20,6 +20,7 @@ object ShareCodec {
         put("cur", decs(s.current)); put("avg", decs(s.average)); put("opt", decs(s.optimal))
         put("capture", s.features.captureNotifications); put("chart", s.features.showChart); put("note", s.note)
         s.previousTotal?.let { put("prev", it.toPlainString()) }
+        s.upcomingTotal?.let { put("upc", it.toPlainString()) }; s.reserve?.let { put("res", it.toPlainString()) }
         if (s.recent.isNotEmpty()) put("recent", buildJsonArray { s.recent.forEach { r -> add(buildJsonObject { put("d", r.day.toEpochDay()); put("t", r.description); put("a", r.amount.toPlainString()); if (r.account.isNotBlank()) put("c", r.account) }) } })
         if (s.categories.isNotEmpty()) put("cats", buildJsonArray { s.categories.forEach { c -> add(buildJsonObject { put("n", c.name); put("p", c.percent) }) } })
         if (s.thread.isNotEmpty()) put("thread", buildJsonArray { s.thread.forEach { m -> add(buildJsonObject { put("i", m.id); put("h", if (m.fromHost) 1 else 0); put("t", m.text); put("at", m.at) }) } })
@@ -51,7 +52,7 @@ object ShareCodec {
             features = ShareFeatures(o.str("capture") != "false", o.str("chart") != "false"), note = o.str("note").orEmpty(), version = o.str("v")?.toIntOrNull() ?: 1,
             recent = (o["recent"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { r -> ShareRecent(r.day("d") ?: return@let null, r.str("t").orEmpty(), r.dec("a") ?: return@let null, r.str("c").orEmpty()) } } ?: emptyList(),
             categories = (o["cats"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { c -> ShareCategory(c.str("n") ?: return@let null, c.str("p")?.toIntOrNull() ?: return@let null) } } ?: emptyList(),
-            previousTotal = o.dec("prev"),
+            previousTotal = o.dec("prev"), upcomingTotal = o.dec("upc"), reserve = o.dec("res"),
             thread = (o["thread"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { m -> ThreadMsg(m.str("i") ?: return@let null, m.str("h") == "1", m.str("t").orEmpty(), m.str("at")?.toLongOrNull() ?: return@let null) } } ?: emptyList(),
         )
     }

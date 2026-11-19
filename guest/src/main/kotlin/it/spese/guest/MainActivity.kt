@@ -171,6 +171,7 @@ private fun BudgetCard(s: ShareSnapshot) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("Speso", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(Money.eur0(s.spentToDate), fontWeight = FontWeight.SemiBold)
         }
+        s.upcomingTotal?.takeIf { u -> u.signum() > 0 }?.let { u -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Da pagare", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(Money.eur0(u), fontWeight = FontWeight.SemiBold) } }
         s.limit?.let { l -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Limite", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(Money.eur0(l), fontWeight = FontWeight.SemiBold) } }
         s.optimalToDate?.let { o -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("Previsto a oggi", color = MaterialTheme.colorScheme.onSurfaceVariant); Text(Money.eur0(o), fontWeight = FontWeight.SemiBold) } }
         Text("${Dates.fmt(s.periodStart)} – ${Dates.fmt(s.periodEnd)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

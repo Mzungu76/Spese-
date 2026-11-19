@@ -101,6 +101,7 @@ private fun CreateCard(d: AppData, busy: Boolean, onCreate: (String, String, Lis
     var captureId by remember { mutableStateOf<Long?>(null) }
     var budget by remember { mutableStateOf("") }
     var savings by remember { mutableStateOf("") }
+    var safety by remember { mutableStateOf(10) }
     var capture by remember { mutableStateOf(true) }
     var chart by remember { mutableStateOf(true) }
     var note by remember { mutableStateOf("") }
@@ -112,13 +113,15 @@ private fun CreateCard(d: AppData, busy: Boolean, onCreate: (String, String, Lis
         if (accounts.isEmpty()) Text("Crea prima un conto in Altro › Conti.", style = MaterialTheme.typography.bodySmall)
         else AccountPicker(accounts, picked, captureId, { set -> picked = set }, { id -> captureId = id })
         AmountField(budget, { v -> budget = v }, "Budget mensile (vuoto = dalle entrate recenti del conto)", Modifier.fillMaxWidth())
-        AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese (facoltativo)", Modifier.fillMaxWidth())
+        AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese (vuoto = dagli obiettivi)", Modifier.fillMaxWidth())
+        Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
+        ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, safety, { p -> safety = p })
         LabeledSwitch("Rileva le spese dalle notifiche", capture, { v -> capture = v }, supporting = "L'app dell'altra persona le manda a te come movimenti provvisori del conto")
         LabeledSwitch("Mostra il grafico del ritmo", chart, { v -> chart = v }, supporting = "Se spento vede solo la cifra giornaliera")
         OutlinedTextField(note, { v -> note = v }, label = { Text("Messaggio per l'altra persona (facoltativo)") }, modifier = Modifier.fillMaxWidth())
         Button(enabled = !busy && picked.isNotEmpty() && key.isNotBlank(), modifier = Modifier.fillMaxWidth().testTag("share_create"), onClick = {
             val ids = accounts.map { a -> a.id }.filter { id -> id in picked }
-            onCreate(url, key, ids, captureId?.takeIf { id -> id in ids } ?: ids.first(), ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim()))
+            onCreate(url, key, ids, captureId?.takeIf { id -> id in ids } ?: ids.first(), ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim(), safety))
         }) { Text("Crea la condivisione") }
     }
 }
@@ -160,6 +163,7 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
 private fun ConfigCard(link: ShareLink, d: AppData, busy: Boolean, onSave: (ShareConfig, List<Long>, Long) -> Unit) {
     var budget by remember(link.budgetMonthly) { mutableStateOf(plain(link.budgetMonthly)) }
     var savings by remember(link.savingsMonthly) { mutableStateOf(plain(link.savingsMonthly)) }
+    var safety by remember(link.safetyPct) { mutableStateOf(link.safetyPct) }
     var capture by remember(link.captureNotifications) { mutableStateOf(link.captureNotifications) }
     var chart by remember(link.showChart) { mutableStateOf(link.showChart) }
     var note by remember(link.note) { mutableStateOf(link.note) }
@@ -169,13 +173,15 @@ private fun ConfigCard(link: ShareLink, d: AppData, busy: Boolean, onSave: (Shar
     SectionCard(title = "Cosa vede l'altra persona") {
         AccountPicker(accounts, picked, captureId, { set -> picked = set }, { id -> captureId = id })
         AmountField(budget, { v -> budget = v }, "Budget mensile (vuoto = dalle entrate recenti)", Modifier.fillMaxWidth())
-        AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese", Modifier.fillMaxWidth())
+        AmountField(savings, { v -> savings = v }, "Da mettere da parte ogni mese (vuoto = dagli obiettivi)", Modifier.fillMaxWidth())
+        Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
+        ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, safety, { p -> safety = p })
         LabeledSwitch("Rileva le spese dalle notifiche", capture, { v -> capture = v })
         LabeledSwitch("Mostra il grafico del ritmo", chart, { v -> chart = v })
         OutlinedTextField(note, { v -> note = v }, label = { Text("Messaggio per l'altra persona") }, modifier = Modifier.fillMaxWidth())
         Button(enabled = !busy && picked.isNotEmpty(), onClick = {
             val ids = accounts.map { a -> a.id }.filter { id -> id in picked }
-            onSave(ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim()), ids, captureId?.takeIf { id -> id in ids } ?: ids.first())
+            onSave(ShareConfig(parseAmountOrNull(budget), parseAmountOrNull(savings), ShareFeatures(capture, chart), note.trim(), safety), ids, captureId?.takeIf { id -> id in ids } ?: ids.first())
         }, modifier = Modifier.fillMaxWidth().testTag("share_save")) { Text("Salva e aggiorna") }
     }
 }

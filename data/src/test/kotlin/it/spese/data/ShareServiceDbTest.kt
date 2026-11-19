@@ -54,7 +54,7 @@ class ShareServiceDbTest {
         val first = LocalDate.now().withDayOfMonth(1)
         env.tx.insertAll(listOf(nt("a1", acc.id, "-20", first), nt("a2", acc.id, "-35", first)))
         val d = AppDataSource(env.tx, env.cats, env.accounts, env.rules, env.dues, env.scenarios, env.quotas, env.settings).observe().first()
-        return ShareService(links, api, env.tx, MutableStateFlow(d)) to acc.id
+        return ShareService(links, api, env.tx, MutableStateFlow(d), EmptyBudgetInputs) to acc.id
     }
 
     @Test fun `crea la condivisione, pubblica il riepilogo cifrato con il budget scelto`() = runBlocking {
@@ -79,7 +79,7 @@ class ShareServiceDbTest {
         val first = LocalDate.now().withDayOfMonth(1)
         env.tx.insertAll(listOf(nt("m1", a1.id, "-20", first), nt("m2", a2.id, "-35", first), nt("m3", altro.id, "-999", first)))
         val d = AppDataSource(env.tx, env.cats, env.accounts, env.rules, env.dues, env.scenarios, env.quotas, env.settings).observe().first()
-        val svc = ShareService(links, api, env.tx, MutableStateFlow(d))
+        val svc = ShareService(links, api, env.tx, MutableStateFlow(d), EmptyBudgetInputs)
         val link = svc.create("https://spese.example.workers.dev", "chiave", listOf(a1.id, a2.id), a2.id, ShareConfig(budgetMonthly = BigDecimal(600)))
         assertEquals(listOf(a1.id, a2.id), link.sharedIds); assertEquals(a2.id, link.accountId)
         val snap = ShareCodec.decodeBundle(ShareCrypto.decrypt(api.out!!, link.key!!)!!).first { x -> x.unit == "MONTH" }

@@ -50,6 +50,7 @@ abstract class RepositoryModule {
     @Binds abstract fun reminders(i: it.spese.data.settings.ReminderRepositoryImpl): it.spese.domain.reminders.ReminderRepository
     @Binds abstract fun goals(i: it.spese.data.settings.GoalRepositoryImpl): it.spese.domain.repository.GoalRepository
     @Binds abstract fun shareLink(i: it.spese.data.settings.ShareLinkRepositoryImpl): it.spese.domain.sharing.ShareLinkRepository
+    @Binds abstract fun budgetInputs(i: it.spese.domain.sharing.RepoBudgetInputs): it.spese.domain.sharing.BudgetInputsSource
     @Binds abstract fun shareApi(i: it.spese.domain.sharing.HttpShareApi): it.spese.domain.sharing.ShareApi
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore

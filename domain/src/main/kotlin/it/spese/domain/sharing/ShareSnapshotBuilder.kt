@@ -3,6 +3,7 @@ package it.spese.domain.sharing
 import it.spese.domain.finance.PaceEngine
 import it.spese.domain.finance.Period
 import it.spese.domain.finance.CategoryTree
+import it.spese.domain.finance.DailyBudgetEngine
 import it.spese.core.model.TxKind
 import it.spese.domain.classification.merchant
 import java.math.BigDecimal
@@ -13,9 +14,23 @@ import java.time.LocalDate
 
 /** Costruisce ciò che si pubblica per l'altra persona: il ritmo di spesa del conto condiviso (anche se è «gestito da altri») e il suo limite. */
 object ShareSnapshotBuilder {
-    /** I tre periodi che l'altra persona può scegliere: settimana, mese e trimestre (quelli che non si possono calcolare mancano). */
-    fun buildAll(data: AppData, accountIds: List<Long>, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now(), thread: List<ThreadMsg> = emptyList()): List<ShareSnapshot> =
-        listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p -> build(data, accountIds, cfg, nowMillis, realToday, p, thread) }
+    /**
+     * I tre periodi che l'altra persona può scegliere: settimana, mese e trimestre (quelli che non si possono calcolare mancano).
+     * Il limite viene dal budget giornaliero (entrate prudenti − risparmio degli obiettivi − margine; la cifra al giorno toglie anche le uscite note da pagare)
+     * ed è lo stesso per tutti i periodi: settimana e trimestre lo scalano, la cifra al giorno è sempre quella vera.
+     */
+    fun buildAll(data: AppData, accountIds: List<Long>, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now(), thread: List<ThreadMsg> = emptyList(), inputs: BudgetInputs = BudgetInputs()): List<ShareSnapshot> {
+        val ids = accountIds.distinct().filter { id -> data.accountsById[id] != null }.toSet()
+        if (ids.isEmpty()) return emptyList()
+        val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids })
+        val budget = DailyBudgetEngine.compute(scoped, inputs.rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, cfg.safetyPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly)
+        val cfg2 = if (budget?.limit != null) cfg.copy(budgetMonthly = budget.limit) else cfg
+        return listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p ->
+            build(data, accountIds, cfg2, nowMillis, realToday, p, thread)?.let { s ->
+                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve)
+            }
+        }
+    }
 
     fun build(data: AppData, accountId: Long, cfg: ShareConfig, nowMillis: Long, realToday: LocalDate = LocalDate.now()): ShareSnapshot? = build(data, listOf(accountId), cfg, nowMillis, realToday)
 

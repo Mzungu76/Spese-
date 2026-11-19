@@ -21,6 +21,8 @@ data class ShareConfig(
     val features: ShareFeatures = ShareFeatures(),
     /** Un messaggio facoltativo per l'altra persona. */
     val note: String = "",
+    /** Margine di sicurezza (% di ciò che resta dopo risparmio e uscite fisse) tenuto fuori dalla cifra al giorno. */
+    val safetyPct: Int = 10,
 )
 
 /** Quello che l'app madre pubblica: il budget del periodo e i dati del grafico del ritmo (una cifra per giorno). */
@@ -36,6 +38,8 @@ data class ShareSnapshot(
     /** Ultime spese dei conti condivisi, dove vanno i soldi nel periodo, quanto si è speso nel periodo precedente e la conversazione tra le due persone. */
     val recent: List<ShareRecent> = emptyList(), val categories: List<ShareCategory> = emptyList(), val previousTotal: BigDecimal? = null,
     val thread: List<ThreadMsg> = emptyList(),
+    /** Uscite note ancora da pagare nel mese (ricorrenze, abbonamenti, scadenze) e margine di sicurezza trattenuto. */
+    val upcomingTotal: BigDecimal? = null, val reserve: BigDecimal? = null,
 )
 
 data class ShareRecent(val day: LocalDate, val description: String, val amount: BigDecimal, val account: String = "")

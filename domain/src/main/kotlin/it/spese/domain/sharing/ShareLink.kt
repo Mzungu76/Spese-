@@ -17,7 +17,7 @@ data class ShareLink(
     /** Tutti i conti condivisi (budget e ritmo sono la somma dei loro movimenti); vuoto = solo [accountId] (condivisioni create prima dei conti multipli). */
     val accountIds: List<Long> = emptyList(),
     val budgetMonthly: String? = null, val savingsMonthly: String? = null,
-    val captureNotifications: Boolean = true, val showChart: Boolean = true, val note: String = "",
+    val captureNotifications: Boolean = true, val showChart: Boolean = true, val note: String = "", val safetyPct: Int = 10,
     /** Ultima spesa dell'altro telefono già importata, ultimo riepilogo pubblicato e ultimo controllo. */
     val lastInSeq: Long = 0, val lastPublishedAt: Long = 0, val lastPulledAt: Long = 0, val importedCount: Int = 0,
     /** La conversazione con l'altra persona (ultimi messaggi). */
@@ -25,9 +25,9 @@ data class ShareLink(
 ) {
     val key: ByteArray? get() = ShareCrypto.keyFromText(keyText)
     val sharedIds: List<Long> get() = accountIds.ifEmpty { listOf(accountId) }
-    fun config() = ShareConfig(budgetMonthly?.toBigDecimalOrNull(), savingsMonthly?.toBigDecimalOrNull(), ShareFeatures(captureNotifications, showChart), note)
+    fun config() = ShareConfig(budgetMonthly?.toBigDecimalOrNull(), savingsMonthly?.toBigDecimalOrNull(), ShareFeatures(captureNotifications, showChart), note, safetyPct)
     fun withConfig(c: ShareConfig) = copy(budgetMonthly = c.budgetMonthly?.toPlainString(), savingsMonthly = c.savingsMonthly?.toPlainString(),
-        captureNotifications = c.features.captureNotifications, showChart = c.features.showChart, note = c.note)
+        captureNotifications = c.features.captureNotifications, showChart = c.features.showChart, note = c.note, safetyPct = c.safetyPct)
 }
 
 object ShareLinkCodec {
