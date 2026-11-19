@@ -69,7 +69,7 @@ class ShareService @Inject constructor(
             if (page.items.isEmpty()) break
             // un messaggio che non si decifra (chiave diversa, manomissione) si scarta, ma non blocca gli altri
             val plain = page.items.mapNotNull { item -> ShareCrypto.decrypt(item.blob, key) }
-            val messages = plain.mapNotNull { text -> ShareCodec.decodeMessage(text) }
+            val messages = plain.mapNotNull { text -> ShareCodec.decodeMessage(text) }.distinctBy { m -> m.id }
             val events = plain.flatMap { text -> ShareCodec.decodeEvents(text) }
             if (messages.isNotEmpty()) links.update { l -> l.copy(thread = (l.thread + messages.filter { m -> l.thread.none { x -> x.id == m.id } }).sortedBy { m -> m.at }.takeLast(THREAD)) }
             val news = ShareEventImporter.toNewTransactions(events, link.accountId)
