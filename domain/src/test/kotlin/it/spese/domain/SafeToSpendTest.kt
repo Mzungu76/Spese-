@@ -27,15 +27,18 @@ class SafeToSpendTest {
     private val march = listOf(tx("2026-03-01", 2000, 2), tx("2026-03-03", -500, 4), tx("2026-03-05", -300))
     private val rent = RecurringRule(1, "Palestra", TxKind.SPESA, BigDecimal(100), dayOfMonth = 25, startDate = d("2026-01-01"), lastGenerated = d("2026-02-25"))
 
-    @Test fun `disponibile = entrate attese - risparmio - speso - uscite note, diviso per i giorni che restano`() {
-        val r = SafeToSpendEngine.compute(data(history() + march), listOf(rent), realToday = d("2026-03-15"))!!
+    private val plan300 = listOf(Goal(1, "Fondo", BigDecimal(9000), monthly = BigDecimal(300)))
+
+    @Test fun `disponibile = entrate prudenti - risparmio - margine - speso - uscite note, diviso per i giorni che restano`() {
+        val r = SafeToSpendEngine.compute(data(history() + march), listOf(rent), goals = plan300, realToday = d("2026-03-15"))!!
         assertEquals(d("2026-03-01"), r.periodStart); assertEquals(d("2026-03-31"), r.periodEnd)
         assertEquals(17, r.daysLeft); assertEquals(31, r.daysTotal)
         eq("2000", r.expectedIncome); eq("300", r.savingsTarget); eq("800", r.spentToDate); eq("500", r.fixedPaid)
         assertEquals(1, r.upcoming.size); assertEquals(d("2026-03-25"), r.upcoming[0].date); eq("100", r.upcomingTotal)
-        eq("800", r.available); eq("47.06", r.perDay)
-        // piano: 1.100 di spesa variabile in 31 giorni; al giorno 15 ne spettavano 532,26 e ne hai spesi 300
-        eq("1100", r.variableBudget); eq("232.26", r.deltaVsPlan)
+        // dopo risparmio (300), affitto pagato (500) e uscita in arrivo (100) restano 1.100: il margine del 10% ne trattiene 110
+        eq("110", r.safetyReserve)
+        eq("690", r.available); eq("40.59", r.perDay)                                // (2000 − 300 − 110 − 800 − 100) / 17
+        eq("990", r.variableBudget); eq("179.03", r.deltaVsPlan)                      // 990 × 15/31 = 479,03 spettavano, 300 spesi
         assertEquals(SafeStatus.OK, r.status); assertFalse(r.stale)
     }
 

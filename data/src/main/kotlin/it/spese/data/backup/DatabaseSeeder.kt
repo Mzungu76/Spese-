@@ -20,7 +20,7 @@ class DatabaseSeeder @Inject constructor(private val db: AppDatabase) {
     }
 
     private suspend fun insertBaseScenario() {
-        db.scenarios().insert(ScenarioEntity(name = "Piano attuale", isBase = true, goalMode = GoalMode.MONTHLY.key, goalValueCents = Money.toCents(Money.of(300)), goalMonths = 12))
+        db.scenarios().insert(ScenarioEntity(name = "Piano attuale", isBase = true, goalMode = GoalMode.MONTHLY.key, goalValueCents = 0, goalMonths = 12))
     }
 
     private suspend fun seed() {

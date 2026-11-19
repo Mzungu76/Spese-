@@ -81,6 +81,13 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                 }
             }
             item {
+                SectionCard(title = "Budget giornaliero") {
+                    Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, s.budgetMarginPct, { p -> vm.update { st -> st.copy(budgetMarginPct = p) } })
+                    Text("Quota di ciò che resta dopo risparmio e uscite fisse che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate variabili che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            item {
                 SectionCard(title = "Aspetto") {
                     ChipChoice(listOf(ThemeMode.SYSTEM to "Sistema", ThemeMode.LIGHT to "Chiaro", ThemeMode.DARK to "Scuro"), s.themeMode, { m -> vm.update { it.copy(themeMode = m) } })
                 }

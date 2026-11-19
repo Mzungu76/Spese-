@@ -208,7 +208,8 @@ data class Due(
 
 data class SavingsGoal(
     val mode: GoalMode = GoalMode.MONTHLY,
-    val value: BigDecimal = BigDecimal(300),
+    /** Risparmio mensile (o totale, secondo il modo). 0 = nessun obiettivo impostato: non si riserva nulla. */
+    val value: BigDecimal = BigDecimal.ZERO,
     val months: Int = 12,
     /** Entrate mensili attese; null = media del periodo. */
     val expectedIncome: BigDecimal? = null,

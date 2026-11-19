@@ -47,16 +47,14 @@ data class SafeToSpendReport(
     val status: SafeStatus,
     /** La quota di risparmio viene dagli obiettivi (altrimenti dall'obiettivo unico del Piano). */
     val savingsFromGoals: Boolean = false,
+    /** Margine di sicurezza trattenuto (non spendibile): una quota di ciò che resta dopo risparmio e uscite fisse. */
+    val safetyReserve: BigDecimal = BigDecimal.ZERO,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
     val variableSpent: BigDecimal get() = spentToDate - fixedPaid
 }
 
 object SafeToSpendEngine {
-    /** Entrate attese: media degli ultimi mesi completi, ma mai meno di quanto già incassato nel periodo. */
-    private const val HISTORY_MONTHS = 3
-    private const val STALE_DAYS = 45L
-
     fun compute(
         data: AppData,
         rules: List<RecurringRule> = emptyList(),
@@ -64,59 +62,41 @@ object SafeToSpendEngine {
         accountId: Long? = null,
         realToday: LocalDate = LocalDate.now(),
         goals: List<Goal> = emptyList(),
+        incomeOverrides: Map<Long, it.spese.domain.health.IncomeNature> = emptyMap(),
+        marginPct: Int = DailyBudgetEngine.DEFAULT_MARGIN_PCT,
     ): SafeToSpendReport? = compute(
         data.transactions.filter { accountId == null || it.accountId == accountId }.filter { it.kind != TxKind.TRASFERIMENTO },
-        data, rules, patterns, realToday, goals,
+        data, rules, patterns, realToday, goals, incomeOverrides, marginPct,
     )
 
     /** Come [compute], rilevando da sé abbonamenti e rate dai movimenti (senza quelli ignorati dall'utente o già coperti da una ricorrenza). Unico ingresso per Home, notifica e widget. */
-    fun forApp(data: AppData, rules: List<RecurringRule>, ignoredPatterns: Set<String> = emptySet(), accountId: Long? = null, realToday: LocalDate = LocalDate.now(), goals: List<Goal> = emptyList()): SafeToSpendReport? {
+    fun forApp(
+        data: AppData, rules: List<RecurringRule>, ignoredPatterns: Set<String> = emptySet(), accountId: Long? = null, realToday: LocalDate = LocalDate.now(), goals: List<Goal> = emptyList(),
+        incomeOverrides: Map<Long, it.spese.domain.health.IncomeNature> = emptyMap(), marginPct: Int = DailyBudgetEngine.DEFAULT_MARGIN_PCT,
+    ): SafeToSpendReport? {
         if (!data.loaded) return null
         val patterns = SubscriptionDetector.detect(data.transactions, SubscriptionDetector.excludedCategories(data.categories), realToday, rules).filter { it.key !in ignoredPatterns }
-        return compute(data, rules, patterns, accountId, realToday, goals)
+        return compute(data, rules, patterns, accountId, realToday, goals, incomeOverrides, marginPct)
     }
 
-    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>): SafeToSpendReport? {
-        if (tx.isEmpty()) return null
-        val cal: MonthCalendar = data.calendar
-        val today = AlertEngine.referenceToday(realToday, tx)
-        val stale = today != realToday
-        val month = cal.monthOf(today)
-        val start = cal.start(month); val end = cal.end(month)
-        val daysTotal = cal.length(month)
-        val elapsed = (ChronoUnit.DAYS.between(start, today) + 1).toInt().coerceIn(1, daysTotal)
-        val daysLeft = (daysTotal - elapsed + 1).coerceAtLeast(0)
-
-        val inPeriod = tx.filter { it.bookingDate >= start && it.bookingDate <= today }
-        val spent = inPeriod.filter { it.kind == TxKind.SPESA }.fold(BigDecimal.ZERO) { a, t -> a + t.amount.negate() }
-        val incomeToDate = inPeriod.filter { it.kind == TxKind.ENTRATA }.fold(BigDecimal.ZERO) { a, t -> a + t.amount }
-        val byId = data.categoriesById
-        val fixedPaid = inPeriod.filter { it.kind == TxKind.SPESA && CategoryTree.rootNature(it.categoryId, byId) == SpendNature.FIXED }
-            .fold(BigDecimal.ZERO) { a, t -> a + t.amount.negate() }
-
-        // entrate attese
-        val past = StatsEngine.compute(tx.filter { cal.monthOf(it.bookingDate) < month }, cal).byMonth
-        val months = past.keys.sorted().takeLast(HISTORY_MONTHS)
-        val avgIncome = if (months.isEmpty()) null else months.fold(BigDecimal.ZERO) { a, m -> a + past.getValue(m).income }.divide(BigDecimal(months.size), 2, RoundingMode.HALF_UP)
-        val expectedIncome = (avgIncome ?: BigDecimal.ZERO).max(incomeToDate)
-
-        val upcoming = upcoming(rules, patterns, data.dues, today, end, start)
-        val upcomingTotal = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
-        val savings = (if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, today) else AlertEngine.goalMonthly(data.goal)).max(BigDecimal.ZERO)
-
-        val variableBudget = expectedIncome - savings - fixedPaid - upcomingTotal
-        val available = expectedIncome - savings - spent - upcomingTotal
-        val perDay = if (daysLeft <= 0) null else available.divide(BigDecimal(daysLeft), 2, RoundingMode.HALF_UP)
-        val idealToDate = variableBudget.max(BigDecimal.ZERO).multiply(BigDecimal(elapsed)).divide(BigDecimal(daysTotal), 2, RoundingMode.HALF_UP)
-        val delta = idealToDate - (spent - fixedPaid)
+    /** La cifra «disponibile oggi» è il budget giornaliero ([DailyBudgetEngine]): entrate prudenti, obiettivi, uscite note e margine; qui solo il confronto con il piano. */
+    private fun compute(tx: List<Transaction>, data: AppData, rules: List<RecurringRule>, patterns: List<RecurringPattern>, realToday: LocalDate, goals: List<Goal>, overrides: Map<Long, it.spese.domain.health.IncomeNature>, marginPct: Int): SafeToSpendReport? {
+        val b = DailyBudgetEngine.compute(data.copy(transactions = tx), rules, emptySet(), goals, overrides, marginPct, null, realToday, null, patterns) ?: return null
+        val limit = b.limit ?: (b.expectedIncome - b.savings)
+        val variableBudget = limit - b.fixedPaid - b.upcomingTotal
+        val available = limit - b.spent - b.upcomingTotal
+        val perDay = if (b.daysLeft <= 0) null else available.divide(BigDecimal(b.daysLeft), 2, RoundingMode.HALF_UP)
+        val elapsed = (b.daysTotal - b.daysLeft + 1).coerceIn(1, b.daysTotal)
+        val idealToDate = variableBudget.max(BigDecimal.ZERO).multiply(BigDecimal(elapsed)).divide(BigDecimal(b.daysTotal), 2, RoundingMode.HALF_UP)
+        val delta = idealToDate - (b.spent - b.fixedPaid)
         val status = when {
-            avgIncome == null && incomeToDate.signum() == 0 -> SafeStatus.NOT_ENOUGH
+            b.income == null && b.incomeToDate.signum() == 0 && data.goal.expectedIncome == null -> SafeStatus.NOT_ENOUGH
             available.signum() < 0 -> SafeStatus.OVER
             delta.signum() < 0 -> SafeStatus.BEHIND
             else -> SafeStatus.OK
         }
-        return SafeToSpendReport(today, start, end, daysLeft, daysTotal, expectedIncome, incomeToDate, avgIncome == null || avgIncome < incomeToDate, savings,
-            spent, fixedPaid, upcoming, variableBudget, available, perDay, delta, stale, status, goals.isNotEmpty())
+        return SafeToSpendReport(b.today, b.periodStart, b.periodEnd, b.daysLeft, b.daysTotal, b.expectedIncome, b.incomeToDate, b.income == null || b.income.prudent < b.incomeToDate, b.savings,
+            b.spent, b.fixedPaid, b.upcoming, variableBudget, available, perDay, delta, b.stale, status, goals.isNotEmpty(), b.reserve)
     }
 
     /** Uscite note da oggi a fine periodo: ricorrenze manuali, abbonamenti/rate rilevati, scadenze. Niente doppioni tra ricorrenze e rilevati. */

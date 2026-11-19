@@ -105,9 +105,12 @@ class PaceTest {
         assertEquals(0, BigDecimal("1190.00").compareTo(goals.optimalToDate!!))
         // già speso 1.000 al giorno 10: restano 700 in 20 giorni
         assertEquals(0, BigDecimal("35.00").compareTo(goals.optimalDailyRemaining!!)); assertEquals(0, BigDecimal("56.67").compareTo(goals.optimalDailyAverage!!))
-        // senza obiettivi si risparmia il 20% delle entrate
+        // senza obiettivi non si risparmia nulla: il limite sono le entrate recenti
         val rate = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentMonth), d("2026-11-10"))!!
-        assertEquals(OptimalBasis.RATE, rate.optimalBasis); assertEquals(0, BigDecimal(1600).compareTo(rate.optimalTotal!!)); assertEquals(0, BigDecimal(400).compareTo(rate.savingsTarget))
+        assertEquals(OptimalBasis.RATE, rate.optimalBasis); assertEquals(0, BigDecimal(2000).compareTo(rate.optimalTotal!!)); assertEquals(0, BigDecimal.ZERO.compareTo(rate.savingsTarget))
+        // il budget giornaliero dell'app (entrate prudenti, obiettivi, margine) si dichiara come tale
+        val computed = PaceEngine.compute(data(l), TxFilter(period = Period.CurrentMonth), d("2026-11-10"), budgetMonthly = BigDecimal(1590), budgetIsComputed = true)!!
+        assertEquals(OptimalBasis.BUDGET, computed.optimalBasis); assertEquals(0, BigDecimal(1590).compareTo(computed.optimalTotal!!))
     }
 
     @Test fun `con categorie scelte il limite e la somma dei loro budget, e senza budget non c'e linea ottimale`() {

@@ -89,7 +89,7 @@ object DailyBudgetEngine {
      */
     fun compute(
         data: AppData, rules: List<RecurringRule> = emptyList(), ignoredPatterns: Set<String> = emptySet(), goals: List<Goal> = emptyList(),
-        incomeOverrides: Map<Long, IncomeNature> = emptyMap(), marginPct: Int = DEFAULT_MARGIN_PCT, manualLimit: BigDecimal? = null, realToday: LocalDate = LocalDate.now(), savingsOverride: BigDecimal? = null,
+        incomeOverrides: Map<Long, IncomeNature> = emptyMap(), marginPct: Int = DEFAULT_MARGIN_PCT, manualLimit: BigDecimal? = null, realToday: LocalDate = LocalDate.now(), savingsOverride: BigDecimal? = null, patterns: List<RecurringPattern>? = null,
     ): DailyBudget? {
         val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
         if (tx.isEmpty()) return null
@@ -108,13 +108,15 @@ object DailyBudgetEngine {
         val fixedPaid = inPeriod.filter { it.kind == TxKind.SPESA && CategoryTree.rootNature(it.categoryId, byId) == SpendNature.FIXED }.fold(BigDecimal.ZERO) { a, t -> a + t.amount.negate() }
 
         val est = IncomeEstimator.estimate(tx, cal, month, byId, incomeOverrides)
-        val expected = (est?.prudent ?: BigDecimal.ZERO).max(incomeToDate)
-        val patterns = SubscriptionDetector.detect(data.transactions, SubscriptionDetector.excludedCategories(data.categories), realToday, rules).filter { it.key !in ignoredPatterns }
-        val upcoming = SafeToSpendEngine.upcoming(rules, patterns, data.dues, today, end, start)
+        // le entrate mensili attese impostate a mano nel Piano prevalgono sulla stima dallo storico
+        val manualIncome = data.goal.expectedIncome?.takeIf { it.signum() > 0 }
+        val expected = (manualIncome ?: est?.prudent ?: BigDecimal.ZERO).max(incomeToDate)
+        val found = patterns ?: SubscriptionDetector.detect(data.transactions, SubscriptionDetector.excludedCategories(data.categories), realToday, rules).filter { it.key !in ignoredPatterns }
+        val upcoming = SafeToSpendEngine.upcoming(rules, found, data.dues, today, end, start)
         val upcomingTotal = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
         val savings = (savingsOverride ?: if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, today) else AlertEngine.goalMonthly(data.goal)).max(BigDecimal.ZERO)
 
-        val canEstimate = est != null || incomeToDate.signum() > 0
+        val canEstimate = est != null || incomeToDate.signum() > 0 || manualIncome != null
         val beforeMargin = (expected - savings - fixedPaid - upcomingTotal).max(BigDecimal.ZERO)
         // il margine è una quota di ciò che resta dopo risparmio e uscite fisse (pagate e da pagare)
         val reserve = if (manualLimit != null) BigDecimal.ZERO else beforeMargin.multiply(BigDecimal(marginPct.coerceIn(0, 50))).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)

@@ -67,14 +67,16 @@ class GoalsTest {
         val goals = listOf(Goal(1, "Fondo", BigDecimal(5000), monthly = BigDecimal(250)), Goal(2, "Viaggio", BigDecimal(900), deadline = d("2026-06-30")))
         val r = SafeToSpendEngine.compute(data, goals = goals, realToday = d("2026-03-05"))!!
         eq("550", r.savingsTarget); assertTrue(r.savingsFromGoals)        // 250 + 900/3
-        val legacy = SafeToSpendEngine.compute(data, realToday = d("2026-03-05"))!!
-        eq("300", legacy.savingsTarget); assertFalse(legacy.savingsFromGoals)
+        val none = SafeToSpendEngine.compute(data, realToday = d("2026-03-05"))!!
+        eq("0", none.savingsTarget); assertFalse(none.savingsFromGoals)                  // nessun obiettivo: non si riserva nulla
+        val plan = SafeToSpendEngine.compute(data.copy(scenarios = listOf(Scenario(1, "Piano", SavingsGoal(GoalMode.MONTHLY, BigDecimal(120)), isBase = true))), realToday = d("2026-03-05"))!!
+        eq("120", plan.savingsTarget)                                                    // un risparmio scelto nel Piano vale ancora
     }
 
     @Test fun `budget - il comprimibile si riduce quanto serve, il resto resta alla media`() {
         // entrate 2.000; fisse 800 + necessarie 400; obiettivi 500 → restano 300 per i ristoranti (media 500): taglio ≥ 40%
         val goals = listOf(Goal(1, "Fondo", BigDecimal(9000), monthly = BigDecimal(500)))
-        val plan = BudgetSuggester.suggest(data, goals, d("2026-03-05"))!!
+        val plan = BudgetSuggester.suggest(data, goals, d("2026-03-05"), marginPct = 0)!!
         eq("2000", plan.income); eq("500", plan.savings); assertEquals(3, plan.months)
         assertEquals(setOf("Affitto", "Ristoranti", "Spesa"), plan.proposals.map { it.category.name }.toSet())       // «Altro» (sistema) e sotto 5 € esclusi
         eq("800", plan.proposals.first { it.category.name == "Affitto" }.proposed)
@@ -85,18 +87,18 @@ class GoalsTest {
     }
 
     @Test fun `budget - se non serve tagliare, la proposta è la media`() {
-        val plan = BudgetSuggester.suggest(data, listOf(Goal(1, "Fondo", BigDecimal(9000), monthly = BigDecimal(100))), d("2026-03-05"))!!
+        val plan = BudgetSuggester.suggest(data, listOf(Goal(1, "Fondo", BigDecimal(9000), monthly = BigDecimal(100))), d("2026-03-05"), marginPct = 0)!!
         assertEquals(0, plan.cutPercent); eq("500", plan.proposals.first { it.category.name == "Ristoranti" }.proposed)
     }
 
     @Test fun `budget - obiettivi troppo alti, manca anche azzerando il comprimibile`() {
-        val plan = BudgetSuggester.suggest(data, listOf(Goal(1, "Fondo", BigDecimal(90000), monthly = BigDecimal(1000))), d("2026-03-05"))!!
+        val plan = BudgetSuggester.suggest(data, listOf(Goal(1, "Fondo", BigDecimal(90000), monthly = BigDecimal(1000))), d("2026-03-05"), marginPct = 0)!!
         assertEquals(100, plan.cutPercent); eq("200", plan.shortfall)      // 2000 − 1000 − 1200
         eq("0", plan.proposals.first { it.category.name == "Ristoranti" }.proposed)
     }
 
     @Test fun `budget - senza storico non propone nulla`() {
-        assertNull(BudgetSuggester.suggest(AppData(transactions = listOf(tx("2026-03-02", -40, 4)), categories = cats, loaded = true), emptyList(), d("2026-03-05")))
+        assertNull(BudgetSuggester.suggest(AppData(transactions = listOf(tx("2026-03-02", -40, 4)), categories = cats, loaded = true), emptyList(), d("2026-03-05"), marginPct = 0))
     }
 }
 
@@ -133,7 +135,7 @@ class BudgetFixedTest {
     private val today = d("2026-03-05")
 
     @Test fun `una spesa fissa non viene mai ridotta e va chiesta, anche se è segnata come comprimibile`() {
-        val plan = BudgetSuggester.suggest(data, goals, today)!!
+        val plan = BudgetSuggester.suggest(data, goals, today, marginPct = 0)!!
         val rent = plan.proposals.first { it.category.name == "Affitto" }
         assertTrue(rent.fixed); assertFalse(rent.compressible); eq("800", rent.proposed)           // alla media, mai tagliata
         assertEquals(40, plan.cutPercent)                                                          // il taglio va tutto sullo svago
@@ -141,7 +143,7 @@ class BudgetFixedTest {
         val def = BudgetChanges.defaultSelection(plan).map { it.category.name }
         assertTrue("Svago" in def); assertFalse("Affitto" in def)
         // una fissa il cui budget cambierebbe finisce tra quelle da chiedere
-        val other = BudgetSuggester.suggest(data.copy(categories = cats.map { if (it.id == 1L) it.copy(budgetMonthly = BigDecimal(700)) else it }), goals, today)!!
+        val other = BudgetSuggester.suggest(data.copy(categories = cats.map { if (it.id == 1L) it.copy(budgetMonthly = BigDecimal(700)) else it }), goals, today, marginPct = 0)!!
         assertEquals(listOf("Affitto"), BudgetChanges.needsAsking(other).map { it.category.name })
     }
 

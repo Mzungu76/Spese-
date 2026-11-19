@@ -21,8 +21,6 @@ data class ShareConfig(
     val features: ShareFeatures = ShareFeatures(),
     /** Un messaggio facoltativo per l'altra persona. */
     val note: String = "",
-    /** Margine di sicurezza (% di ciò che resta dopo risparmio e uscite fisse) tenuto fuori dalla cifra al giorno. */
-    val safetyPct: Int = 10,
 )
 
 /** Quello che l'app madre pubblica: il budget del periodo e i dati del grafico del ritmo (una cifra per giorno). */

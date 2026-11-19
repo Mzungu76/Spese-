@@ -19,7 +19,8 @@ data class BudgetProposal(val category: Category, val average: BigDecimal, val p
  * Proposta di budget mensili: le spese che non si possono comprimere restano alla media storica, le discrezionali si riducono in modo uniforme
  * quanto basta perché entrate − risparmio degli obiettivi − spese essenziali lasci spazio. `shortfall` > 0 dice che neanche azzerandole basta.
  */
-data class BudgetPlan(val income: BigDecimal, val savings: BigDecimal, val months: Int, val proposals: List<BudgetProposal>, val cutPercent: Int, val shortfall: BigDecimal)
+/** `income`: entrate mensili prudenti (stessa stima del budget giornaliero); `reserve`: margine di sicurezza trattenuto sui budget. */
+data class BudgetPlan(val income: BigDecimal, val savings: BigDecimal, val months: Int, val proposals: List<BudgetProposal>, val cutPercent: Int, val shortfall: BigDecimal, val reserve: BigDecimal = BigDecimal.ZERO)
 
 object BudgetSuggester {
     private const val HISTORY_MONTHS = 6
@@ -27,7 +28,7 @@ object BudgetSuggester {
 
     private fun round5(v: BigDecimal, mode: RoundingMode): BigDecimal = v.divide(MIN_BUDGET, 0, mode).multiply(MIN_BUDGET)
 
-    fun suggest(data: AppData, goals: List<Goal>, today: LocalDate = LocalDate.now()): BudgetPlan? {
+    fun suggest(data: AppData, goals: List<Goal>, today: LocalDate = LocalDate.now(), incomeOverrides: Map<Long, it.spese.domain.health.IncomeNature> = emptyMap(), marginPct: Int = DailyBudgetEngine.DEFAULT_MARGIN_PCT): BudgetPlan? {
         val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
         if (tx.isEmpty()) return null
         val cal = data.calendar
@@ -37,7 +38,9 @@ object BudgetSuggester {
         val months = byMonth.keys.sorted().takeLast(HISTORY_MONTHS)
         if (months.isEmpty()) return null
         val n = BigDecimal(months.size)
-        val income = months.fold(BigDecimal.ZERO) { a, m -> a + byMonth.getValue(m).income }.divide(n, 2, RoundingMode.HALF_UP)
+        // le entrate sono la stima prudente del budget giornaliero (fisse + variabili al 25° percentile); senza abbastanza storico, la media
+        val mean = months.fold(BigDecimal.ZERO) { a, m -> a + byMonth.getValue(m).income }.divide(n, 2, RoundingMode.HALF_UP)
+        val income = data.goal.expectedIncome?.takeIf { it.signum() > 0 } ?: IncomeEstimator.estimate(tx, cal, current, data.categoriesById, incomeOverrides)?.prudent?.takeIf { it.signum() > 0 } ?: mean
         val savings = if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, ref) else AlertEngine.goalMonthly(data.goal)
         val byId = data.categoriesById
         val spent = HashMap<Long?, BigDecimal>()
@@ -52,7 +55,10 @@ object BudgetSuggester {
         val (flex, keep) = rows.partition { SavingsOpportunities.isCandidate(it.first) }
         val keepTotal = keep.fold(BigDecimal.ZERO) { a, r -> a + r.second }
         val flexTotal = flex.fold(BigDecimal.ZERO) { a, r -> a + r.second }
-        val room = income - savings.max(BigDecimal.ZERO) - keepTotal
+        // margine di sicurezza: una quota di ciò che resta dopo risparmio e spese fisse (come nel budget giornaliero)
+        val fixedTotal = rows.filter { it.first.nature == SpendNature.FIXED }.fold(BigDecimal.ZERO) { a, r -> a + r.second }
+        val reserve = (income - savings.max(BigDecimal.ZERO) - fixedTotal).max(BigDecimal.ZERO).multiply(BigDecimal(marginPct.coerceIn(0, 50))).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+        val room = income - savings.max(BigDecimal.ZERO) - reserve - keepTotal
         // taglio uniforme (multipli di 5%) sulle voci comprimibili, solo se serve
         val cut = if (flexTotal.signum() <= 0 || room >= flexTotal) 0
             else if (room.signum() <= 0) 100
@@ -63,7 +69,7 @@ object BudgetSuggester {
             val proposed = if (isFlex) round5(avg.multiply(factor), RoundingMode.HALF_UP) else round5(avg, RoundingMode.CEILING)
             BudgetProposal(c, avg, proposed, c.budgetMonthly?.takeIf { it.signum() > 0 }, isFlex, c.nature == SpendNature.FIXED)
         }.sortedByDescending { it.average }
-        return BudgetPlan(income, savings, months.size, proposals, cut, (-room).max(BigDecimal.ZERO))
+        return BudgetPlan(income, savings, months.size, proposals, cut, (-room).max(BigDecimal.ZERO), reserve)
     }
 }
 
@@ -84,7 +90,7 @@ object BudgetChanges {
 
 object BudgetOverviewBuilder {
     /** Tutte le categorie principali di spesa (anche senza storico), ordinate per spesa media. */
-    fun build(data: AppData, goals: List<Goal>, today: LocalDate = LocalDate.now()): BudgetOverview? {
+    fun build(data: AppData, goals: List<Goal>, today: LocalDate = LocalDate.now(), incomeOverrides: Map<Long, it.spese.domain.health.IncomeNature> = emptyMap()): BudgetOverview? {
         if (!data.loaded) return null
         val tx = data.transactions.filter { it.kind != TxKind.TRASFERIMENTO }
         val cal = data.calendar
@@ -96,7 +102,8 @@ object BudgetOverviewBuilder {
         val spent = HashMap<Long?, BigDecimal>()
         months.forEach { m -> byMonth.getValue(m).byCategory.forEach { (id, v) -> spent.merge(CategoryTree.rootId(id, byId), v) { a, b -> a + b } } }
         val n = BigDecimal(maxOf(1, months.size))
-        val income = months.fold(BigDecimal.ZERO) { a, m -> a + byMonth.getValue(m).income }.divide(n, 2, RoundingMode.HALF_UP)
+        val mean = months.fold(BigDecimal.ZERO) { a, m -> a + byMonth.getValue(m).income }.divide(n, 2, RoundingMode.HALF_UP)
+        val income = data.goal.expectedIncome?.takeIf { it.signum() > 0 } ?: IncomeEstimator.estimate(tx, cal, current, byId, incomeOverrides)?.prudent?.takeIf { it.signum() > 0 } ?: mean
         val savings = if (goals.isNotEmpty()) GoalEngine.monthlyTotal(goals, ref) else AlertEngine.goalMonthly(data.goal)
         val rows = data.categories.filter { it.active && it.kind == TxKind.SPESA && it.parentId == null && it.systemKey == null }
             .map { c -> BudgetRow(c, (spent[c.id] ?: BigDecimal.ZERO).divide(n, 2, RoundingMode.HALF_UP), c.budgetMonthly?.takeIf { it.signum() > 0 }) }

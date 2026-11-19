@@ -17,20 +17,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class GoalsViewModel @Inject constructor(
     val data: StateFlow<AppData>, private val repo: GoalRepository, private val categories: CategoryRepository, private val messenger: UiMessenger,
-    layouts: it.spese.app.common.PageLayouts,
+    layouts: it.spese.app.common.PageLayouts, natures: it.spese.domain.health.IncomeNatureRepository, settings: it.spese.domain.repository.SettingsRepository,
 ) : ViewModel() {
     val layout: StateFlow<List<it.spese.domain.widgets.WidgetInstance>> = layouts.state(it.spese.domain.widgets.WidgetPage.GOALS, viewModelScope)
     val goals: StateFlow<List<Goal>> = repo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Budget proposti dai dati e dagli obiettivi (null senza almeno un mese completo di movimenti). */
-    val plan: StateFlow<BudgetPlan?> = combine(data, goals) { d, g -> if (!d.loaded) null else runCatching { BudgetSuggester.suggest(d, g) }.getOrNull() }
+    val plan: StateFlow<BudgetPlan?> = combine(data, goals, natures.observe(), settings.observe().map { s -> s.budgetMarginPct }.distinctUntilChanged()) { d, g, nat, margin -> if (!d.loaded) null else runCatching { BudgetSuggester.suggest(d, g, incomeOverrides = nat, marginPct = margin) }.getOrNull() }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     fun save(g: Goal) = viewModelScope.launch { try { repo.save(g) } catch (e: Exception) { messenger.show(e.message ?: "Operazione non riuscita") } }

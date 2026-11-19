@@ -179,6 +179,8 @@ data class AppSettings(
     val notifyDailySpend: Boolean = true,
     /** Un'entrata negli ultimi N giorni del mese contabile finisce in Verifica per scegliere il mese (0 = non chiedere). */
     val incomeMonthAskDays: Int = 7,
+    /** Margine di sicurezza del budget giornaliero: % di ciò che resta dopo risparmio e uscite fisse, tenuta da parte (0–50). */
+    val budgetMarginPct: Int = 10,
 )
 
 interface SettingsRepository {

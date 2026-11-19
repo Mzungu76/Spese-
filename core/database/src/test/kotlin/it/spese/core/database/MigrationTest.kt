@@ -200,4 +200,25 @@ class MigrationTest {
         db.query("SELECT accountingMonth FROM transactions").use { c -> assertTrue(c.moveToFirst()); assertEquals("2026-12", c.getString(0)) }
         db.close()
     }
+
+    @Test fun `la migrazione 9-10 azzera il risparmio di default da 300 euro ma non quello scelto dall'utente`() {
+        helper.createDatabase("test-goal", 9).apply {
+            execSQL("INSERT INTO scenarios (name, isBase, goalMode, goalValueCents, goalMonths, incomeDeltaCents, updatedAt) VALUES ('Piano attuale', 1, 'm', 30000, 12, 0, 0)")
+            execSQL("INSERT INTO scenarios (name, isBase, goalMode, goalValueCents, goalMonths, incomeDeltaCents, updatedAt) VALUES ('Altro', 0, 'm', 30000, 12, 0, 0)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-goal", 10, true, AppDatabase.MIGRATION_9_10)
+        db.query("SELECT name, goalValueCents FROM scenarios ORDER BY id").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals("Piano attuale", c.getString(0)); assertEquals(0L, c.getLong(1))      // il default intatto sparisce
+            assertTrue(c.moveToNext()); assertEquals(30000L, c.getLong(1))                                                   // gli altri scenari non si toccano
+        }
+        db.close()
+        helper.createDatabase("test-goal2", 9).apply {
+            execSQL("INSERT INTO scenarios (name, isBase, goalMode, goalValueCents, goalMonths, incomeDeltaCents, updatedAt) VALUES ('Piano attuale', 1, 'm', 45000, 12, 0, 0)")
+            close()
+        }
+        val db2 = helper.runMigrationsAndValidate("test-goal2", 10, true, AppDatabase.MIGRATION_9_10)
+        db2.query("SELECT goalValueCents FROM scenarios").use { c -> assertTrue(c.moveToFirst()); assertEquals(45000L, c.getLong(0)) }   // un obiettivo scelto resta
+        db2.close()
+    }
 }

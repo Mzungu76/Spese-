@@ -13,6 +13,8 @@ import javax.inject.Inject
 data class BudgetInputs(
     val rules: List<RecurringRule> = emptyList(), val ignoredPatterns: Set<String> = emptySet(),
     val goals: List<Goal> = emptyList(), val incomeOverrides: Map<Long, IncomeNature> = emptyMap(),
+    /** Margine di sicurezza scelto nelle impostazioni dell'app. */
+    val marginPct: Int = 10,
 )
 
 interface BudgetInputsSource { suspend fun get(): BudgetInputs }
@@ -20,7 +22,7 @@ interface BudgetInputsSource { suspend fun get(): BudgetInputs }
 object EmptyBudgetInputs : BudgetInputsSource { override suspend fun get() = BudgetInputs() }
 
 class RepoBudgetInputs @Inject constructor(
-    private val recurring: RecurringRepository, private val review: SubscriptionReviewRepository, private val goals: GoalRepository, private val natures: IncomeNatureRepository,
+    private val recurring: RecurringRepository, private val review: SubscriptionReviewRepository, private val goals: GoalRepository, private val natures: IncomeNatureRepository, private val settings: it.spese.domain.repository.SettingsRepository,
 ) : BudgetInputsSource {
-    override suspend fun get() = BudgetInputs(recurring.getAll(), review.getIgnored(), goals.getAll(), natures.get())
+    override suspend fun get() = BudgetInputs(recurring.getAll(), review.getIgnored(), goals.getAll(), natures.get(), settings.get().budgetMarginPct)
 }

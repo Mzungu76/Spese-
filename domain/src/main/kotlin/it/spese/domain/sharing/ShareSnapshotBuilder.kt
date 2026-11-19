@@ -23,7 +23,7 @@ object ShareSnapshotBuilder {
         val ids = accountIds.distinct().filter { id -> data.accountsById[id] != null }.toSet()
         if (ids.isEmpty()) return emptyList()
         val scoped = data.copy(transactions = data.everything.filter { t -> t.accountId in ids })
-        val budget = DailyBudgetEngine.compute(scoped, inputs.rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, cfg.safetyPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly)
+        val budget = DailyBudgetEngine.compute(scoped, inputs.rules, inputs.ignoredPatterns, inputs.goals, inputs.incomeOverrides, inputs.marginPct, cfg.budgetMonthly, realToday, cfg.savingsMonthly)
         val cfg2 = if (budget?.limit != null) cfg.copy(budgetMonthly = budget.limit) else cfg
         return listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p ->
             build(data, accountIds, cfg2, nowMillis, realToday, p, thread)?.let { s ->
@@ -42,7 +42,7 @@ object ShareSnapshotBuilder {
         val title = if (accounts.size <= 2) accounts.joinToString(" + ") { a -> a.name } else "${accounts.size} conti"
         // i movimenti dei conti gestiti da altri stanno fuori dalle analisi: qui servono, perché sono proprio quei conti
         val all = data.copy(transactions = data.everything.filter { t -> t.accountId in ids })
-        val r = PaceEngine.compute(all, TxFilter(period = period, calendar = data.calendar), realToday, emptySet(), cfg.savingsMonthly, cfg.budgetMonthly) ?: return null
+        val r = PaceEngine.compute(all, TxFilter(period = period, calendar = data.calendar), realToday, emptySet(), cfg.savingsMonthly, cfg.budgetMonthly, budgetIsComputed = true) ?: return null
         return ShareSnapshot(
             generatedAtMillis = nowMillis, title = title, unit = r.unit.name, periodStart = r.start, periodEnd = r.end, today = r.today, days = r.days, dayIndex = r.dayIndex,
             limit = r.optimalTotal, spentToDate = r.spentToDate, optimalToDate = r.optimalToDate, dailyRemaining = r.optimalDailyRemaining, dailyAverage = r.optimalDailyAverage,

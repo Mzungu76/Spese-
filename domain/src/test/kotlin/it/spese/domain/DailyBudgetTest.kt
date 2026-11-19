@@ -115,7 +115,7 @@ class DailyBudgetTest {
         // un tetto fissato a mano e un margine diverso cambiano il risultato come previsto
         val manual = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(budgetMonthly = BigDecimal(1500)), 1L, today, inputs = BudgetInputs(goals = listOf(goal)))
         eq("1500", manual.first { it.unit == "MONTH" }.limit); eq("28.57", manual.first { it.unit == "MONTH" }.dailyRemaining)
-        val safer = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(safetyPct = 20), 1L, today, inputs = BudgetInputs(goals = listOf(goal)))
+        val safer = ShareSnapshotBuilder.buildAll(data(history()), listOf(1L), ShareConfig(), 1L, today, inputs = BudgetInputs(goals = listOf(goal), marginPct = 20))
         eq("1480", safer.first { it.unit == "MONTH" }.limit)                          // 2000 − 300 − 220
     }
 }
