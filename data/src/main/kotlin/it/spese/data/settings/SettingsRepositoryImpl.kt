@@ -24,13 +24,13 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
         val nRec = booleanPreferencesKey("n_rec"); val nUnx = booleanPreferencesKey("n_unx"); val hour = intPreferencesKey("n_hour")
         val ab = booleanPreferencesKey("ab"); val abDays = intPreferencesKey("ab_days"); val abKeep = intPreferencesKey("ab_keep")
         val abLast = longPreferencesKey("ab_last"); val onb = booleanPreferencesKey("onb"); val undo = stringPreferencesKey("undo")
-        val syncUri = stringPreferencesKey("sync_uri"); val syncAt = longPreferencesKey("sync_at"); val monthDay = intPreferencesKey("month_start_day"); val nDay = booleanPreferencesKey("n_daily_spend"); val askDays = intPreferencesKey("income_month_ask_days"); val margin = intPreferencesKey("budget_margin_pct"); val fromBal = booleanPreferencesKey("budget_from_balance"); val delay = intPreferencesKey("budget_delay_days"); val anchor = longPreferencesKey("month_anchor_category")
+        val syncUri = stringPreferencesKey("sync_uri"); val syncAt = longPreferencesKey("sync_at"); val monthDay = intPreferencesKey("month_start_day"); val nDay = booleanPreferencesKey("n_daily_spend"); val askDays = intPreferencesKey("income_month_ask_days"); val margin = intPreferencesKey("budget_margin_pct"); val fromBal = booleanPreferencesKey("budget_from_balance"); val delay = intPreferencesKey("budget_delay_days"); val anchor = longPreferencesKey("month_anchor_category"); val anchorAmt = intPreferencesKey("month_anchor_amount")
     }
 
     private fun Preferences.toSettings() = AppSettings(
         runCatching { ThemeMode.valueOf(this[K.theme] ?: "DARK") }.getOrDefault(ThemeMode.DARK),
         this[K.notif] ?: false, this[K.nBud] ?: true, this[K.nDue] ?: true, this[K.nRec] ?: true, this[K.nUnx] ?: true, this[K.hour] ?: 9,
-        this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0, (this[K.monthDay] ?: 1).coerceIn(1, 28), this[K.nDay] ?: true, (this[K.askDays] ?: 7).coerceIn(0, 28), (this[K.margin] ?: 10).coerceIn(0, 50), this[K.fromBal] ?: true, (this[K.delay] ?: 5).coerceIn(0, 30), this[K.anchor] ?: 0L,
+        this[K.ab] ?: false, this[K.abDays] ?: 7, this[K.abKeep] ?: 5, this[K.abLast] ?: 0, this[K.onb] ?: false, this[K.undo] ?: "", this[K.syncUri] ?: "", this[K.syncAt] ?: 0, (this[K.monthDay] ?: 1).coerceIn(1, 28), this[K.nDay] ?: true, (this[K.askDays] ?: 7).coerceIn(0, 28), (this[K.margin] ?: 10).coerceIn(0, 50), this[K.fromBal] ?: true, (this[K.delay] ?: 5).coerceIn(0, 30), this[K.anchor] ?: 0L, (this[K.anchorAmt] ?: 0).coerceAtLeast(0),
     )
 
     override fun observe(): Flow<AppSettings> = context.store.data.map { it.toSettings() }
@@ -41,7 +41,7 @@ class SettingsRepositoryImpl @Inject constructor(@dagger.hilt.android.qualifiers
             val n = transform(p.toSettings())
             p[K.theme] = n.themeMode.name; p[K.notif] = n.notificationsEnabled; p[K.nBud] = n.notifyBudgets; p[K.nDue] = n.notifyDues
             p[K.nRec] = n.notifyRecurring; p[K.nUnx] = n.notifyUnexpected; p[K.hour] = n.notifyHour; p[K.ab] = n.autoBackupEnabled
-            p[K.abDays] = n.autoBackupEveryDays; p[K.abKeep] = n.autoBackupKeep; p[K.abLast] = n.lastAutoBackupAt; p[K.onb] = n.onboardingDone; p[K.undo] = n.lastUndo; p[K.syncUri] = n.syncUri; p[K.syncAt] = n.lastSyncAt; p[K.monthDay] = n.monthStartDay.coerceIn(1, 28); p[K.nDay] = n.notifyDailySpend; p[K.askDays] = n.incomeMonthAskDays.coerceIn(0, 28); p[K.margin] = n.budgetMarginPct.coerceIn(0, 50); p[K.fromBal] = n.budgetFromBalance; p[K.delay] = n.budgetDelayDays.coerceIn(0, 30); p[K.anchor] = n.monthAnchorCategoryId
+            p[K.abDays] = n.autoBackupEveryDays; p[K.abKeep] = n.autoBackupKeep; p[K.abLast] = n.lastAutoBackupAt; p[K.onb] = n.onboardingDone; p[K.undo] = n.lastUndo; p[K.syncUri] = n.syncUri; p[K.syncAt] = n.lastSyncAt; p[K.monthDay] = n.monthStartDay.coerceIn(1, 28); p[K.nDay] = n.notifyDailySpend; p[K.askDays] = n.incomeMonthAskDays.coerceIn(0, 28); p[K.margin] = n.budgetMarginPct.coerceIn(0, 50); p[K.fromBal] = n.budgetFromBalance; p[K.delay] = n.budgetDelayDays.coerceIn(0, 30); p[K.anchor] = n.monthAnchorCategoryId; p[K.anchorAmt] = n.monthAnchorAmount.coerceAtLeast(0)
         }
     }
 }

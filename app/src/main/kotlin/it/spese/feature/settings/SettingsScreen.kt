@@ -79,6 +79,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         if (incomeCats.isNotEmpty()) {
                             Text("Il mese scatta quando arriva", style = MaterialTheme.typography.labelLarge)
                             ChipChoice(listOf(0L to "Data fissa") + incomeCats.map { c -> c.id to c.name }, s.monthAnchorCategoryId, { id -> vm.update { st -> st.copy(monthAnchorCategoryId = id) } })
+                            var amt by remember(s.monthAnchorAmount) { mutableStateOf(if (s.monthAnchorAmount > 0) s.monthAnchorAmount.toString() else "") }
+                            OutlinedTextField(amt, { v -> amt = v.filter { c -> c.isDigit() }.take(6); vm.update { st -> st.copy(monthAnchorAmount = amt.toIntOrNull() ?: 0) } },
+                                label = { Text("Importo minimo dell'entrata (€, facoltativo)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                             Text("Il giorno indicato è la data presunta. Se scegli un'entrata (di solito lo stipendio), il nuovo mese inizia il giorno in cui arriva davvero, fino a ${it.spese.domain.finance.MonthAnchor.WINDOW_DAYS} giorni prima o dopo la data presunta; finché non arriva, il mese precedente continua e il budget lo tratta come un ritardo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }

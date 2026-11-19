@@ -276,4 +276,23 @@ class DailyBudgetTest {
         val b = DailyBudgetEngine.compute(data, realToday = twentyFifth, patterns = emptyList(), cashSource = poor, horizonDays = 180)!!
         assertTrue("con pochi soldi ${b.perDay} oltre ${a.perDay}", b.perDay!! <= a.perDay!!)
     }
+
+    @Test fun `con il mese ancorato allo stipendio il paracadute segue la data e l'arrivo`() {
+        val base = exampleData()
+        val cash = { _: LocalDate -> it.spese.domain.finance.CashPosition(BigDecimal(1000), BigDecimal.ZERO) }
+        fun withAnchor(data: AppData, today: LocalDate) = data.copy(calendar = it.spese.domain.finance.MonthAnchor.calendar(21, 0, data.transactions, cats.associateBy { it.id }, today, BigDecimal(1000)))
+        // stipendio del mese non ancora arrivato dopo la data presunta (21/11): il mese precedente continua e c'è il paracadute
+        val waitingData = withAnchor(base, d("2026-11-25"))
+        assertEquals(java.time.YearMonth.of(2026, 11), waitingData.calendar.waiting)
+        val waiting = DailyBudgetEngine.compute(waitingData, realToday = d("2026-11-25"), patterns = emptyList(), cashSource = cash, delayDays = 5)!!
+        assertEquals(5, waiting.delayDays)
+        // stipendio arrivato il 24/11: il mese è partito, il prossimo scatta il 21/12 e i soldi devono bastare fino ad allora (+ ritardo)
+        val got = base.copy(transactions = base.transactions + tx("2026-11-24", 1000, 2))
+        val arrivedData = withAnchor(got, d("2026-11-26"))
+        assertEquals(d("2026-11-24"), arrivedData.calendar.start(java.time.YearMonth.of(2026, 11)))
+        val arrived = DailyBudgetEngine.compute(arrivedData, realToday = d("2026-11-26"), patterns = emptyList(), cashSource = cash, delayDays = 5)!!
+        assertEquals(d("2026-11-24"), arrived.periodStart)
+        assertEquals(25, arrived.daysLeft)                                                              // dal 26/11 al 20/12
+        assertEquals(d("2026-12-25"), arrived.delayUntil)
+    }
 }

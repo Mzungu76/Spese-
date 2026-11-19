@@ -175,9 +175,13 @@ object DailyBudgetEngine {
 
         if (cash != null) {
             // finché c'è un'entrata fissa ancora attesa nel periodo il paracadute guarda a quella; arrivate tutte, i soldi devono bastare fino alla prossima entrata fissa (del mese contabile successivo), non solo fino a fine periodo
-            val fixedPending = if (manualIncome != null) outlook.remaining.signum() > 0 else outlook.fixedDue.isNotEmpty()
+            // con il mese ancorato a un'entrata la data presunta è quella dell'entrata: se è attesa e non arrivata c'è il paracadute, se è arrivata si guarda alla prossima
+            val nextMonth = month.plusMonths(1)
+            val anchorWaiting = cal.anchored && cal.waiting == nextMonth
+            val fixedPending = if (cal.anchored) anchorWaiting || (manualIncome == null && outlook.fixedDue.isNotEmpty()) else if (manualIncome != null) outlook.remaining.signum() > 0 else outlook.fixedDue.isNotEmpty()
             val fd = est?.fixedDays?.values?.minOrNull()
-            val nextArrival = if (!fixedPending && manualIncome == null && fd != null && est!!.fixedSources.isNotEmpty()) cal.start(month.plusMonths(1)).plusDays(fd.toLong()) else null
+            val nextArrival = if (cal.anchored && !fixedPending) cal.start(nextMonth)
+                else if (!fixedPending && manualIncome == null && fd != null && est!!.fixedSources.isNotEmpty()) cal.start(nextMonth).plusDays(fd.toLong()) else null
             val cd = if (nextArrival != null) maxOf(daysLeft, ChronoUnit.DAYS.between(today, nextArrival).toInt()) else daysLeft
             val extended = nextArrival != null
             val coverEnd = today.plusDays((cd - 1).coerceAtLeast(0).toLong())

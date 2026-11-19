@@ -187,6 +187,8 @@ data class AppSettings(
     val budgetDelayDays: Int = 5,
     /** Categoria di entrata (di norma lo stipendio) che fa scattare il mese contabile quando arriva; 0 = si usa solo il giorno fisso. */
     val monthAnchorCategoryId: Long = 0L,
+    /** Importo minimo (€) dell'entrata che fa scattare il mese contabile; 0 = non conta l'importo. */
+    val monthAnchorAmount: Int = 0,
 )
 
 interface SettingsRepository {
