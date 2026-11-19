@@ -65,7 +65,7 @@ class ShareServiceDbTest {
         assertEquals("guest1", link.guestToken)
         val blob = api.out!!
         assertFalse(blob.contains("Carta famiglia"))                                    // sul servizio c'è solo testo cifrato
-        val snap = ShareCodec.decodeSnapshot(ShareCrypto.decrypt(blob, link.key!!)!!)!!
+        val snap = ShareCodec.decodeBundle(ShareCrypto.decrypt(blob, link.key!!)!!).first { x -> x.unit == "MONTH" }
         assertEquals("Carta famiglia", snap.title); assertEquals(0, BigDecimal(600).compareTo(snap.limit)); assertEquals(0, BigDecimal(55).compareTo(snap.spentToDate))
         assertNull(ShareCrypto.decrypt(blob, ShareCrypto.newKey()))                     // un'altra chiave non apre nulla
         // il codice per l'altra persona riporta indirizzo, codice dell'ospite e chiave, ma non il codice della madre
@@ -82,7 +82,7 @@ class ShareServiceDbTest {
         val svc = ShareService(links, api, env.tx, MutableStateFlow(d))
         val link = svc.create("https://spese.example.workers.dev", "chiave", listOf(a1.id, a2.id), a2.id, ShareConfig(budgetMonthly = BigDecimal(600)))
         assertEquals(listOf(a1.id, a2.id), link.sharedIds); assertEquals(a2.id, link.accountId)
-        val snap = ShareCodec.decodeSnapshot(ShareCrypto.decrypt(api.out!!, link.key!!)!!)!!
+        val snap = ShareCodec.decodeBundle(ShareCrypto.decrypt(api.out!!, link.key!!)!!).first { x -> x.unit == "MONTH" }
         assertEquals("Carta famiglia + Carta figlio", snap.title)
         assertEquals(0, BigDecimal(55).compareTo(snap.spentToDate))                  // 20 + 35: il conto «Personale» resta fuori
         val ev = listOf(ShareEvent("z1", BigDecimal("-5"), "Caffe", System.currentTimeMillis()))
@@ -94,7 +94,7 @@ class ShareServiceDbTest {
         // si possono cambiare i conti dopo
         svc.updateConfig(ShareConfig(budgetMonthly = BigDecimal(600)), listOf(a1.id), a1.id)
         assertEquals(listOf(a1.id), links.get()!!.sharedIds)
-        assertEquals(0, BigDecimal(20).compareTo(ShareCodec.decodeSnapshot(ShareCrypto.decrypt(api.out!!, links.get()!!.key!!)!!)!!.spentToDate))
+        assertEquals(0, BigDecimal(20).compareTo(ShareCodec.decodeBundle(ShareCrypto.decrypt(api.out!!, links.get()!!.key!!)!!).first { x -> x.unit == "MONTH" }.spentToDate))
     }
 
     @Test fun `chiave di creazione sbagliata - errore chiaro e nessuna condivisione`() = runBlocking {

@@ -21,8 +21,23 @@ object ShareCodec {
         put("capture", s.features.captureNotifications); put("chart", s.features.showChart); put("note", s.note)
     }.toString()
 
+    /** Più periodi insieme (settimana, mese, trimestre) in un solo messaggio; i riepiloghi singoli di prima restano leggibili. */
+    fun encodeBundle(list: List<ShareSnapshot>): String = buildJsonObject {
+        put("v", 2); put("snaps", buildJsonArray { list.forEach { s -> add(Json.parseToJsonElement(encodeSnapshot(s))) } })
+    }.toString()
+
+    fun decodeBundle(text: String): List<ShareSnapshot> {
+        val o = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return emptyList()
+        val arr = o["snaps"] as? JsonArray ?: return listOfNotNull(snapshotOf(o))
+        return arr.mapNotNull { e -> (e as? JsonObject)?.let { snapshotOf(it) } }
+    }
+
     fun decodeSnapshot(text: String): ShareSnapshot? {
         val o = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return null
+        return snapshotOf(o)
+    }
+
+    private fun snapshotOf(o: JsonObject): ShareSnapshot? {
         return ShareSnapshot(
             generatedAtMillis = o.str("at")?.toLongOrNull() ?: return null, title = o.str("title").orEmpty(), unit = o.str("unit") ?: "MONTH",
             periodStart = o.day("ps") ?: return null, periodEnd = o.day("pe") ?: return null, today = o.day("today") ?: return null,

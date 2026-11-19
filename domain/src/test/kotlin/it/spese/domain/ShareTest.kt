@@ -35,6 +35,19 @@ class ShareTest {
         eq("900", s.limit); eq("300.00", s.optimalToDate); eq("30.00", s.dailyRemaining); eq("30.00", s.dailyAverage); assertEquals(30, s.optimal.size)
     }
 
+    @Test fun `si pubblicano settimana, mese e trimestre, e il budget mensile si scala per periodo`() {
+        val l = history(); l.add(tx("2026-11-05", -300))
+        val all = ShareSnapshotBuilder.buildAll(managed(l), listOf(1L), ShareConfig(budgetMonthly = BigDecimal(900)), 1L, d("2026-11-10"))
+        assertEquals(listOf("WEEK", "MONTH", "QUARTER"), all.map { it.unit })
+        eq("900", all.first { it.unit == "MONTH" }.limit); eq("2700", all.first { it.unit == "QUARTER" }.limit)
+        eq("207.69", all.first { it.unit == "WEEK" }.limit)                              // 900 × 12 / 52
+        assertEquals(7, all.first { it.unit == "WEEK" }.days)
+        // il messaggio con tutti i periodi si legge uguale; un riepilogo singolo di prima si legge come un periodo solo
+        assertEquals(all, ShareCodec.decodeBundle(ShareCodec.encodeBundle(all)))
+        assertEquals(listOf(all[1]), ShareCodec.decodeBundle(ShareCodec.encodeSnapshot(all[1])))
+        assertTrue(ShareCodec.decodeBundle("rotto").isEmpty())
+    }
+
     @Test fun `senza storico e senza budget il limite non e calcolabile, e un conto inesistente non da nulla`() {
         val s = ShareSnapshotBuilder.build(managed(listOf(tx("2026-11-05", -300))), 1, ShareConfig(), 1L, d("2026-11-10"))!!
         assertNull(s.limit); assertNull(s.dailyRemaining); assertTrue(s.optimal.isEmpty())

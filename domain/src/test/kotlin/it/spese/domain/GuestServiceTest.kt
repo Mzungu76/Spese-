@@ -50,6 +50,16 @@ class GuestServiceTest {
         assertEquals("Carta famiglia", svc.refresh(9000).snapshot!!.title); assertEquals(9000L, repo.get()!!.lastRefreshAt)
     }
 
+    @Test fun `con piu periodi si sceglie settimana, mese o trimestre`() = runBlocking {
+        val week = snapshot.copy(unit = "WEEK", days = 7, limit = BigDecimal(200)); val quarter = snapshot.copy(unit = "QUARTER", limit = BigDecimal(1800))
+        val api = Api().apply { out = ShareCrypto.encrypt(ShareCodec.encodeBundle(listOf(week, snapshot, quarter)), link.key!!) }; val repo = Repo(); val svc = GuestService(repo, api)
+        val st = svc.pair(SharePairing.encode(link))
+        assertEquals(3, st.snapshots.size); assertEquals("MONTH", st.snapshot!!.unit)             // di partenza il mese
+        svc.setUnit("WEEK"); assertEquals(0, BigDecimal(200).compareTo(repo.get()!!.snapshot!!.limit))
+        svc.setUnit("QUARTER"); assertEquals(0, BigDecimal(1800).compareTo(repo.get()!!.snapshot!!.limit))
+        svc.setUnit("YEAR"); assertEquals("MONTH", repo.get()!!.snapshot!!.unit)                  // periodo non disponibile: ripiega sul mese
+    }
+
     @Test fun `un codice sbagliato o un riepilogo non decifrabile danno un errore chiaro`() = runBlocking {
         val svc = GuestService(Repo(), Api())
         assertTrue(runCatching { svc.pair("boh") }.exceptionOrNull() is ShareApiException)

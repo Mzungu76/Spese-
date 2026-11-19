@@ -24,9 +24,14 @@ data class GuestState(
     val outbox: List<QueuedEvent> = emptyList(), val sentCount: Int = 0,
     /** Fonti di notifiche da ascoltare (id); null = tutte quelle note tranne gli SMS. */
     val sourceIds: List<String>? = null,
+    /** Periodo scelto dall'altra persona: WEEK, MONTH o QUARTER. */
+    val unit: String = "MONTH",
 ) {
     val key: ByteArray? get() = ShareCrypto.keyFromText(keyText)
-    val snapshot: ShareSnapshot? get() = if (snapshotJson.isBlank()) null else ShareCodec.decodeSnapshot(snapshotJson)
+    /** Tutti i periodi ricevuti (settimana, mese, trimestre), nell'ordine in cui la madre li ha pubblicati. */
+    val snapshots: List<ShareSnapshot> get() = if (snapshotJson.isBlank()) emptyList() else ShareCodec.decodeBundle(snapshotJson)
+    /** Il periodo scelto, o il mese (poi il primo disponibile) se quello scelto non c'è. */
+    val snapshot: ShareSnapshot? get() = snapshots.let { all -> all.firstOrNull { x -> x.unit == unit } ?: all.firstOrNull { x -> x.unit == "MONTH" } ?: all.firstOrNull() }
     val activeSources: List<CaptureSource> get() = (sourceIds?.mapNotNull { id -> CaptureSource.byId(id) } ?: CaptureSource.entries.filter { s -> s != CaptureSource.SMS })
 }
 
@@ -76,7 +81,7 @@ class GuestService(private val repo: GuestStateRepository, private val api: Shar
             val f = api.fetch(st.serverUrl, st.shareId, st.guestToken, st.snapshotUpdated)
             if (f != null && !f.unchanged && f.blob != null) {
                 val plain = ShareCrypto.decrypt(f.blob, key) ?: throw ShareApiException("Non riesco a leggere il riepilogo: il codice potrebbe non essere quello giusto")
-                if (ShareCodec.decodeSnapshot(plain) == null) throw ShareApiException("Il riepilogo ricevuto non è in un formato che conosco: aggiorna l'app")
+                if (ShareCodec.decodeBundle(plain).isEmpty()) throw ShareApiException("Il riepilogo ricevuto non è in un formato che conosco: aggiorna l'app")
                 repo.update { s -> s.copy(snapshotJson = plain, snapshotUpdated = f.updated, lastRefreshAt = now, problem = "") }
             } else repo.update { s -> s.copy(lastRefreshAt = now, problem = "") }
         } catch (e: ShareApiException) {
@@ -125,6 +130,7 @@ class GuestService(private val repo: GuestStateRepository, private val api: Shar
         return problem
     }
 
+    suspend fun setUnit(unit: String) { repo.update { s -> s.copy(unit = unit) } }
     suspend fun setSources(ids: List<String>) { repo.update { s -> s.copy(sourceIds = ids) } }
     suspend fun unpair() { repo.set(null) }
 

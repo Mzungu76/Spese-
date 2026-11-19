@@ -38,7 +38,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val app = application as GuestApp
-        setContent { SpeseTheme { Surface(Modifier.fillMaxSize()) { GuestRoot(app) } } }
+        // sempre scuro, nero pieno: si legge bene di giorno e di sera e risparmia batteria sugli schermi OLED
+        setContent { SpeseTheme(darkTheme = true) { Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.Black) { GuestRoot(app) } } }
     }
 }
 
@@ -106,6 +107,7 @@ private fun HomeScreen(app: GuestApp, st: GuestState) {
     var confirmUnpair by remember { mutableStateOf(false) }
     val snap = st.snapshot
     Text(snap?.title ?: "Condivisione Spese", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+    PeriodFilter(st) { u -> scope.launch { app.service.setUnit(u) } }
     if (snap == null) {
         SectionCard(title = "In attesa del riepilogo") {
             Text("Chi ha condiviso il conto non ha ancora pubblicato il budget (servono alcuni movimenti, oppure un budget fissato a mano). Riprova tra poco.", style = MaterialTheme.typography.bodyMedium)
@@ -130,15 +132,36 @@ private fun HomeScreen(app: GuestApp, st: GuestState) {
         dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("Annulla") } })
 }
 
+private val PERIODS = listOf("WEEK" to "Settimana", "MONTH" to "Mese", "QUARTER" to "Trimestre")
+
+/** I periodi che la madre ha pubblicato (almeno due, altrimenti non serve scegliere). */
+@Composable
+private fun PeriodFilter(st: GuestState, onPick: (String) -> Unit) {
+    val available = st.snapshots.map { x -> x.unit }.toSet()
+    val options = PERIODS.filter { (u, _) -> u in available }
+    if (options.size < 2) return
+    val current = st.snapshot?.unit
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        options.forEachIndexed { i, (u, label) ->
+            SegmentedButton(selected = u == current, onClick = { onPick(u) }, shape = SegmentedButtonDefaults.itemShape(i, options.size)) { Text(label) }
+        }
+    }
+}
+
 @Composable
 private fun BudgetCard(s: ShareSnapshot) {
     val fin = SpeseTheme.finance
     val perDay = s.dailyRemaining
-    SectionCard(title = if (s.unit == "WEEK") "Questa settimana" else "Questo mese") {
+    SectionCard(title = when (s.unit) { "WEEK" -> "Questa settimana"; "QUARTER" -> "Questo trimestre"; else -> "Questo mese" }) {
         Text("Oggi puoi spendere", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(perDay?.let { v -> Money.eur(v.max(java.math.BigDecimal.ZERO)) } ?: "—", style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold,
             color = if (perDay != null && perDay.signum() <= 0) fin.negative else fin.positive)
+        if (perDay == null) Text(if (s.limit == null) "Il limite non è ancora calcolabile." else "Ultimo giorno del periodo: non resta una cifra al giorno.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (perDay != null && perDay.signum() <= 0) Text("Il limite del periodo è già stato raggiunto.", style = MaterialTheme.typography.bodyMedium, color = fin.negative)
+        s.limit?.takeIf { l -> l.signum() > 0 }?.let { l ->
+            val used = (s.spentToDate.toFloat() / l.toFloat()).coerceIn(0f, 1f)
+            LinearProgressIndicator(progress = { used }, Modifier.fillMaxWidth().height(10.dp), color = if (s.spentToDate > l) fin.negative else fin.positive, trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
+        }
         s.limit?.let { l -> Text("Limite del periodo: " + Money.eur0(l) + " · speso finora: " + Money.eur0(s.spentToDate), style = MaterialTheme.typography.bodyMedium) }
         s.optimalToDate?.let { o -> Text("A questo punto sarebbe ottimale aver speso " + Money.eur0(o) + (if (s.spentToDate <= o) " — sei in linea." else " — sei sopra."), style = MaterialTheme.typography.bodyMedium) }
         s.dailyAverage?.let { a -> Text("Media giornaliera ideale: " + Money.eur(a), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
@@ -149,7 +172,7 @@ private fun BudgetCard(s: ShareSnapshot) {
 @Composable
 private fun ChartCard(s: ShareSnapshot) {
     SectionCard(title = "Ritmo di spesa") {
-        val labels = (0 until s.days).map { i -> if (s.unit == "WEEK") listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")[i % 7] else "${i + 1}" }
+        val labels = (0 until s.days).map { i -> if (s.unit == "WEEK") listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")[i % 7] else "${i + 1}" }.let { l -> if (s.unit == "QUARTER") l.mapIndexed { i, x -> if (i % 15 == 0) x else "" } else l }
         val series = listOf(
             ChartSeries("Media dei periodi passati", MaterialTheme.colorScheme.onSurfaceVariant, s.average),
             ChartSeries("Spesa ottimale", MaterialTheme.colorScheme.primary, s.optimal),

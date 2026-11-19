@@ -50,9 +50,9 @@ class ShareService @Inject constructor(
         val link = links.get() ?: throw ShareApiException("Nessuna condivisione attiva")
         val key = link.key ?: throw ShareApiException("La chiave della condivisione non è valida")
         val d = data.first { it.loaded }
-        val snap = ShareSnapshotBuilder.build(d, link.sharedIds, link.config(), now)
-            ?: throw ShareApiException("Servono più movimenti sui conti condivisi (o un budget fissato a mano) per calcolare il limite")
-        api.publish(link.serverUrl, link.shareId, link.ownerToken, ShareCrypto.encrypt(ShareCodec.encodeSnapshot(snap), key))
+        val snaps = ShareSnapshotBuilder.buildAll(d, link.sharedIds, link.config(), now)
+        if (snaps.isEmpty()) throw ShareApiException("Servono più movimenti sui conti condivisi (o un budget fissato a mano) per calcolare il limite")
+        api.publish(link.serverUrl, link.shareId, link.ownerToken, ShareCrypto.encrypt(ShareCodec.encodeBundle(snaps), key))
         links.update { l -> l.copy(lastPublishedAt = now) }
         return links.get() ?: link
     }
