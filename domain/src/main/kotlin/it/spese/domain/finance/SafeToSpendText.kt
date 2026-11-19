@@ -28,7 +28,7 @@ object SafeToSpendText {
     fun delayNote(r: SafeToSpendReport): String {
         val until = r.delayUntil ?: return ""
         if (r.delayDays <= 0) return ""
-        val base = " Considera un margine di ${r.delayDays} giorni di ritardo sulle entrate fisse: non conto su di esse prima del ${Dates.fmt(until)}."
+        val base = " Considero un ritardo di ${r.delayDays} giorni sulle entrate fisse: i soldi devono bastare per ${r.daysLeft + r.delayDays} giorni invece di ${r.daysLeft}, fino al ${Dates.fmt(until)}."
         val onTime = r.perDayOnTime
         return if (onTime != null && r.perDay != null && onTime.compareTo(r.perDay) != 0) base + " Con entrate puntuali sarebbero ${Money.eur0(onTime)} al giorno." else base
     }

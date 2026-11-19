@@ -241,7 +241,7 @@ private fun BudgetCalcCard(b: it.spese.domain.finance.DailyBudget?, link: ShareL
             line("Uscite note ancora da pagare", b.upcomingTotal, "− ")
             line("Resta", b.remaining)
         }
-        if (b.delayDays > 0 && b.delayUntil != null) Text("Paracadute: entrate fisse in ritardo di ${b.delayDays} giorni, non conto su di esse prima del ${it.spese.core.common.Dates.fmt(b.delayUntil!!)}. Con entrate puntuali: " + (b.perDayWithoutDelay?.let { v -> it.spese.core.common.Money.eur(v) } ?: "—") + " al giorno.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (b.delayDays > 0 && b.delayUntil != null) Text("Paracadute: entrate fisse in ritardo di ${b.delayDays} giorni, i soldi devono bastare per ${b.daysLeft + b.delayDays} giorni invece di ${b.daysLeft} (fino al ${it.spese.core.common.Dates.fmt(b.delayUntil!!)}). Con entrate puntuali: " + (b.perDayWithoutDelay?.let { v -> it.spese.core.common.Money.eur(v) } ?: "—") + " al giorno.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text("${b.daysLeft} giorni (oggi compreso) · al giorno " + (b.perDay?.let { v -> it.spese.core.common.Money.eur(v) } ?: "—"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         val est = b.income
         if (b.cash == null && b.expectedIncome.signum() == 0 && link.budgetMonthly == null)

@@ -117,7 +117,7 @@ data class DailyBudget(
     val incomeRemaining: BigDecimal = BigDecimal.ZERO, val savingsDue: BigDecimal = BigDecimal.ZERO,
     /** Saldo dei conti e soldi bloccati, se il calcolo parte dai saldi. */
     val cash: CashPosition? = null,
-    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse ancora attese, e la data fino a cui non si conta su di esse. `perDayCap` = cifra massima al giorno con quel ritardo. */
+    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse, la data fino a cui i soldi devono bastare (fine periodo + ritardo) e la cifra massima al giorno che ne risulta. */
     val delayDays: Int = 0, val delayUntil: LocalDate? = null, val perDayCap: BigDecimal? = null,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
@@ -181,19 +181,24 @@ object DailyBudgetEngine {
             val available = pool - reserve
             val limit = spent + upcomingTotal + available
             val status = if (available.signum() < 0) BudgetStatus.OVER else BudgetStatus.OK
-            // paracadute: se ogni entrata fissa ancora attesa arrivasse con [delayDays] giorni di ritardo, fino ad allora si vive solo di ciò che c'è (e delle entrate precedenti)
+            // paracadute: se le entrate fisse ritardassero di [delayDays] giorni, gli stessi soldi devono coprire quei giorni in più
+            // (il periodo da coprire si allunga: giorni rimasti + ritardo); inoltre, per ogni entrata fissa ancora attesa nel periodo,
+            // fino al suo arrivo (data tipica o oggi se è già in ritardo, più il ritardo) si vive solo di ciò che c'è e delle entrate precedenti.
             val delay = delayDays.coerceIn(0, 30)
             var cap: BigDecimal? = null; var until: LocalDate? = null
-            if (delay > 0 && manualIncome == null && daysLeft > 0) {
-                var assumed = BigDecimal.ZERO
-                outlook.fixedDue.sortedBy { it.date }.forEach { inc ->
-                    val arrival = maxOf(inc.date, today).plusDays(delay.toLong())
-                    val days = ChronoUnit.DAYS.between(today, arrival).toInt().coerceIn(1, daysLeft)
-                    val before = upcoming.filter { u -> u.date <= arrival }.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
-                    val early = (cash.spendable + assumed - before).max(BigDecimal.ZERO).multiply(BigDecimal(100).subtract(pct)).divide(BigDecimal(100), 10, RoundingMode.HALF_UP).divide(BigDecimal(days), 2, RoundingMode.HALF_UP)
-                    if (cap == null || early < cap!!) cap = early
-                    if (until == null) until = arrival
-                    assumed += inc.amount
+            if (delay > 0 && daysLeft > 0) {
+                cap = available.max(BigDecimal.ZERO).divide(BigDecimal(daysLeft + delay), 2, RoundingMode.HALF_UP)
+                until = end.plusDays(delay.toLong())
+                if (manualIncome == null) {
+                    var assumed = BigDecimal.ZERO
+                    outlook.fixedDue.sortedBy { it.date }.forEach { inc ->
+                        val arrival = maxOf(inc.date, today).plusDays(delay.toLong())
+                        val days = ChronoUnit.DAYS.between(today, arrival).toInt().coerceAtLeast(1)
+                        val before = upcoming.filter { u -> u.date <= arrival }.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
+                        val early = (cash.spendable + assumed - before).max(BigDecimal.ZERO).multiply(BigDecimal(100).subtract(pct)).divide(BigDecimal(100), 10, RoundingMode.HALF_UP).divide(BigDecimal(days), 2, RoundingMode.HALF_UP)
+                        if (early < cap!!) cap = early
+                        assumed += inc.amount
+                    }
                 }
             }
             return DailyBudget(start, end, today, daysTotal, daysLeft, expected, incomeToDate, est, savings, reserve, spent, fixedPaid, upcoming, limit, status, stale, outlook.remaining, savingsDue, cash, if (until != null) delay else 0, until, cap)

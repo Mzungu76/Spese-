@@ -65,7 +65,7 @@ private fun SafeToSpendDetails(r: SafeToSpendReport, onDismiss: () -> Unit) {
             }
             HorizontalDivider(Modifier.padding(vertical = 6.dp))
             if (r.delayDays > 0 && r.delayUntil != null) {
-                Text("Paracadute: considero le entrate fisse in ritardo di ${r.delayDays} giorni, quindi non conto su di esse prima del ${Dates.fmt(r.delayUntil!!)}." + (r.perDayOnTime?.let { v -> " Con entrate puntuali sarebbero ${Money.eur0(v)} al giorno." } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Paracadute: considero le entrate fisse in ritardo di ${r.delayDays} giorni, quindi i soldi devono bastare per ${r.daysLeft + r.delayDays} giorni invece di ${r.daysLeft} (fino al ${Dates.fmt(r.delayUntil!!)})." + (r.perDayOnTime?.let { v -> " Con entrate puntuali sarebbero ${Money.eur0(v)} al giorno." } ?: ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Line("Resta da spendere", r.available, if (r.perDay != null) "${Money.eur0(r.perDay!!)} al giorno" else "", bold = true)
             if (r.upcoming.isNotEmpty()) {
