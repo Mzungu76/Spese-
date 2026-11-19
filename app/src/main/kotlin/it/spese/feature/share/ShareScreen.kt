@@ -60,6 +60,7 @@ class ShareViewModel @Inject constructor(
 
     fun create(url: String, createKey: String, accountIds: List<Long>, captureAccountId: Long, cfg: ShareConfig) = run("Condivisione creata") { service.create(url, createKey, accountIds, captureAccountId, cfg); scheduler.setShareSync(true) }
     fun saveConfig(cfg: ShareConfig, accountIds: List<Long>, captureAccountId: Long) = run("Scelte salvate e pubblicate") { service.updateConfig(cfg, accountIds, captureAccountId) }
+    fun sendMessage(text: String) = run(null) { service.sendMessage(text) }
     fun sync() = run(null) {
         val r = service.sync()
         messenger.show(r.problem ?: if (r.imported > 0) "Importate ${r.imported} spese dall'altro telefono" else "Tutto aggiornato")
@@ -146,6 +147,7 @@ private fun ActiveCards(link: ShareLink, d: AppData, busy: Boolean, vm: ShareVie
             }) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text("Invia") }
         }
     }
+    ThreadCard(link, busy) { t -> vm.sendMessage(t) }
     ConfigCard(link, d, busy) { cfg, ids, capture -> vm.saveConfig(cfg, ids, capture) }
     OutlinedButton(onClick = { confirmRevoke = true }, enabled = !busy, colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error), modifier = Modifier.fillMaxWidth().testTag("share_revoke")) { Text("Revoca la condivisione") }
     if (confirmRevoke) AlertDialog(onDismissRequest = { confirmRevoke = false }, title = { Text("Revocare la condivisione?") },
@@ -193,5 +195,19 @@ private fun AccountPicker(accounts: List<it.spese.core.model.Account>, picked: S
     if (chosen.size > 1) {
         Text("Le spese rilevate dall'altro telefono vanno su", style = MaterialTheme.typography.labelLarge)
         ChipChoice(chosen.map { a -> a.id to a.name }, captureId?.takeIf { id -> id in picked } ?: chosen.first().id, { id -> onCapture(id) })
+    }
+}
+
+/** La conversazione con l'altra persona: lei scrive dall'app e tu rispondi da qui; i messaggi sono cifrati come il resto. */
+@Composable
+private fun ThreadCard(link: ShareLink, busy: Boolean, onSend: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    SectionCard(title = "Messaggi") {
+        if (link.thread.isEmpty()) Text("Nessun messaggio.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        link.thread.takeLast(12).forEach { m ->
+            Text((if (m.fromHost) "Tu: " else "Lei/lui: ") + m.text, style = MaterialTheme.typography.bodyMedium)
+        }
+        OutlinedTextField(text, { v -> text = v }, label = { Text("Scrivi") }, modifier = Modifier.fillMaxWidth().testTag("share_msg"))
+        Button(enabled = !busy && text.isNotBlank(), onClick = { onSend(text); text = "" }, modifier = Modifier.fillMaxWidth().testTag("share_msg_send")) { Text("Invia") }
     }
 }

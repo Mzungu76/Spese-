@@ -2,6 +2,7 @@ package it.spese.domain.sharing
 
 import java.math.BigDecimal
 import java.time.LocalDate
+import kotlinx.serialization.Serializable
 
 /** Cosa l'app madre permette all'app dell'altra persona. */
 data class ShareFeatures(
@@ -32,7 +33,16 @@ data class ShareSnapshot(
     val optimalToDate: BigDecimal?, val dailyRemaining: BigDecimal?, val dailyAverage: BigDecimal?,
     val current: List<BigDecimal>, val average: List<BigDecimal>, val optimal: List<BigDecimal>,
     val features: ShareFeatures = ShareFeatures(), val note: String = "", val version: Int = 1,
+    /** Ultime spese dei conti condivisi, dove vanno i soldi nel periodo, quanto si è speso nel periodo precedente e la conversazione tra le due persone. */
+    val recent: List<ShareRecent> = emptyList(), val categories: List<ShareCategory> = emptyList(), val previousTotal: BigDecimal? = null,
+    val thread: List<ThreadMsg> = emptyList(),
 )
+
+data class ShareRecent(val day: LocalDate, val description: String, val amount: BigDecimal, val account: String = "")
+data class ShareCategory(val name: String, val percent: Int)
+
+/** Un messaggio tra le due persone. `id` è stabile: lo stesso messaggio non compare due volte. */
+@Serializable data class ThreadMsg(val id: String, val fromHost: Boolean, val text: String, val at: Long)
 
 /** Una spesa (o entrata) rilevata sul telefono dell'altra persona. `amount` ha il segno: negativo = spesa. */
 data class ShareEvent(val id: String, val amount: BigDecimal, val description: String, val atMillis: Long, val source: String = "")

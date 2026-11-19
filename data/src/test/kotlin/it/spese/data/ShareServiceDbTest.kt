@@ -97,6 +97,21 @@ class ShareServiceDbTest {
         assertEquals(0, BigDecimal(20).compareTo(ShareCodec.decodeBundle(ShareCrypto.decrypt(api.out!!, links.get()!!.key!!)!!).first { x -> x.unit == "MONTH" }.spentToDate))
     }
 
+    @Test fun `un messaggio dell'altra persona entra nella conversazione e la risposta arriva nel riepilogo`() = runBlocking {
+        val api = FakeShareApi(); val links = FakeLinks()
+        val (svc, acc) = service(api, links)
+        val link = svc.create("https://spese.example.workers.dev", "chiave", acc, ShareConfig(budgetMonthly = BigDecimal(600)))
+        val msg = ThreadMsg("g1", false, "Pago io la bolletta", 1000)
+        api.inbox.add(InboxItem(1, ShareCrypto.encrypt(ShareCodec.encodeMessage(msg), link.key!!)))
+        api.inbox.add(InboxItem(2, ShareCrypto.encrypt(ShareCodec.encodeMessage(msg), link.key!!)))         // lo stesso messaggio due volte: una sola
+        assertEquals(0, svc.pull()); assertEquals(listOf("Pago io la bolletta"), links.get()!!.thread.map { it.text })
+        svc.sendMessage("Va bene", now = 2000)
+        val snap = ShareCodec.decodeBundle(ShareCrypto.decrypt(api.out!!, link.key!!)!!).first { x -> x.unit == "MONTH" }
+        assertEquals(listOf("Pago io la bolletta", "Va bene"), snap.thread.map { it.text }); assertEquals(listOf(false, true), snap.thread.map { it.fromHost })
+        assertTrue(snap.recent.isNotEmpty())                                                               // e le ultime spese del conto
+        assertTrue(runCatching { svc.sendMessage("  ") }.exceptionOrNull() is ShareApiException)
+    }
+
     @Test fun `chiave di creazione sbagliata - errore chiaro e nessuna condivisione`() = runBlocking {
         val api = FakeShareApi(); val links = FakeLinks()
         val (svc, acc) = service(api, links)

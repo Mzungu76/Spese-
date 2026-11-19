@@ -50,7 +50,7 @@ class ShareService @Inject constructor(
         val link = links.get() ?: throw ShareApiException("Nessuna condivisione attiva")
         val key = link.key ?: throw ShareApiException("La chiave della condivisione non è valida")
         val d = data.first { it.loaded }
-        val snaps = ShareSnapshotBuilder.buildAll(d, link.sharedIds, link.config(), now)
+        val snaps = ShareSnapshotBuilder.buildAll(d, link.sharedIds, link.config(), now, thread = link.thread.takeLast(THREAD))
         if (snaps.isEmpty()) throw ShareApiException("Servono più movimenti sui conti condivisi (o un budget fissato a mano) per calcolare il limite")
         api.publish(link.serverUrl, link.shareId, link.ownerToken, ShareCrypto.encrypt(ShareCodec.encodeBundle(snaps), key))
         links.update { l -> l.copy(lastPublishedAt = now) }
@@ -68,7 +68,10 @@ class ShareService @Inject constructor(
             val page = api.inbox(link.serverUrl, link.shareId, link.ownerToken, after)
             if (page.items.isEmpty()) break
             // un messaggio che non si decifra (chiave diversa, manomissione) si scarta, ma non blocca gli altri
-            val events = page.items.flatMap { item -> ShareCrypto.decrypt(item.blob, key)?.let { text -> ShareCodec.decodeEvents(text) }.orEmpty() }
+            val plain = page.items.mapNotNull { item -> ShareCrypto.decrypt(item.blob, key) }
+            val messages = plain.mapNotNull { text -> ShareCodec.decodeMessage(text) }
+            val events = plain.flatMap { text -> ShareCodec.decodeEvents(text) }
+            if (messages.isNotEmpty()) links.update { l -> l.copy(thread = (l.thread + messages.filter { m -> l.thread.none { x -> x.id == m.id } }).sortedBy { m -> m.at }.takeLast(THREAD)) }
             val news = ShareEventImporter.toNewTransactions(events, link.accountId)
             val added = if (news.isEmpty()) 0 else tx.insertAll(news)
             api.ack(link.serverUrl, link.shareId, link.ownerToken, page.last)
@@ -78,6 +81,15 @@ class ShareService @Inject constructor(
         }
         links.update { l -> l.copy(lastPulledAt = now) }
         return imported
+    }
+
+    /** Scrive all'altra persona: il messaggio entra nella conversazione e si pubblica subito. */
+    suspend fun sendMessage(text: String, now: Long = System.currentTimeMillis()): ShareLink {
+        val t = text.trim().take(500)
+        if (t.isBlank()) throw ShareApiException("Scrivi qualcosa")
+        links.update { l -> l.copy(thread = (l.thread + ThreadMsg("h$now", true, t, now)).takeLast(THREAD)) }
+        publish(now)
+        return links.get()!!
     }
 
     /** Prima si importano le spese nuove, poi si pubblica il riepilogo aggiornato. Gli errori non bloccano l'altra metà. */
@@ -97,5 +109,5 @@ class ShareService @Inject constructor(
         return remote
     }
 
-    private companion object { const val PAGE = 100 }
+    private companion object { const val PAGE = 100; const val THREAD = 40 }
 }

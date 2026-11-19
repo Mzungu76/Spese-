@@ -20,6 +20,8 @@ data class ShareLink(
     val captureNotifications: Boolean = true, val showChart: Boolean = true, val note: String = "",
     /** Ultima spesa dell'altro telefono già importata, ultimo riepilogo pubblicato e ultimo controllo. */
     val lastInSeq: Long = 0, val lastPublishedAt: Long = 0, val lastPulledAt: Long = 0, val importedCount: Int = 0,
+    /** La conversazione con l'altra persona (ultimi messaggi). */
+    val thread: List<ThreadMsg> = emptyList(),
 ) {
     val key: ByteArray? get() = ShareCrypto.keyFromText(keyText)
     val sharedIds: List<Long> get() = accountIds.ifEmpty { listOf(accountId) }

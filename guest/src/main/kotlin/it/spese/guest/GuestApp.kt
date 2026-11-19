@@ -51,6 +51,9 @@ class GuestSyncWorker(context: Context, params: WorkerParameters) : CoroutineWor
         if (app.store.get() == null) return Result.success()
         // se la consegna non riesce, le spese restano in coda e si riprova
         val problem = app.service.sync()
+        // avvisi locali (limite, riepilogo del lunedì) e widget con l'ultima cifra
+        runCatching { app.service.dueAlerts(java.time.LocalDate.now()).forEach { alert -> GuestNotifier.post(applicationContext, alert) } }
+        runCatching { GuestWidget.refresh(applicationContext) }
         val pending = app.store.get()?.outbox?.isNotEmpty() == true
         return if (pending && problem != null) Result.retry() else Result.success()
     }

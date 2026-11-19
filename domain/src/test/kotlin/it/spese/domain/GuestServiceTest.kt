@@ -108,6 +108,39 @@ class GuestServiceTest {
         assertEquals(0, svc.queue(listOf(QueuedEvent("c1", "-5", "x", 1))))
     }
 
+    @Test fun `i messaggi viaggiano nei due versi e compaiono una sola volta`() = runBlocking {
+        val withThread = snapshot.copy(thread = listOf(ThreadMsg("h1", true, "Ciao", 100)))
+        val api = Api().apply { out = blob(withThread) }; val repo = Repo(); val svc = GuestService(repo, api)
+        svc.pair(SharePairing.encode(link))
+        assertTrue(svc.sendMessage("Ok, grazie", now = 200))
+        assertEquals(listOf("Ciao", "Ok, grazie"), repo.get()!!.conversation.map { it.text })      // il mio messaggio si vede subito
+        assertEquals(0, svc.flush())                                                                // nessuna spesa, ma il messaggio parte
+        assertTrue(repo.get()!!.pendingMsgs.isEmpty())
+        assertEquals("Ok, grazie", ShareCodec.decodeMessage(ShareCrypto.decrypt(api.sent.single(), link.key!!)!!)!!.text)
+        assertNull(ShareCodec.decodeMessage(ShareCodec.encodeEvents(emptyList())))                // un elenco di spese non è un messaggio
+        assertFalse(svc.sendMessage("   "))
+    }
+
+    @Test fun `avvisi all'80 e al 100 per cento una sola volta, e il riepilogo del lunedi`() = runBlocking {
+        fun st(spent: Int, prev: Int? = 410, weekly: Boolean = true, notified: List<String> = emptyList()) = GuestState(link.serverUrl, "id1", "guest1", keyText,
+            snapshotJson = ShareCodec.encodeBundle(listOf(snapshot.copy(spentToDate = BigDecimal(spent)), snapshot.copy(unit = "WEEK", previousTotal = prev?.let { BigDecimal(it) }))),
+            alertWeekly = weekly, notified = notified)
+        val thursday = LocalDate.of(2026, 11, 19); val monday = LocalDate.of(2026, 11, 23)
+        assertTrue(GuestAlerts.evaluate(st(300), thursday).isEmpty())                                  // 50%: niente
+        val near = GuestAlerts.evaluate(st(500), thursday).single(); assertEquals(GuestAlertKind.NEAR, near.kind)   // 500 su 600 = 83%
+        assertTrue(GuestAlerts.evaluate(st(500, notified = listOf(near.key)), thursday).isEmpty())     // già mandato
+        assertEquals(GuestAlertKind.LIMIT, GuestAlerts.evaluate(st(650), thursday).single().kind)      // oltre il limite: solo quello
+        assertEquals(listOf(GuestAlertKind.WEEKLY), GuestAlerts.evaluate(st(100), monday).map { it.kind })
+        assertTrue(GuestAlerts.evaluate(st(100, weekly = false), monday).isEmpty())
+        val repo = Repo().apply { st.value = st(500) }; val svc = GuestService(repo, Api())
+        assertEquals(1, svc.dueAlerts(thursday).size); assertEquals(0, svc.dueAlerts(thursday).size)  // la seconda volta non ripete
+    }
+
+    @Test fun `il testo della cifra al giorno`() {
+        assertEquals("25,00 €", GuestSummary.perDay(snapshot)); assertEquals("—", GuestSummary.perDay(snapshot.copy(dailyRemaining = null))); assertEquals("—", GuestSummary.perDay(null))
+        assertEquals("0,00 €", GuestSummary.perDay(snapshot.copy(dailyRemaining = BigDecimal(-5))))
+    }
+
     @Test fun `dalla notifica di una banca alla spesa da mandare`() {
         val src = CaptureRouting.route(GuestCapture.config(listOf(CaptureSource.REVOLUT)), "com.revolut.revolut", "Revolut")
         assertEquals(CaptureSource.REVOLUT, src)

@@ -48,6 +48,17 @@ class ShareTest {
         assertTrue(ShareCodec.decodeBundle("rotto").isEmpty())
     }
 
+    @Test fun `il riepilogo porta le ultime spese, le categorie e la conversazione`() {
+        val l = history(); l.add(tx("2026-11-05", -300)); l.add(tx("2026-11-09", -40))
+        val thread = listOf(ThreadMsg("h1", true, "Ciao", 5))
+        val s = ShareSnapshotBuilder.buildAll(managed(l).copy(ledger = l), listOf(1L), ShareConfig(budgetMonthly = BigDecimal(900)), 1L, d("2026-11-10"), thread).first { it.unit == "MONTH" }
+        assertEquals(2, s.recent.count { it.day >= d("2026-11-05") })
+        assertEquals(d("2026-11-09"), s.recent.first().day); eq("-40", s.recent.first().amount)         // la più recente per prima
+        assertEquals(100, s.categories.sumOf { it.percent }); assertTrue(s.categories.all { it.percent in 1..100 })
+        assertEquals(thread, s.thread)
+        assertEquals(s, ShareCodec.decodeBundle(ShareCodec.encodeBundle(listOf(s))).single())             // viaggia intatto
+    }
+
     @Test fun `senza storico e senza budget il limite non e calcolabile, e un conto inesistente non da nulla`() {
         val s = ShareSnapshotBuilder.build(managed(listOf(tx("2026-11-05", -300))), 1, ShareConfig(), 1L, d("2026-11-10"))!!
         assertNull(s.limit); assertNull(s.dailyRemaining); assertTrue(s.optimal.isEmpty())

@@ -26,12 +26,18 @@ data class GuestState(
     val sourceIds: List<String>? = null,
     /** Periodo scelto dall'altra persona: WEEK, MONTH o QUARTER. */
     val unit: String = "MONTH",
+    /** Messaggi scritti e non ancora consegnati. */
+    val pendingMsgs: List<ThreadMsg> = emptyList(),
+    /** Avvisi: all'80% del limite, al limite, riepilogo del lunedì; e quali sono già stati mandati (per non ripeterli). */
+    val alertNear: Boolean = true, val alertLimit: Boolean = true, val alertWeekly: Boolean = false, val notified: List<String> = emptyList(),
 ) {
     val key: ByteArray? get() = ShareCrypto.keyFromText(keyText)
     /** Tutti i periodi ricevuti (settimana, mese, trimestre), nell'ordine in cui la madre li ha pubblicati. */
     val snapshots: List<ShareSnapshot> get() = if (snapshotJson.isBlank()) emptyList() else ShareCodec.decodeBundle(snapshotJson)
     /** Il periodo scelto, o il mese (poi il primo disponibile) se quello scelto non c'è. */
     val snapshot: ShareSnapshot? get() = snapshots.let { all -> all.firstOrNull { x -> x.unit == unit } ?: all.firstOrNull { x -> x.unit == "MONTH" } ?: all.firstOrNull() }
+    /** La conversazione: quella pubblicata dalla madre più i miei messaggi non ancora arrivati, in ordine di tempo. */
+    val conversation: List<ThreadMsg> get() = (snapshots.firstOrNull()?.thread.orEmpty().let { t -> t + pendingMsgs.filter { m -> t.none { x -> x.id == m.id } } }).sortedBy { m -> m.at }
     val activeSources: List<CaptureSource> get() = (sourceIds?.mapNotNull { id -> CaptureSource.byId(id) } ?: CaptureSource.entries.filter { s -> s != CaptureSource.SMS })
 }
 
@@ -106,21 +112,47 @@ class GuestService(private val repo: GuestStateRepository, private val api: Shar
         return added
     }
 
-    /** Consegna le spese in coda; quelle non consegnate restano per il prossimo tentativo. */
+    /** Scrive alla madre: il messaggio si vede subito e parte appena c'è rete. */
+    suspend fun sendMessage(text: String, now: Long = System.currentTimeMillis()): Boolean {
+        val t = text.trim().take(500)
+        if (t.isBlank() || repo.get() == null) return false
+        repo.update { s -> s.copy(pendingMsgs = (s.pendingMsgs + ThreadMsg("g$now", false, t, now)).takeLast(20)) }
+        return true
+    }
+
+    /** Consegna i messaggi e le spese in coda; quelli non consegnati restano per il prossimo tentativo. */
     suspend fun flush(): Int {
         val st = repo.get() ?: return 0
         val key = st.key ?: return 0
         var sent = 0
-        for (chunk in st.outbox.chunked(CHUNK)) {
-            val blob = ShareCrypto.encrypt(ShareCodec.encodeEvents(chunk.map { e -> ShareEvent(e.id, BigDecimal(e.amount), e.description, e.at, e.source) }), key)
-            try { api.send(st.serverUrl, st.shareId, st.guestToken, listOf(blob)) }
-            catch (e: ShareApiException) { repo.update { s -> s.copy(problem = if (e.status == 401 || e.status == 403) "La condivisione è stata revocata o il codice non vale più" else e.message.orEmpty()) }; throw e }
-            val ids = chunk.mapTo(HashSet()) { e -> e.id }
-            repo.update { s -> s.copy(outbox = s.outbox.filter { e -> e.id !in ids }, sentCount = s.sentCount + chunk.size) }
-            sent += chunk.size
+        try {
+            for (m in st.pendingMsgs) {
+                api.send(st.serverUrl, st.shareId, st.guestToken, listOf(ShareCrypto.encrypt(ShareCodec.encodeMessage(m), key)))
+                repo.update { s -> s.copy(pendingMsgs = s.pendingMsgs.filter { x -> x.id != m.id }) }
+            }
+            for (chunk in st.outbox.chunked(CHUNK)) {
+                val blob = ShareCrypto.encrypt(ShareCodec.encodeEvents(chunk.map { e -> ShareEvent(e.id, BigDecimal(e.amount), e.description, e.at, e.source) }), key)
+                api.send(st.serverUrl, st.shareId, st.guestToken, listOf(blob))
+                val ids = chunk.mapTo(HashSet()) { e -> e.id }
+                repo.update { s -> s.copy(outbox = s.outbox.filter { e -> e.id !in ids }, sentCount = s.sentCount + chunk.size) }
+                sent += chunk.size
+            }
+        } catch (e: ShareApiException) {
+            repo.update { s -> s.copy(problem = if (e.status == 401 || e.status == 403) "La condivisione è stata revocata o il codice non vale più" else e.message.orEmpty()) }
+            throw e
         }
         return sent
     }
+
+    /** Gli avvisi da mandare adesso (e si ricorda che sono stati mandati). */
+    suspend fun dueAlerts(today: java.time.LocalDate): List<GuestAlert> {
+        val st = repo.get() ?: return emptyList()
+        val due = GuestAlerts.evaluate(st, today)
+        if (due.isNotEmpty()) repo.update { s -> s.copy(notified = (s.notified + due.map { a -> a.key }).takeLast(60)) }
+        return due
+    }
+
+    suspend fun setAlerts(near: Boolean, limit: Boolean, weekly: Boolean) { repo.update { s -> s.copy(alertNear = near, alertLimit = limit, alertWeekly = weekly) } }
 
     /** Aggiorna il riepilogo e consegna le spese; un problema in una metà non blocca l'altra. */
     suspend fun sync(now: Long = System.currentTimeMillis()): String? {

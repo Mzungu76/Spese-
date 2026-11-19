@@ -19,6 +19,10 @@ object ShareCodec {
         s.optimalToDate?.let { put("optNow", it.toPlainString()) }; s.dailyRemaining?.let { put("perDay", it.toPlainString()) }; s.dailyAverage?.let { put("avgDay", it.toPlainString()) }
         put("cur", decs(s.current)); put("avg", decs(s.average)); put("opt", decs(s.optimal))
         put("capture", s.features.captureNotifications); put("chart", s.features.showChart); put("note", s.note)
+        s.previousTotal?.let { put("prev", it.toPlainString()) }
+        if (s.recent.isNotEmpty()) put("recent", buildJsonArray { s.recent.forEach { r -> add(buildJsonObject { put("d", r.day.toEpochDay()); put("t", r.description); put("a", r.amount.toPlainString()); if (r.account.isNotBlank()) put("c", r.account) }) } })
+        if (s.categories.isNotEmpty()) put("cats", buildJsonArray { s.categories.forEach { c -> add(buildJsonObject { put("n", c.name); put("p", c.percent) }) } })
+        if (s.thread.isNotEmpty()) put("thread", buildJsonArray { s.thread.forEach { m -> add(buildJsonObject { put("i", m.id); put("h", if (m.fromHost) 1 else 0); put("t", m.text); put("at", m.at) }) } })
     }.toString()
 
     /** Più periodi insieme (settimana, mese, trimestre) in un solo messaggio; i riepiloghi singoli di prima restano leggibili. */
@@ -45,7 +49,21 @@ object ShareCodec {
             limit = o.dec("limit"), spentToDate = o.dec("spent") ?: BigDecimal.ZERO, optimalToDate = o.dec("optNow"), dailyRemaining = o.dec("perDay"), dailyAverage = o.dec("avgDay"),
             current = o.decs("cur"), average = o.decs("avg"), optimal = o.decs("opt"),
             features = ShareFeatures(o.str("capture") != "false", o.str("chart") != "false"), note = o.str("note").orEmpty(), version = o.str("v")?.toIntOrNull() ?: 1,
+            recent = (o["recent"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { r -> ShareRecent(r.day("d") ?: return@let null, r.str("t").orEmpty(), r.dec("a") ?: return@let null, r.str("c").orEmpty()) } } ?: emptyList(),
+            categories = (o["cats"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { c -> ShareCategory(c.str("n") ?: return@let null, c.str("p")?.toIntOrNull() ?: return@let null) } } ?: emptyList(),
+            previousTotal = o.dec("prev"),
+            thread = (o["thread"] as? JsonArray)?.mapNotNull { e -> (e as? JsonObject)?.let { m -> ThreadMsg(m.str("i") ?: return@let null, m.str("h") == "1", m.str("t").orEmpty(), m.str("at")?.toLongOrNull() ?: return@let null) } } ?: emptyList(),
         )
+    }
+
+    /** Un messaggio dell'altra persona alla madre (viaggia come le spese rilevate: cifrato, nella posta in arrivo). */
+    fun encodeMessage(m: ThreadMsg): String = buildJsonObject { put("i", m.id); put("m", m.text); put("at", m.at) }.toString()
+
+    /** `null` se il testo non è un messaggio (per esempio è un elenco di spese). */
+    fun decodeMessage(text: String): ThreadMsg? {
+        val o = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return null
+        val t = o.str("m")?.takeIf { it.isNotBlank() } ?: return null
+        return ThreadMsg(o.str("i") ?: return null, false, t.take(500), o.str("at")?.toLongOrNull() ?: return null)
     }
 
     fun encodeEvents(list: List<ShareEvent>): String = buildJsonArray {
