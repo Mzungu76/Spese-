@@ -52,12 +52,12 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
                     ChartSeries("Massimo storico", MaterialTheme.colorScheme.outlineVariant, r.high),
                     ChartSeries("Minimo storico", MaterialTheme.colorScheme.outlineVariant, r.low),
                     ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, r.average),
-                    ChartSeries("Spesa ottimale", MaterialTheme.colorScheme.primary, r.optimal),
+                    ChartSeries("Tetto di spesa", MaterialTheme.colorScheme.primary, r.optimal),
                     ChartSeries("Questo $unitName", verdictColor.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.primary, r.current),
                 ).filter { it.values.size >= 2 }          // una serie con un solo punto non si disegna (lunedì: oggi è il primo giorno)
                 if (series.isEmpty() || series.all { s -> s.values.all { it.signum() == 0 } }) Text("Ancora nessuna spesa da confrontare.", style = MaterialTheme.typography.bodyMedium)
                 else LineChart(labels, series, height = 220.dp, interactive = false)
-                Text("La linea colorata è la spesa cumulata di ora; la grigia è la media dei periodi passati; la fascia chiara va dal minimo al massimo storico." + if (r.optimal.size >= 2) " La linea blu è la spesa ottimale: il limite per restare in linea con ${r.optimalBasis.label}." else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("La linea colorata è la spesa cumulata di ora; la grigia è la media dei periodi passati; la fascia chiara va dal minimo al massimo storico." + if (r.optimal.size >= 2) " La linea blu è il tetto di spesa cumulata (${r.optimalBasis.label}). Non è un obiettivo: è il punto oltre il quale cominci a intaccare il margine di sicurezza e la cifra disponibile al giorno scende a zero." else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             1 -> {
                 val labels = r.pastWindows.takeLast(10).map { it.label } + "Ora"
@@ -66,7 +66,7 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
                     bars = listOf(ChartSeries("Speso", MaterialTheme.colorScheme.primary, past.map { it.total } + r.projectedWithAverage)),
                     lines = listOf(ChartSeries("Spesa media", MaterialTheme.colorScheme.onSurfaceVariant, labels.map { r.averageTotal })) +
                         (if (filtered) emptyList() else listOf(ChartSeries("Entrate medie", fin.positive, labels.map { r.averageIncome }))) +
-                        (r.optimalTotal?.let { t -> listOf(ChartSeries("Limite ottimale", MaterialTheme.colorScheme.primary, labels.map { t })) } ?: emptyList()), height = 220.dp, interactive = false)
+                        (r.optimalTotal?.let { t -> listOf(ChartSeries("Tetto di spesa", MaterialTheme.colorScheme.primary, labels.map { t })) } ?: emptyList()), height = 220.dp, interactive = false)
                 Text("Ogni barra è un $unitName passato; «Ora» è la stima di chiusura se il resto va come al solito. Quando la barra supera la linea verde, spendi più di quanto entra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
@@ -85,10 +85,10 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
         Metric("Chiusura al ritmo attuale", Money.eur0(r.projectedAtCurrentPace), if (r.projectedAtCurrentPace > r.averageTotal) "sopra la media" else "sotto la media")
         r.optimalTotal?.let { limit ->
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            Metric("Limite di spesa ottimale (${unitName})", Money.eur0(limit),
+            Metric("Tetto di spesa (${unitName})", Money.eur0(limit),
                 (if (r.optimalBasis.label.isNotEmpty()) r.optimalBasis.label.replaceFirstChar { it.uppercase() } else "") + (r.optimalDailyAverage?.let { " · ${Money.eur0(it)} al giorno" } ?: ""))
             r.optimalToDate?.let { ideal ->
-                Metric("A questo punto sarebbe ottimale aver speso", Money.eur0(ideal), "finora hai speso ${Money.eur0(r.spentToDate)}",
+                Metric("Fin qui il tetto consente di aver speso", Money.eur0(ideal), "finora hai speso ${Money.eur0(r.spentToDate)}",
                     if (r.spentToDate > ideal) fin.warning else fin.positive)
             }
             r.optimalDailyRemaining?.let { a ->

@@ -8,15 +8,22 @@ import java.time.YearMonth
  * successivo (utile se lo stipendio arriva il 20). Il mese prende il nome da quello in cui **inizia**: il periodo 20/01 – 19/02 è "gennaio".
  * Il giorno iniziale è limitato a 1–28 così esiste in ogni mese.
  */
-data class MonthCalendar(val startDay: Int = 1) {
+data class MonthCalendar(val startDay: Int = 1, val starts: Map<YearMonth, LocalDate> = emptyMap(),
+    /** Mese ancorato a un'entrata (data presunta + importo/categoria). */ val anchored: Boolean = false,
+    /** Mese la cui entrata di scavalco è attesa ma non ancora arrivata (si è ancora in quello precedente). */ val waiting: YearMonth? = null) {
     init { require(startDay in 1..28) { "Il giorno iniziale del mese contabile va da 1 a 28." } }
 
-    val isSolar: Boolean get() = startDay == 1
+    val isSolar: Boolean get() = startDay == 1 && starts.isEmpty() && !anchored
 
     /** Mese contabile (identificato dal mese in cui inizia) a cui appartiene la data. */
-    fun monthOf(d: LocalDate): YearMonth = if (d.dayOfMonth >= startDay) YearMonth.from(d) else YearMonth.from(d).minusMonths(1)
+    fun monthOf(d: LocalDate): YearMonth {
+        if (starts.isEmpty()) return if (d.dayOfMonth >= startDay) YearMonth.from(d) else YearMonth.from(d).minusMonths(1)
+        val c = YearMonth.from(d)
+        return listOf(c.plusMonths(1), c, c.minusMonths(1)).firstOrNull { m -> start(m) <= d } ?: c.minusMonths(1)
+    }
 
-    fun start(m: YearMonth): LocalDate = m.atDay(startDay)
+    /** Inizio del mese: la data in cui è arrivata l'entrata che lo fa scattare ([starts]), altrimenti il giorno impostato. */
+    fun start(m: YearMonth): LocalDate = starts[m] ?: m.atDay(startDay)
     fun end(m: YearMonth): LocalDate = start(m.plusMonths(1)).minusDays(1)
     /** Quanti giorni dura il mese contabile. */
     fun length(m: YearMonth): Int = (end(m).toEpochDay() - start(m).toEpochDay() + 1).toInt()

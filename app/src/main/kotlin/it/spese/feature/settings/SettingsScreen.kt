@@ -74,6 +74,16 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         val cal = it.spese.core.common.MonthCalendar(s.monthStartDay)
                         val ex = java.time.YearMonth.of(2026, 1)
                         Text("Esempio: «gennaio» va dal ${it.spese.core.common.Dates.fmt(cal.start(ex))} al ${it.spese.core.common.Dates.fmt(cal.end(ex))}. Ogni mese prende il nome da quello in cui inizia.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val appData by vm.data.collectAsStateWithLifecycle()
+                        val incomeCats = appData.categories.filter { c -> c.kind == it.spese.core.model.TxKind.ENTRATA && c.parentId == null && c.active }
+                        if (incomeCats.isNotEmpty()) {
+                            Text("Il mese scatta quando arriva", style = MaterialTheme.typography.labelLarge)
+                            ChipChoice(listOf(0L to "Data fissa") + incomeCats.map { c -> c.id to c.name }, s.monthAnchorCategoryId, { id -> vm.update { st -> st.copy(monthAnchorCategoryId = id) } })
+                            var amt by remember(s.monthAnchorAmount) { mutableStateOf(if (s.monthAnchorAmount > 0) s.monthAnchorAmount.toString() else "") }
+                            OutlinedTextField(amt, { v -> amt = v.filter { c -> c.isDigit() }.take(6); vm.update { st -> st.copy(monthAnchorAmount = amt.toIntOrNull() ?: 0) } },
+                                label = { Text("Importo minimo dell'entrata (€, facoltativo)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                            Text("Il giorno indicato è la data presunta. Se scegli un'entrata (di solito lo stipendio), il nuovo mese inizia il giorno in cui arriva davvero, fino a ${it.spese.domain.finance.MonthAnchor.WINDOW_DAYS} giorni prima o dopo la data presunta; finché non arriva, il mese precedente continua e il budget lo tratta come un ritardo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     Text("Entrate a fine mese: chiedi il mese", style = MaterialTheme.typography.labelLarge)
                     ChipChoice(listOf(0 to "Mai", 3 to "3 giorni", 7 to "7 giorni", 10 to "10 giorni"), s.incomeMonthAskDays, { d -> vm.update { st -> st.copy(incomeMonthAskDays = d) } })
@@ -142,6 +152,18 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         LabeledSwitch("Spese non previste", s.notifyUnexpected, { v -> vm.update { it.copy(notifyUnexpected = v) } })
                         DropdownField("Ora del controllo", s.notifyHour, (6..22).toList(), { "%02d:00".format(it) }, { h -> vm.update { it.copy(notifyHour = h) } })
                     }
+                }
+            }
+            item {
+                SectionCard(title = "Budget giornaliero") {
+                    Text("Margine di sicurezza", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0, 5, 10, 15, 20).map { p -> p to "$p%" }, s.budgetMarginPct, { p -> vm.update { st -> st.copy(budgetMarginPct = p) } })
+                    Text("Quota di ciò che puoi spendere dopo risparmio e uscite note che non entra nella cifra «disponibile oggi»: copre imprevisti ed entrate che deludono. Vale anche per le condivisioni.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Paracadute: ritardo delle entrate fisse", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0, 3, 5, 7, 10, 14).map { p -> p to (if (p == 0) "Nessuno" else "$p giorni") }, s.budgetDelayDays, { p -> vm.update { st -> st.copy(budgetDelayDays = p) } })
+                    Text("Se lo stipendio (o un'altra entrata fissa) arrivasse in ritardo di questi giorni, i soldi devono bastare lo stesso: fino ad allora non conto su quell'entrata. La cifra lo dichiara. Serve partire dai soldi sui conti.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LabeledSwitch("Parti dai soldi sui conti", s.budgetFromBalance, { on -> vm.update { st -> st.copy(budgetFromBalance = on) } },
+                        supporting = "Il budget usa i soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) più le entrate ancora attese fino a fine mese contabile. Serve che i saldi dei conti siano giusti. Se lo spegni conta solo il flusso del mese.")
                 }
             }
             item {

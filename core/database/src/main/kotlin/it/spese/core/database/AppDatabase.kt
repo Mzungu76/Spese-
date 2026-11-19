@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recurring(): RecurringDao
 
     companion object {
-        const val VERSION = 9
+        const val VERSION = 10
         const val NAME = "gestione-spese.db"
 
         /**
@@ -51,6 +51,14 @@ abstract class AppDatabase : RoomDatabase() {
         /** 8 → 9: mese contabile scelto per un movimento (es. un'entrata di fine mese che conta per il successivo). Nessun dato esistente cambia (NULL = mese della data). */
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("ALTER TABLE transactions ADD COLUMN accountingMonth TEXT") }
+        }
+
+        /**
+         * 9 → 10: il risparmio mensile di partenza (300 €) del «Piano attuale» non esiste più: senza obiettivi impostati non si riserva nulla.
+         * Si azzera solo il valore di default intatto (300 € al mese); un obiettivo scelto dall'utente con un altro importo resta.
+         */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("UPDATE scenarios SET goalValueCents = 0 WHERE isBase = 1 AND goalMode = 'm' AND goalValueCents = 30000") }
         }
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
@@ -102,7 +110,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)

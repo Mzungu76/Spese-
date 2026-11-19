@@ -208,7 +208,8 @@ data class Due(
 
 data class SavingsGoal(
     val mode: GoalMode = GoalMode.MONTHLY,
-    val value: BigDecimal = BigDecimal(300),
+    /** Risparmio mensile (o totale, secondo il modo). 0 = nessun obiettivo impostato: non si riserva nulla. */
+    val value: BigDecimal = BigDecimal.ZERO,
     val months: Int = 12,
     /** Entrate mensili attese; null = media del periodo. */
     val expectedIncome: BigDecimal? = null,
@@ -253,7 +254,11 @@ data class Goal(
     val enabled: Boolean = true,
     /** Conto su cui i soldi dell'obiettivo sono depositati: restano nel suo saldo ma contano come «bloccati». null = non legato a un conto. */
     val accountId: Long? = null,
+    /** Versamenti registrati (data e importo): servono a non riservare due volte la quota di un mese già messa da parte. */
+    val deposits: List<GoalDeposit> = emptyList(),
 )
+
+data class GoalDeposit(val day: LocalDate, val amount: BigDecimal)
 
 /** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */
 data class Valuation(val accountId: Long, val date: LocalDate, val value: BigDecimal)

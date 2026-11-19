@@ -182,7 +182,7 @@ object LegacyBackupCodec {
 
     private fun parseGoal(o: JsonObject?): LegacyGoal = LegacyGoal(
         GoalMode.fromKey(o?.get("mode").str()),
-        o?.get("val").dec() ?: BigDecimal(300),
+        o?.get("val").dec() ?: BigDecimal.ZERO,
         o?.get("months").dec()?.toInt() ?: 12,
         o?.get("income").dec(),
     )

@@ -32,13 +32,16 @@ class SafeToSpendWidget : AppWidgetProvider() {
     @Inject lateinit var recurring: RecurringRepository
     @Inject lateinit var goals: it.spese.domain.repository.GoalRepository
     @Inject lateinit var review: SubscriptionReviewRepository
+    @Inject lateinit var natures: it.spese.domain.health.IncomeNatureRepository
+    @Inject lateinit var settings: it.spese.domain.repository.SettingsRepository
+    @Inject lateinit var valuations: it.spese.domain.repository.ValuationRepository
 
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
         val pending = goAsync()
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val d = withTimeoutOrNull(8_000) { data.first { it.loaded } }
-                val report = d?.let { runCatching { SafeToSpendEngine.forApp(it, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll()) }.getOrNull() }
+                val report = d?.let { runCatching { SafeToSpendEngine.forApp(it, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll(), incomeOverrides = natures.get(), marginPct = settings.get().budgetMarginPct, valuations = valuations.getAll(), fromBalance = settings.get().budgetFromBalance, delayDays = settings.get().budgetDelayDays) }.getOrNull() }
                 val views = render(context, report, d != null)
                 appWidgetIds.forEach { manager.updateAppWidget(it, views) }
             } finally { pending.finish() }

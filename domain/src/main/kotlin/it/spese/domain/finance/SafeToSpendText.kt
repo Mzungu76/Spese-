@@ -22,5 +22,14 @@ object SafeToSpendText {
         SafeStatus.BEHIND -> "Stai spendendo più in fretta del previsto (${Money.eur0(r.deltaVsPlan.abs())} oltre il piano fin qui): restano ${Money.eur0(r.available)} fino al ${Dates.fmt(r.periodEnd)}."
         SafeStatus.OK -> if (r.deltaVsPlan.signum() > 0) "Sei avanti di ${Money.eur0(r.deltaVsPlan)} sul piano: restano ${Money.eur0(r.available)} fino al ${Dates.fmt(r.periodEnd)}."
             else "In linea con il piano: restano ${Money.eur0(r.available)} fino al ${Dates.fmt(r.periodEnd)}."
-    } + if (r.stale) " (Dati fermi al ${Dates.fmt(r.today)}.)" else ""
+    } + delayNote(r) + if (r.stale) " (Dati fermi al ${Dates.fmt(r.today)}.)" else ""
+
+    /** Il paracadute dichiarato: la cifra tiene conto di un ritardo ipotizzato sulle entrate fisse (e dice quanto sarebbe senza). */
+    fun delayNote(r: SafeToSpendReport): String {
+        val until = r.delayUntil ?: return ""
+        if (r.delayDays <= 0) return ""
+        val base = " Considero un ritardo di ${r.delayDays} giorni sulle entrate fisse: i soldi devono bastare per ${r.daysLeft + r.delayDays} giorni invece di ${r.daysLeft}, fino al ${Dates.fmt(until)}."
+        val onTime = r.perDayOnTime
+        return if (onTime != null && r.perDay != null && onTime.compareTo(r.perDay) != 0) base + " Con entrate puntuali sarebbero ${Money.eur0(onTime)} al giorno." else base
+    }
 }

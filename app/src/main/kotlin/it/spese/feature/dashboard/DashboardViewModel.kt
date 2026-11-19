@@ -32,7 +32,8 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     recurring: it.spese.domain.repository.RecurringRepository, goals: it.spese.domain.repository.GoalRepository,
     valuations: it.spese.domain.repository.ValuationRepository, transferReview: it.spese.domain.classification.TransferReviewRepository,
     healthSource: it.spese.feature.health.HealthSource, private val widgets: it.spese.domain.widgets.WidgetLayoutRepository,
-    reminderRepo: it.spese.domain.reminders.ReminderRepository) : ViewModel() {
+    reminderRepo: it.spese.domain.reminders.ReminderRepository,
+    natures: it.spese.domain.health.IncomeNatureRepository, settings: it.spese.domain.repository.SettingsRepository) : ViewModel() {
     /** Obiettivi con l'avanzamento (per i widget che li mostrano in breve). */
     val goalsProgress: StateFlow<List<it.spese.domain.goals.GoalProgress>> = goals.observeAll().map { g -> it.spese.domain.goals.GoalEngine.all(g, java.time.LocalDate.now()) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -54,8 +55,9 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     val transferPairs: StateFlow<Int> = combine(data, transferReview.observeIgnored()) { d, ign -> runCatching { it.spese.domain.classification.TransferSuggestions.compute(d, ign).size }.getOrDefault(0) }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     /** «Disponibile oggi»: quanto si può spendere ancora nel mese, tenendo conto di risparmio e uscite note (conto del filtro, se scelto). */
-    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll()) { d, rules, ign, f, g ->
-        runCatching { SafeToSpendEngine.forApp(d, rules, ign, f.accountId, goals = g) }.getOrNull()
+    val safeToSpend: StateFlow<SafeToSpendReport?> = combine(data, recurring.observeAll(), review.observeIgnored(), filters.filter, goals.observeAll(), natures.observe(), settings.observe().map { s -> Triple(s.budgetMarginPct, s.budgetFromBalance, s.budgetDelayDays) }.distinctUntilChanged(), valuations.observeAll()) { v ->
+        @Suppress("UNCHECKED_CAST")
+        runCatching { SafeToSpendEngine.forApp(v[0] as AppData, v[1] as List<it.spese.core.model.RecurringRule>, v[2] as Set<String>, (v[3] as it.spese.domain.finance.TxFilter).accountId, goals = v[4] as List<it.spese.core.model.Goal>, incomeOverrides = v[5] as Map<Long, it.spese.domain.health.IncomeNature>, marginPct = (v[6] as Triple<Int, Boolean, Int>).first, valuations = v[7] as List<it.spese.core.model.Valuation>, fromBalance = (v[6] as Triple<Int, Boolean, Int>).second, delayDays = (v[6] as Triple<Int, Boolean, Int>).third) }.getOrNull()
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     /** Consigli in evidenza (i più importanti) e mese da chiudere, se siamo nei primi giorni del nuovo mese contabile. */
     val advice: StateFlow<HomeAdvice> = combine(data, goals.observeAll(), valuations.observeAll(), recurring.observeAll(), review.observeIgnored()) { d, g, v, r, ign ->
@@ -78,14 +80,19 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     private val selected = MutableStateFlow<Set<Long>>(emptySet())
     private val compareMode = MutableStateFlow(false)
 
-    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode, goals.observeAll()) { d, f, sel, cm, g -> arrayOf(d, f, sel, cm, g) }
+    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode, goals.observeAll(), recurring.observeAll(), review.observeIgnored(), natures.observe(), settings.observe().map { s -> Triple(s.budgetMarginPct, s.budgetFromBalance, s.budgetDelayDays) }.distinctUntilChanged(), valuations.observeAll()) { arr: Array<Any?> -> arr }
         .mapLatest { a ->
             @Suppress("UNCHECKED_CAST")
             val d = a[0] as AppData; val f = a[1] as TxFilter; val sel = a[2] as Set<Long>; val cm = a[3] as Boolean; val gl = a[4] as List<it.spese.core.model.Goal>
+            val rules = a[5] as List<it.spese.core.model.RecurringRule>; val ign = a[6] as Set<String>; val nat = a[7] as Map<Long, it.spese.domain.health.IncomeNature>; val margin = (a[8] as Triple<Int, Boolean, Int>).first; val fromBal = (a[8] as Triple<Int, Boolean, Int>).second; val vals = a[9] as List<it.spese.core.model.Valuation>
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)
-                DashboardState(d, m, f, (if (f.period == Period.CurrentWeek) d.transactions.maxOfOrNull { it.bookingDate }?.let { last -> val mon = last.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); TrendBuckets.daily(m.filtered, mon, mon.plusDays(6)) } ?: emptyList() else TrendBuckets.compute(m.filtered, f.calendar)), cm, sel, CategoryComparisonEngine.compute(d, f, sel), runCatching { it.spese.domain.finance.PaceEngine.compute(d, f, categoryIds = sel, savingsMonthly = gl.takeIf { l -> l.isNotEmpty() }?.let { l -> it.spese.domain.goals.GoalEngine.monthlyTotal(l) }) }.getOrNull())
+                DashboardState(d, m, f, (if (f.period == Period.CurrentWeek) d.transactions.maxOfOrNull { it.bookingDate }?.let { last -> val mon = last.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); TrendBuckets.daily(m.filtered, mon, mon.plusDays(6)) } ?: emptyList() else TrendBuckets.compute(m.filtered, f.calendar)), cm, sel, CategoryComparisonEngine.compute(d, f, sel), runCatching {
+                    // senza categorie scelte il limite è il budget giornaliero dell'app (stessa formula di «Disponibile oggi»); con le categorie, i loro budget
+                    val limit = if (sel.isEmpty()) it.spese.domain.finance.DailyBudgetEngine.compute(if (f.accountId != null) d.copy(transactions = d.transactions.filter { t -> t.accountId == f.accountId }) else d, rules, ign, gl, nat, margin, cashSource = if (fromBal) { day -> it.spese.domain.finance.CashCalculator.compute(d, f.accountId?.let { id -> setOf(id) }, gl, vals, day) } else null, horizonDays = it.spese.domain.finance.DailyBudgetEngine.WINDFALL_HORIZON_DAYS)?.limit else null
+                    it.spese.domain.finance.PaceEngine.compute(d, f, categoryIds = sel, savingsMonthly = gl.takeIf { l -> l.isNotEmpty() }?.let { l -> it.spese.domain.goals.GoalEngine.monthlyTotal(l) }, budgetMonthly = limit, budgetIsComputed = limit != null)
+                }.getOrNull())
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())

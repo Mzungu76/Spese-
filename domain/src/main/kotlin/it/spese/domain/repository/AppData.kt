@@ -62,7 +62,7 @@ class AppDataSource(
     fun observe(): Flow<AppData> = combine(
         tx.observeAll(), cats.observeAll(), accounts.observeAll(), rules.observeAll(), dues.observeAll(), scenarios.observeAll(),
         tx.observeSplits(), quotas.observeAll(),
-        (settings?.observe() ?: kotlinx.coroutines.flow.flowOf(AppSettings())).map { it.monthStartDay }.distinctUntilChanged(),
+        (settings?.observe() ?: kotlinx.coroutines.flow.flowOf(AppSettings())).map { Triple(it.monthStartDay, it.monthAnchorCategoryId, it.monthAnchorAmount) }.distinctUntilChanged(),
         managed ?: kotlinx.coroutines.flow.flowOf(emptySet<Long>()),
     ) { values ->
         @Suppress("UNCHECKED_CAST")
@@ -75,7 +75,8 @@ class AppDataSource(
         val managedIds = values[9] as Set<Long>
         val byId = categories.associateBy { c -> c.id }
         val everything = it.spese.domain.finance.SplitExpander.expand(raw, splits, byId)
-        val cal = it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28))
+        val (startDay, anchorId, anchorAmount) = values[8] as Triple<Int, Long, Int>
+        val cal = it.spese.domain.finance.MonthAnchor.calendar(startDay, anchorId, raw, byId, java.time.LocalDate.now(), java.math.BigDecimal(anchorAmount))
         // le analisi usano il mese contabile scelto per le entrate; saldi ed elenchi la data reale
         val analytic = it.spese.domain.finance.AccountingMonth.shift(everything, cal)
         AppData(

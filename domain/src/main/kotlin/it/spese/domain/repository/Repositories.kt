@@ -179,6 +179,16 @@ data class AppSettings(
     val notifyDailySpend: Boolean = true,
     /** Un'entrata negli ultimi N giorni del mese contabile finisce in Verifica per scegliere il mese (0 = non chiedere). */
     val incomeMonthAskDays: Int = 7,
+    /** Margine di sicurezza del budget giornaliero: % di ciò che resta dopo risparmio e uscite fisse, tenuta da parte (0–50). */
+    val budgetMarginPct: Int = 10,
+    /** Il budget giornaliero parte dai soldi che ci sono sui conti (meno quelli bloccati negli obiettivi) invece che dalle sole entrate del mese. */
+    val budgetFromBalance: Boolean = true,
+    /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse ancora attese (0 = nessuno). */
+    val budgetDelayDays: Int = 5,
+    /** Categoria di entrata (di norma lo stipendio) che fa scattare il mese contabile quando arriva; 0 = si usa solo il giorno fisso. */
+    val monthAnchorCategoryId: Long = 0L,
+    /** Importo minimo (€) dell'entrata che fa scattare il mese contabile; 0 = non conta l'importo. */
+    val monthAnchorAmount: Int = 0,
 )
 
 interface SettingsRepository {

@@ -19,7 +19,7 @@ import it.spese.core.designsystem.component.SectionHeader
 /** Tutto il resto, raggruppato: analisi, gestione dei dati e impostazioni. Le sezioni di tutti i giorni stanno nella barra in basso. */
 class MoreActions(
     val onCategories: () -> Unit, val onHealth: () -> Unit, val onBudgets: () -> Unit, val onPlan: () -> Unit, val onTrends: () -> Unit, val onAdvice: () -> Unit, val onReview: () -> Unit, val onAlerts: () -> Unit,
-    val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit, val onTransfers: () -> Unit,
+    val onRecurring: () -> Unit, val onSubscriptions: () -> Unit, val onReports: () -> Unit, val onAccounts: () -> Unit, val onShare: () -> Unit, val onTransfers: () -> Unit,
     val onImport: () -> Unit, val onScan: () -> Unit, val onSettings: () -> Unit, val onReminders: () -> Unit, val onCustomize: () -> Unit,
 )
 
@@ -48,6 +48,7 @@ fun MoreScreen(menu: DataMenu, a: MoreActions, bottomPadding: PaddingValues = Pa
             item { MoreRow("scan", Icons.Default.DocumentScanner, "Scansiona uno scontrino", "Importo, data ed esercente", a.onScan) }
             item { MoreRow("reports", Icons.Default.PictureAsPdf, "Report PDF", "Riepiloghi pronti o personalizzati", a.onReports) }
             item { MoreRow("accounts", Icons.Default.AccountBalanceWallet, "Conti", "Nomi, tipi e saldi iniziali", a.onAccounts) }
+            item { MoreRow("share", Icons.Default.Share, "Condivisione", "Budget e ritmo di un conto per un'altra persona", a.onShare) }
             item { MoreRow("settings", Icons.Default.Settings, "Impostazioni e backup", "Notifiche, mese contabile, backup", a.onSettings) }
         }
     }

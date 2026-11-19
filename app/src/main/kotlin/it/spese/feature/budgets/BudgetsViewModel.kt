@@ -17,20 +17,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @HiltViewModel
 class BudgetsViewModel @Inject constructor(
     data: StateFlow<AppData>, goals: GoalRepository, private val categories: CategoryRepository, private val messenger: UiMessenger,
+    natures: it.spese.domain.health.IncomeNatureRepository, settings: it.spese.domain.repository.SettingsRepository,
 ) : ViewModel() {
     /** Tutte le categorie principali di spesa con media mensile e budget attuale. */
-    val overview: StateFlow<BudgetOverview?> = combine(data, goals.observeAll()) { d, g -> runCatching { BudgetOverviewBuilder.build(d, g) }.getOrNull() }
+    val overview: StateFlow<BudgetOverview?> = combine(data, goals.observeAll(), natures.observe()) { d, g, nat -> runCatching { BudgetOverviewBuilder.build(d, g, incomeOverrides = nat) }.getOrNull() }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /** Proposta dagli obiettivi (null senza almeno un mese completo di movimenti). */
-    val plan: StateFlow<BudgetPlan?> = combine(data, goals.observeAll()) { d, g -> if (!d.loaded) null else runCatching { BudgetSuggester.suggest(d, g) }.getOrNull() }
+    val plan: StateFlow<BudgetPlan?> = combine(data, goals.observeAll(), natures.observe(), settings.observe().map { s -> s.budgetMarginPct }.distinctUntilChanged()) { d, g, nat, margin -> if (!d.loaded) null else runCatching { BudgetSuggester.suggest(d, g, incomeOverrides = nat, marginPct = margin) }.getOrNull() }
         .flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     /** Salva i budget scelti: `null` = nessun budget. Solo le categorie indicate cambiano. */
