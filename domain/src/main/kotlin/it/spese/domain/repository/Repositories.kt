@@ -185,6 +185,8 @@ data class AppSettings(
     val budgetFromBalance: Boolean = true,
     /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse ancora attese (0 = nessuno). */
     val budgetDelayDays: Int = 5,
+    /** Categoria di entrata (di norma lo stipendio) che fa scattare il mese contabile quando arriva; 0 = si usa solo il giorno fisso. */
+    val monthAnchorCategoryId: Long = 0L,
 )
 
 interface SettingsRepository {

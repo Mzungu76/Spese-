@@ -74,6 +74,13 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         val cal = it.spese.core.common.MonthCalendar(s.monthStartDay)
                         val ex = java.time.YearMonth.of(2026, 1)
                         Text("Esempio: «gennaio» va dal ${it.spese.core.common.Dates.fmt(cal.start(ex))} al ${it.spese.core.common.Dates.fmt(cal.end(ex))}. Ogni mese prende il nome da quello in cui inizia.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        val appData by vm.data.collectAsStateWithLifecycle()
+                        val incomeCats = appData.categories.filter { c -> c.kind == it.spese.core.model.TxKind.ENTRATA && c.parentId == null && c.active }
+                        if (incomeCats.isNotEmpty()) {
+                            Text("Il mese scatta quando arriva", style = MaterialTheme.typography.labelLarge)
+                            ChipChoice(listOf(0L to "Data fissa") + incomeCats.map { c -> c.id to c.name }, s.monthAnchorCategoryId, { id -> vm.update { st -> st.copy(monthAnchorCategoryId = id) } })
+                            Text("Il giorno indicato è la data presunta. Se scegli un'entrata (di solito lo stipendio), il nuovo mese inizia il giorno in cui arriva davvero, fino a ${it.spese.domain.finance.MonthAnchor.WINDOW_DAYS} giorni prima o dopo la data presunta; finché non arriva, il mese precedente continua e il budget lo tratta come un ritardo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                     Text("Entrate a fine mese: chiedi il mese", style = MaterialTheme.typography.labelLarge)
                     ChipChoice(listOf(0 to "Mai", 3 to "3 giorni", 7 to "7 giorni", 10 to "10 giorni"), s.incomeMonthAskDays, { d -> vm.update { st -> st.copy(incomeMonthAskDays = d) } })
