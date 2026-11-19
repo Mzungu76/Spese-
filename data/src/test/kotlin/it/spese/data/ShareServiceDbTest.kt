@@ -28,6 +28,8 @@ private class FakeShareApi : ShareApi {
     }
     override suspend fun ack(baseUrl: String, id: String, token: String, upTo: Long) { inbox.removeAll { i -> i.seq <= upTo } }
     override suspend fun revoke(baseUrl: String, id: String, token: String) { revoked = true }
+    override suspend fun fetch(baseUrl: String, id: String, token: String, since: Long): FetchedOut? = null
+    override suspend fun send(baseUrl: String, id: String, token: String, items: List<String>) {}
 }
 
 private class FakeLinks : ShareLinkRepository {

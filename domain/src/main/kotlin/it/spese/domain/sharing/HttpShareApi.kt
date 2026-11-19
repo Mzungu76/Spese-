@@ -1,6 +1,5 @@
-package it.spese.data.share
+package it.spese.domain.sharing
 
-import it.spese.domain.sharing.*
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,7 +11,7 @@ import kotlinx.serialization.json.*
 
 /** Client HTTP del servizio di condivisione. Tutto ciò che si invia è già cifrato sul telefono. */
 @Singleton
-class ShareApiImpl @Inject constructor() : ShareApi {
+class HttpShareApi @Inject constructor() : ShareApi {
     private suspend fun call(method: String, url: String, token: String? = null, createKey: String? = null, body: String? = null): JsonObject = withContext(Dispatchers.IO) {
         val conn = URL(url).openConnection() as HttpURLConnection
         try {
@@ -60,6 +59,16 @@ class ShareApiImpl @Inject constructor() : ShareApi {
     }
 
     override suspend fun revoke(baseUrl: String, id: String, token: String) { call("DELETE", "$baseUrl/v1/shares/$id", token) }
+
+    override suspend fun fetch(baseUrl: String, id: String, token: String, since: Long): FetchedOut? {
+        val o = try { call("GET", "$baseUrl/v1/shares/$id/out" + if (since > 0) "?since=$since" else "", token) } catch (e: ShareApiException) { if (e.status == 404) return null else throw e }
+        val updated = o.num("updated") ?: 0L
+        return if ((o["unchanged"] as? JsonPrimitive)?.contentOrNull == "true") FetchedOut(null, updated, true) else FetchedOut(o.text("blob") ?: bad(), updated, false)
+    }
+
+    override suspend fun send(baseUrl: String, id: String, token: String, items: List<String>) {
+        call("POST", "$baseUrl/v1/shares/$id/in", token, body = buildJsonObject { putJsonArray("items") { items.forEach { x -> add(JsonPrimitive(x)) } } }.toString())
+    }
 
     private fun bad(): Nothing = throw ShareApiException("Risposta non valida dal servizio")
 }

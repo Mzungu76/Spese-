@@ -1,6 +1,6 @@
-package it.spese.data
+package it.spese.domain
 
-import it.spese.data.share.ShareApiImpl
+import it.spese.domain.sharing.HttpShareApi
 import it.spese.domain.sharing.ShareApiException
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
@@ -14,7 +14,7 @@ import org.junit.Before
 import org.junit.Test
 
 /** Il client parla con il servizio come il Worker si aspetta: percorsi, intestazioni, corpo e gestione degli errori (server HTTP minimo su socket, senza librerie). */
-class ShareApiHttpTest {
+class HttpShareApiTest {
     private lateinit var server: ServerSocket
     private lateinit var worker: Thread
     private val seen = java.util.Collections.synchronizedList(ArrayList<String>())
@@ -35,7 +35,11 @@ class ShareApiHttpTest {
         return when {
             path == "/v1/shares" && headers["x-create-key"] != "ok" -> 401 to """{"error":"non autorizzato"}"""
             path == "/v1/shares" -> 200 to """{"id":"i","ownerToken":"o","guestToken":"g"}"""
-            path.endsWith("/out") -> 200 to """{"updated":1700000000000}"""
+            method == "PUT" && path.endsWith("/out") -> 200 to """{"updated":1700000000000}"""
+            path.endsWith("/out") && target.contains("since=7") -> 200 to """{"unchanged":true,"updated":7}"""
+            path.endsWith("/out") && path.contains("vuoto") -> 404 to """{"error":"nessun dato"}"""
+            path.endsWith("/out") -> 200 to """{"blob":"CIFRATO","updated":9}"""
+            method == "POST" && path.endsWith("/in") -> 200 to """{"accepted":2}"""
             path.endsWith("/in") -> 200 to """{"items":[{"seq":4,"blob":"b1"},{"seq":5,"blob":"b2"}],"last":5}"""
             else -> 200 to """{"ok":true}"""
         }
@@ -66,7 +70,7 @@ class ShareApiHttpTest {
     @After fun stop() { runCatching { server.close() } }
 
     @Test fun `crea, pubblica, legge la posta e conferma`() = runBlocking {
-        val api = ShareApiImpl()
+        val api = HttpShareApi()
         val c = api.create(base, "ok")
         assertEquals("i", c.id); assertEquals("o", c.ownerToken); assertEquals("g", c.guestToken)
         assertEquals(1700000000000L, api.publish(base, "i", "o", "BLOB"))
@@ -80,8 +84,18 @@ class ShareApiHttpTest {
         assertTrue(seen[4], seen[4].startsWith("DELETE /v1/shares/i"))
     }
 
+    @Test fun `l'altra persona legge il riepilogo e manda le spese`() = runBlocking {
+        val api = HttpShareApi()
+        val f = api.fetch(base, "i", "g", 0)!!
+        assertEquals("CIFRATO", f.blob); assertEquals(9L, f.updated); assertFalse(f.unchanged)
+        assertTrue(api.fetch(base, "i", "g", 7)!!.unchanged)
+        assertNull(api.fetch(base, "vuoto", "g", 0))
+        api.send(base, "i", "g", listOf("x1", "x2"))
+        assertTrue(seen.last(), seen.last().startsWith("POST /v1/shares/i/in ") && seen.last().contains("auth=Bearer g") && seen.last().contains("{\"items\":[\"x1\",\"x2\"]}"))
+    }
+
     @Test fun `errori del servizio e servizio irraggiungibile diventano messaggi chiari`() = runBlocking {
-        val api = ShareApiImpl()
+        val api = HttpShareApi()
         val e = runCatching { api.create(base, "no") }.exceptionOrNull() as ShareApiException
         assertEquals(401, e.status); assertEquals("non autorizzato", e.message)
         server.close()

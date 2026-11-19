@@ -75,6 +75,7 @@ object SharePairing {
 class ShareApiException(message: String, val status: Int = 0) : Exception(message)
 data class CreatedShare(val id: String, val ownerToken: String, val guestToken: String)
 data class InboxItem(val seq: Long, val blob: String)
+data class FetchedOut(val blob: String?, val updated: Long, val unchanged: Boolean)
 data class InboxPage(val items: List<InboxItem>, val last: Long)
 
 /** Parla con il servizio Cloudflare (implementazione nel modulo dati). */
@@ -85,4 +86,8 @@ interface ShareApi {
     suspend fun inbox(baseUrl: String, id: String, token: String, after: Long): InboxPage
     suspend fun ack(baseUrl: String, id: String, token: String, upTo: Long)
     suspend fun revoke(baseUrl: String, id: String, token: String)
+    /** L'altra persona legge il riepilogo cifrato; `null` se la madre non ne ha ancora pubblicato uno. Con [since] uguale all'ultimo aggiornamento risponde «invariato». */
+    suspend fun fetch(baseUrl: String, id: String, token: String, since: Long): FetchedOut?
+    /** L'altra persona manda le spese rilevate (ogni voce è già cifrata). */
+    suspend fun send(baseUrl: String, id: String, token: String, items: List<String>)
 }
