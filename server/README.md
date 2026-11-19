@@ -18,7 +18,7 @@ cd server && node --test
 ## Pubblicare su Cloudflare (una volta)
 1. **Database**: già creato nel tuo account (`spese-condivisione`, id in `wrangler.toml`).
 2. **Tabelle**: già create (contenuto di `migrations/0001_init.sql`).
-3. **Chiave di creazione**: scegli una frase lunga e casuale e salvala come segreto `CREATE_KEY` del Worker (Impostazioni › Variabili e segreti, oppure `npx wrangler secret put CREATE_KEY`). Serve solo all'app madre per creare condivisioni; non va condivisa.
+3. **Chiave di creazione** (due modi, basta uno): come segreto `CREATE_KEY` del Worker, oppure come impronta SHA-256 nella tabella `config` del database (`INSERT OR REPLACE INTO config (name, value) VALUES ('create_key_hash', '<sha256 esadecimale della chiave>')`, migrazione `0002_config.sql`). Qui sotto il primo modo: scegli una frase lunga e casuale e salvala come segreto `CREATE_KEY` del Worker (Impostazioni › Variabili e segreti, oppure `npx wrangler secret put CREATE_KEY`). Serve solo all'app madre per creare condivisioni; non va condivisa.
 4. **Pubblicazione**: da questa cartella `npx wrangler deploy`, oppure collega il repository a Cloudflare (Workers › Crea › Importa un repository) con cartella radice `server`.
 
 L'indirizzo del Worker (`https://spese.<tuo-nome>.workers.dev`) e la chiave di creazione si inseriscono una volta nell'app madre.

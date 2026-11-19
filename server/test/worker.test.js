@@ -7,7 +7,8 @@ import worker from '../src/worker.js';
 // Un D1 finto sopra SQLite vero: le stesse istruzioni SQL del servizio girano davvero.
 function fakeD1() {
   const db = new DatabaseSync(':memory:');
-  db.exec(readFileSync(new URL('../migrations/0001_init.sql', import.meta.url), 'utf8'));
+  for (const f of ['0001_init.sql', '0002_config.sql']) db.exec(readFileSync(new URL('../migrations/' + f, import.meta.url), 'utf8'));
+  globalThis.__lastDb = db;
   const prepare = (sql) => {
     const st = db.prepare(sql);
     return {
@@ -98,4 +99,21 @@ test('percorsi e metodi sconosciuti', async () => {
   assert.equal((await call(e, 'GET', '/v1/shares')).status, 405);
   assert.equal((await call(e, 'POST', `/v1/shares/${s.id}/out`, { token: s.ownerToken })).status, 405);
   assert.equal((await call(e, 'GET', `/v1/shares/${s.id}/boh`, { token: s.ownerToken })).status, 404);
+});
+
+test('la chiave di creazione può stare anche nel database (impronta), senza il segreto di Cloudflare', async () => {
+  const hash = async (t) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  const e = { DB: fakeD1() };
+  const db = globalThis.__lastDb;
+  assert.equal((await (await call(e, 'GET', '/health')).json()).configured, false);
+  assert.equal((await call(e, 'POST', '/v1/shares', { headers: { 'x-create-key': 'k' } })).status, 503);
+  db.prepare('INSERT INTO config (name, value) VALUES (?, ?)').run('create_key_hash', await hash('chiave-nel-database'));
+  assert.equal((await (await call(e, 'GET', '/health')).json()).configured, true);
+  assert.equal((await call(e, 'POST', '/v1/shares', { headers: { 'x-create-key': 'sbagliata' } })).status, 401);
+  assert.equal((await call(e, 'POST', '/v1/shares')).status, 401);
+  assert.equal((await call(e, 'POST', '/v1/shares', { headers: { 'x-create-key': 'chiave-nel-database' } })).status, 200);
+  // con il segreto di Cloudflare presente valgono entrambe
+  const both = { DB: e.DB, CREATE_KEY: KEY };
+  assert.equal((await call(both, 'POST', '/v1/shares', { headers: { 'x-create-key': KEY } })).status, 200);
+  assert.equal((await call(both, 'POST', '/v1/shares', { headers: { 'x-create-key': 'chiave-nel-database' } })).status, 200);
 });

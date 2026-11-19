@@ -34,6 +34,21 @@ function safeEqual(a, b) {
   return r === 0;
 }
 
+/**
+ * La chiave di creazione vale se coincide con il segreto CREATE_KEY di Cloudflare oppure con l'impronta salvata nel database (config.create_key_hash).
+ * `null` = nessuna delle due è configurata.
+ */
+async function createKeyState(env, provided) {
+  const hasSecret = Boolean(env.CREATE_KEY);
+  let stored = null;
+  try { stored = (await env.DB.prepare('SELECT value FROM config WHERE name = ?').bind('create_key_hash').first())?.value ?? null; } catch { stored = null; }
+  if (!hasSecret && !stored) return { configured: false, ok: false };
+  if (provided === undefined) return { configured: true, ok: false };
+  if (hasSecret && safeEqual(provided, env.CREATE_KEY)) return { configured: true, ok: true };
+  if (stored && safeEqual(await sha256Hex(provided), stored)) return { configured: true, ok: true };
+  return { configured: true, ok: false };
+}
+
 /** 'owner' (app madre), 'guest' (altra persona) o null se il codice non vale per questa condivisione. */
 async function roleOf(env, id, request) {
   const m = /^Bearer\s+(\S+)$/.exec(request.headers.get('authorization') || '');
@@ -59,14 +74,15 @@ export default {
     const method = request.method;
 
     // "configured" dice solo se la chiave di creazione è visibile al servizio (mai il suo valore): serve a capire se il segreto è stato distribuito
-    if (parts.length === 1 && parts[0] === 'health') return json({ ok: true, configured: Boolean(env.CREATE_KEY), database: Boolean(env.DB) });
+    if (parts.length === 1 && parts[0] === 'health') return json({ ok: true, configured: (await createKeyState(env)).configured, database: Boolean(env.DB) });
     if (parts[0] !== 'v1' || parts[1] !== 'shares') return json({ error: 'non trovato' }, 404);
 
     // POST /v1/shares: crea una condivisione (serve la chiave di creazione impostata nel servizio)
     if (parts.length === 2) {
       if (method !== 'POST') return json({ error: 'metodo non consentito' }, 405);
-      if (!env.CREATE_KEY) return json({ error: 'servizio non configurato' }, 503);
-      if (!safeEqual(request.headers.get('x-create-key') || '', env.CREATE_KEY)) return unauthorized();
+      const key = await createKeyState(env, request.headers.get('x-create-key') || '');
+      if (!key.configured) return json({ error: 'servizio non configurato' }, 503);
+      if (!key.ok) return unauthorized();
       const id = randomToken(16), ownerToken = randomToken(), guestToken = randomToken();
       await env.DB.prepare('INSERT INTO shares (id, owner_hash, guest_hash, created) VALUES (?, ?, ?, ?)')
         .bind(id, await sha256Hex(ownerToken), await sha256Hex(guestToken), Date.now()).run();
