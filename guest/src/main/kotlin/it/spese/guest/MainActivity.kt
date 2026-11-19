@@ -300,7 +300,7 @@ private fun DetailCard(s: ShareSnapshot) {
             TextButton(onClick = { open = !open }) { Text(if (open) "Nascondi" else "Mostra") }
         }
         if (open) {
-            fun line(label: String, v: java.math.BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(sign + Money.eur0(v)) } }
+            @Composable fun line(label: String, v: java.math.BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(sign + Money.eur0(v)) } }
             line("Entrate attese", s.incomeExpected)
             line("Risparmio", s.savings, "− ")
             line("Margine", s.reserve, "− ")

@@ -96,10 +96,14 @@ class HttpShareApiTest {
 
     @Test fun `errori del servizio e servizio irraggiungibile diventano messaggi chiari`() = runBlocking {
         val api = HttpShareApi()
-        val e = runCatching { api.create(base, "no") }.exceptionOrNull() as ShareApiException
+        val wrong = runCatching { api.create(base, "no") }
+        assertTrue("create con chiave sbagliata doveva fallire: $wrong, richieste: $seen", wrong.exceptionOrNull() is ShareApiException)
+        val e = wrong.exceptionOrNull() as ShareApiException
         assertEquals(401, e.status); assertEquals("non autorizzato", e.message)
-        server.close()
-        val down = runCatching { api.publish(base, "i", "o", "x") }.exceptionOrNull() as ShareApiException
-        assertTrue(down.message!!.contains("non raggiungibile"))
+        // una porta che non ascolta: il servizio non risponde
+        val closedPort = ServerSocket(0, 1, InetAddress.getByName("127.0.0.1")).use { sock -> sock.localPort }
+        val down = runCatching { api.publish("http://127.0.0.1:$closedPort", "i", "o", "x") }
+        assertTrue("con la porta chiusa doveva fallire: $down", down.exceptionOrNull() is ShareApiException)
+        assertTrue(down.exceptionOrNull()!!.message!!.contains("non raggiungibile"))
     }
 }

@@ -223,7 +223,7 @@ private fun ThreadCard(link: ShareLink, busy: Boolean, onSend: (String) -> Unit)
 private fun BudgetCalcCard(b: it.spese.domain.finance.DailyBudget?, link: ShareLink) {
     SectionCard(title = "Calcolo del budget") {
         if (b == null) { Text("Non ci sono ancora movimenti sui conti condivisi.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); return@SectionCard }
-        fun line(label: String, v: BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(sign + it.spese.core.common.Money.eur0(v), style = MaterialTheme.typography.bodyMedium) } }
+        @Composable fun line(label: String, v: BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(sign + it.spese.core.common.Money.eur0(v), style = MaterialTheme.typography.bodyMedium) } }
         line("Entrate attese", b.expectedIncome)
         line("Risparmio (obiettivi)", b.savings, "− ")
         line("Margine di sicurezza", b.reserve, "− ")
