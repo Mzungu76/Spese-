@@ -17,7 +17,11 @@ import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.YearMonth
 
-data class AccountBalance(val account: Account, val balance: BigDecimal, val valuationDate: LocalDate?) { val isInvestment: Boolean get() = account.type == AccountType.INVESTIMENTO }
+data class AccountBalance(
+    val account: Account, val balance: BigDecimal, val valuationDate: LocalDate?,
+    /** Parte del saldo bloccata negli obiettivi legati a questo conto (resta nel saldo, ma non è spendibile). */
+    val blocked: BigDecimal = BigDecimal.ZERO, val blockedFor: List<String> = emptyList(),
+) { val isInvestment: Boolean get() = account.type == AccountType.INVESTIMENTO }
 
 data class NetWorthPoint(val date: LocalDate, val liquidity: BigDecimal, val investments: BigDecimal) { val total: BigDecimal get() = liquidity + investments }
 
@@ -43,7 +47,12 @@ data class NetWorthReport(
     val fund: EmergencyFund, val margin: InvestableMargin,
     /** Saldo dei conti gestiti da altri (denaro di famiglia): nel totale, fuori da liquidità, fondo di emergenza e margine. */
     val managed: BigDecimal = BigDecimal.ZERO,
-) { val total: BigDecimal get() = liquidity + investments + managed }
+    /** Soldi bloccati negli obiettivi (dentro la liquidità, sul conto scelto): voce a parte, esclusi dal disponibile. */
+    val blocked: BigDecimal = BigDecimal.ZERO,
+) {
+    /** Liquidità che si può davvero spendere: quella totale meno i soldi bloccati negli obiettivi. */
+    val spendable: BigDecimal get() = (liquidity - blocked).max(BigDecimal.ZERO)
+    val total: BigDecimal get() = liquidity + investments + managed }
 
 object NetWorthEngine {
     const val FUND_MIN_MONTHS = 3
@@ -72,8 +81,13 @@ object NetWorthEngine {
             return NetWorthPoint(d, liq, inv)
         }
 
+        val activeGoals = goals.filter { it.enabled && it.saved.signum() > 0 }
         val balances = accounts.map { a ->
-            AccountBalance(a, balanceAt(a, tx, valuations, today), valuations.filter { it.accountId == a.id && !it.date.isAfter(today) }.maxOfOrNull { it.date }.takeIf { a.type == AccountType.INVESTIMENTO })
+            val bal = balanceAt(a, tx, valuations, today)
+            val mine = activeGoals.filter { it.accountId == a.id }
+            // i soldi bloccati non superano mai il saldo del conto che li contiene
+            val locked = mine.fold(BigDecimal.ZERO) { s, g -> s + g.saved }.min(bal.max(BigDecimal.ZERO))
+            AccountBalance(a, bal, valuations.filter { it.accountId == a.id && !it.date.isAfter(today) }.maxOfOrNull { it.date }.takeIf { a.type == AccountType.INVESTIMENTO }, locked, mine.map { it.name })
         }
         // il denaro di conti gestiti da altri conta nel patrimonio, ma non come liquidità propria (fondo di emergenza e margine investibile)
         val liquidity = balances.filter { !it.isInvestment && it.account.id !in data.managedAccountIds }.fold(BigDecimal.ZERO) { s, b -> s + b.balance }
@@ -85,13 +99,19 @@ object NetWorthEngine {
         val cur = YearMonth.from(today)
         val series = (SERIES_MONTHS - 1 downTo 1).map { cur.minusMonths(it.toLong()) }.filter { first == null || !it.atEndOfMonth().isBefore(first) }.map { point(it.atEndOfMonth()) } + point(today)
 
+        // bloccati negli obiettivi: sul conto scelto (liquido, non gestito da altri) oppure, senza conto, sulla liquidità in generale
+        val linkedIds = accounts.map { it.id }.toSet()
+        val blockedLinked = balances.filter { !it.isInvestment && it.account.id !in data.managedAccountIds }.fold(BigDecimal.ZERO) { s, b -> s + b.blocked }
+        val blockedLoose = activeGoals.filter { it.accountId == null || it.accountId !in linkedIds }.fold(BigDecimal.ZERO) { s, g -> s + g.saved }
+        val blocked = (blockedLinked + blockedLoose).min(liquidity.max(BigDecimal.ZERO))
+
         val fund = fund(data, liquidity, today)
         val earmarked = goals.filter { it.enabled }.fold(BigDecimal.ZERO) { s, g -> s + g.saved }
         val horizon = today.plusMonths(DUES_HORIZON_MONTHS)
         val dues = data.dues.filter { (it.frequency == DueFrequency.ONCE || it.frequency == DueFrequency.YEARLY) && !it.next.isAfter(horizon) }.fold(BigDecimal.ZERO) { s, d -> s + d.amount.abs() }
         val target = fund.monthlyEssential.multiply(BigDecimal(FUND_TARGET_MONTHS))
         val margin = (liquidity - target - earmarked - dues).max(BigDecimal.ZERO)
-        return NetWorthReport(today, balances, liquidity, investments, series, if (series.size > 1) series.last().total - series.first().total else null, fund, InvestableMargin(liquidity, target, earmarked, dues, margin), managedLiquidity)
+        return NetWorthReport(today, balances, liquidity, investments, series, if (series.size > 1) series.last().total - series.first().total else null, fund, InvestableMargin(liquidity, target, earmarked, dues, margin), managedLiquidity, blocked)
     }
 
     private fun fund(data: AppData, liquidity: BigDecimal, today: LocalDate): EmergencyFund {

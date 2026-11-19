@@ -19,6 +19,8 @@ data class EditForm(
     val description: String = "", val amountText: String = "", val isIncome: Boolean = false, val accountId: Long? = null,
     val date: LocalDate = LocalDate.now(), val valueDate: LocalDate = LocalDate.now(), val categoryId: Long? = null, val manualCategory: Boolean = false,
     val merchant: String = "", val notes: String = "", val documentId: Long? = null, val origin: String = "", val error: String? = null, val loaded: Boolean = false,
+    /** Mese contabile scelto per l'entrata (null = quello della data). */
+    val accountingMonth: java.time.YearMonth? = null,
 )
 
 @HiltViewModel
@@ -44,7 +46,7 @@ class TransactionEditViewModel @Inject constructor(
                 val t = repo.get(txId)
                 if (t == null) { _done.tryEmit(Unit); return@launch }
                 _form.value = EditForm(t.description, t.amount.abs().toPlainString().replace('.', ','), t.amount.signum() > 0, t.accountId, t.bookingDate, t.valueDate,
-                    t.categoryId, t.manualCategory, t.merchantOverride ?: "", t.notes, t.documentId, t.origin.name, loaded = true)
+                    t.categoryId, t.manualCategory, t.merchantOverride ?: "", t.notes, t.documentId, t.origin.name, loaded = true, accountingMonth = t.accountingMonth)
                 refreshDoc(t.documentId)
             }
         }
@@ -63,7 +65,7 @@ class TransactionEditViewModel @Inject constructor(
         }
         try {
             saveTx(TransactionDraft(txId, f.accountId!!, f.date, f.valueDate, f.description, if (f.isIncome) amt!! else amt!!.negate(),
-                f.categoryId.takeIf { f.manualCategory }, f.merchant, f.notes, f.documentId))
+                f.categoryId.takeIf { f.manualCategory }, f.merchant, f.notes, f.documentId, accountingMonth = f.accountingMonth, setAccountingMonth = txId != 0L))
             messenger.show(if (txId == 0L) "Movimento aggiunto" else "Movimento salvato")
             _done.tryEmit(Unit)
         } catch (e: Exception) { _form.value = f.copy(error = e.message ?: "Salvataggio non riuscito.") }

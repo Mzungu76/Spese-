@@ -75,6 +75,9 @@ fun SettingsScreen(onBack: () -> Unit, onOpenCapture: () -> Unit = {}, vm: Setti
                         val ex = java.time.YearMonth.of(2026, 1)
                         Text("Esempio: «gennaio» va dal ${it.spese.core.common.Dates.fmt(cal.start(ex))} al ${it.spese.core.common.Dates.fmt(cal.end(ex))}. Ogni mese prende il nome da quello in cui inizia.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+                    Text("Entrate a fine mese: chiedi il mese", style = MaterialTheme.typography.labelLarge)
+                    ChipChoice(listOf(0 to "Mai", 3 to "3 giorni", 7 to "7 giorni", 10 to "10 giorni"), s.incomeMonthAskDays, { d -> vm.update { st -> st.copy(incomeMonthAskDays = d) } })
+                    Text("Se un'entrata arriva negli ultimi giorni del mese contabile, in Verifica ti chiedo se contarla per questo mese o per il successivo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             item {

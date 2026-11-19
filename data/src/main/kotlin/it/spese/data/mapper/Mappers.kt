@@ -19,7 +19,7 @@ fun RuleEntity.toDomain() = Rule(id, keyword, categoryId, AmountSign.fromKey(sig
 
 fun TransactionEntity.toDomain() = Transaction(
     id, externalId, accountId, LocalDate.ofEpochDay(bookingDate), LocalDate.ofEpochDay(valueDate), description, Money.fromCents(amountCents),
-    TxKind.fromKey(kind) ?: TxKind.SPESA, categoryId, manualCategory, ruleId, merchantOverride, notes, enumOr(origin, TxOrigin.MANUAL), documentId, createdAt, reviewed,
+    TxKind.fromKey(kind) ?: TxKind.SPESA, categoryId, manualCategory, ruleId, merchantOverride, notes, enumOr(origin, TxOrigin.MANUAL), documentId, createdAt, reviewed, accountingMonth?.let { m -> runCatching { java.time.YearMonth.parse(m) }.getOrNull() },
 )
 
 fun SplitEntity.toDomain() = TransactionSplit(id, txId, categoryId, Money.fromCents(amountCents), position, auto, quotaId)

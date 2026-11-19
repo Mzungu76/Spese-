@@ -62,6 +62,10 @@ interface TransactionRepository {
     /** Sostituisce le parti di un movimento (lista vuota = movimento non più diviso). */
     suspend fun replaceSplits(txId: Long, parts: List<it.spese.core.model.TransactionSplit>)
     suspend fun setReviewed(ids: Collection<Long>, reviewed: Boolean)
+    /** Sceglie il mese contabile dei movimenti (`null` = quello della data). */
+    suspend fun setAccountingMonth(ids: Collection<Long>, month: java.time.YearMonth?)
+    /** Come sopra, per identificativo esterno (ripristino del backup). */
+    suspend fun setAccountingMonthByExternal(months: Map<String, java.time.YearMonth>)
 }
 
 interface CashQuotaRepository {
@@ -173,6 +177,8 @@ data class AppSettings(
     val monthStartDay: Int = 1,
     /** Nella notifica giornaliera, la cifra «disponibile oggi» (solo con le notifiche locali attive). */
     val notifyDailySpend: Boolean = true,
+    /** Un'entrata negli ultimi N giorni del mese contabile finisce in Verifica per scegliere il mese (0 = non chiedere). */
+    val incomeMonthAskDays: Int = 7,
 )
 
 interface SettingsRepository {

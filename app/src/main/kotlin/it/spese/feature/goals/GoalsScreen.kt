@@ -109,6 +109,8 @@ private fun GoalDialog(g: Goal, onDismiss: () -> Unit, vm: GoalsViewModel) {
     var monthly by remember { mutableStateOf(g.monthly?.stripTrailingZeros()?.toPlainString()?.replace('.', ',') ?: "") }
     var deadline by remember { mutableStateOf(g.deadline) }
     var enabled by remember { mutableStateOf(g.enabled) }
+    var accountId by remember { mutableStateOf(g.accountId) }
+    val accounts by vm.data.collectAsStateWithLifecycle()
     val t = parseAmountOrNull(target)
     AlertDialog(onDismissRequest = onDismiss, title = { Text(if (g.id == 0L) "Nuovo obiettivo" else "Modifica obiettivo") },
         text = {
@@ -118,12 +120,15 @@ private fun GoalDialog(g: Goal, onDismiss: () -> Unit, vm: GoalsViewModel) {
                 AmountField(saved, { saved = it }, "Già messo da parte", Modifier.fillMaxWidth())
                 DateField(deadline, { deadline = it }, "Scadenza (facoltativa)", Modifier.fillMaxWidth(), clearable = true, onClear = { deadline = null })
                 AmountField(monthly, { monthly = it }, "Quota mensile (vuoto = dalla scadenza)", Modifier.fillMaxWidth(), supporting = "Con una scadenza, la quota è quella che serve per arrivarci in tempo")
+                Text("Conto dove sono depositati", style = MaterialTheme.typography.labelLarge)
+                ChipChoice(listOf<Pair<Long?, String>>(null to "Nessuno") + accounts.accounts.filter { a -> !a.archived }.map { a -> a.id to a.name }, accountId, { accountId = it })
+                Text("I soldi già messi da parte restano nel saldo del conto ma risultano bloccati: nel patrimonio hanno una voce a parte e non fanno parte del disponibile.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 LabeledSwitch("Attivo", enabled, { enabled = it }, supporting = "Se spento, non accantona nulla")
                 if (g.id != 0L) TextButton(onClick = { vm.delete(g.id); onDismiss() }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Elimina") }
             }
         },
         confirmButton = { TextButton(enabled = name.isNotBlank() && (t?.signum() ?: 0) > 0, onClick = {
-            vm.save(g.copy(name = name, target = t ?: BigDecimal.ZERO, saved = parseAmountOrNull(saved) ?: BigDecimal.ZERO, deadline = deadline, monthly = parseAmountOrNull(monthly)?.takeIf { it.signum() > 0 }, enabled = enabled)); onDismiss() }) { Text("Salva") } },
+            vm.save(g.copy(name = name, target = t ?: BigDecimal.ZERO, saved = parseAmountOrNull(saved) ?: BigDecimal.ZERO, deadline = deadline, monthly = parseAmountOrNull(monthly)?.takeIf { it.signum() > 0 }, enabled = enabled, accountId = accountId)); onDismiss() }) { Text("Salva") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }
 

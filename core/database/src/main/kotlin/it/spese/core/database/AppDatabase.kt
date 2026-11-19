@@ -31,7 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun recurring(): RecurringDao
 
     companion object {
-        const val VERSION = 8
+        const val VERSION = 9
         const val NAME = "gestione-spese.db"
 
         /**
@@ -46,6 +46,11 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("INSERT INTO `transaction_splits` SELECT * FROM `_splits_backup`")
                 db.execSQL("DROP TABLE `_splits_backup`")
             }
+        }
+
+        /** 8 → 9: mese contabile scelto per un movimento (es. un'entrata di fine mese che conta per il successivo). Nessun dato esistente cambia (NULL = mese della data). */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) { db.execSQL("ALTER TABLE transactions ADD COLUMN accountingMonth TEXT") }
         }
 
         /** 1 → 2: icona opzionale per categoria. Nessun dato esistente cambia (NULL = default dal nome). */
@@ -97,7 +102,7 @@ abstract class AppDatabase : RoomDatabase() {
          * Migrazioni: l'elenco cresce a ogni nuova versione dello schema. Non si usa MAI
          * `fallbackToDestructiveMigration`: una migrazione mancante deve far fallire l'apertura, non cancellare i dati.
          */
-        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        val MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
 
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)

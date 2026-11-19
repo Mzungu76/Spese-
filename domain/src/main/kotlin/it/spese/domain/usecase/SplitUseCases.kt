@@ -43,3 +43,13 @@ class ConfirmReviewUseCase @Inject constructor(private val tx: TransactionReposi
         if (ok.isNotEmpty()) tx.setReviewed(ok, reviewed)
     }
 }
+
+/** Sceglie il mese contabile di un'entrata (null = quello della data); la scelta vale come conferma. */
+class SetAccountingMonthUseCase @Inject constructor(private val tx: TransactionRepository) {
+    suspend operator fun invoke(ids: Collection<Long>, month: java.time.YearMonth?) {
+        val ok = ids.filter { id -> tx.get(id)?.kind == it.spese.core.model.TxKind.ENTRATA }
+        if (ok.isEmpty()) return
+        tx.setAccountingMonth(ok, month)
+        if (month != null) tx.setReviewed(ok, true)
+    }
+}

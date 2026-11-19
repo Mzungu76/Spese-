@@ -135,6 +135,8 @@ data class Transaction(
     val createdAt: Long = 0,
     /** true = l'utente ha controllato il movimento: esce dalla sezione Verifica. */
     val reviewed: Boolean = false,
+    /** Mese contabile scelto per questo movimento (tipicamente un'entrata arrivata prima della fine del mese): `null` = quello della data. */
+    val accountingMonth: java.time.YearMonth? = null,
 )
 
 /**
@@ -249,6 +251,8 @@ data class Goal(
     /** 0 = la più importante. */
     val priority: Int = 0,
     val enabled: Boolean = true,
+    /** Conto su cui i soldi dell'obiettivo sono depositati: restano nel suo saldo ma contano come «bloccati». null = non legato a un conto. */
+    val accountId: Long? = null,
 )
 
 /** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */

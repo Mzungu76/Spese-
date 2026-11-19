@@ -71,6 +71,8 @@ interface TransactionDao {
     @Query("UPDATE transactions SET documentId = :docId WHERE id = :id") suspend fun setDocument(id: Long, docId: Long?)
     @Query("DELETE FROM transactions WHERE importBatchId = :batchId") suspend fun deleteByBatch(batchId: Long): Int
     @Query("UPDATE transactions SET reviewed = :reviewed WHERE id IN (:ids)") suspend fun setReviewed(ids: List<Long>, reviewed: Boolean)
+    @Query("UPDATE transactions SET accountingMonth = :month WHERE id IN (:ids)") suspend fun setAccountingMonth(ids: List<Long>, month: String?)
+    @Query("UPDATE transactions SET accountingMonth = :month WHERE externalId = :ext") suspend fun setAccountingMonthByExternal(ext: String, month: String?)
     @Query("SELECT COUNT(*) FROM transactions") suspend fun count(): Int
 }
 
