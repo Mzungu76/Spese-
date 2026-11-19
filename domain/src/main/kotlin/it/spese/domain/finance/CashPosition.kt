@@ -14,7 +14,7 @@ data class CashPosition(val balance: BigDecimal, val blocked: BigDecimal) { val 
 object CashCalculator {
     /**
      * [accountIds] = i conti da guardare (null = tutti i liquidi non gestiti da altri). Il bloccato è quello degli obiettivi legati a quei conti,
-     * mai oltre il saldo del conto; senza una selezione si aggiunge quello degli obiettivi senza conto, fino a ciò che resta.
+     * mai oltre il saldo del conto; senza una selezione (o con tutti i conti liquidi selezionati) si aggiunge quello degli obiettivi senza conto, fino a ciò che resta.
      */
     fun compute(data: AppData, accountIds: Set<Long>?, goals: List<Goal>, valuations: List<Valuation>, today: LocalDate): CashPosition? {
         val accounts = data.accounts.filter { a -> !a.archived && a.type != AccountType.INVESTIMENTO && (if (accountIds == null) a.id !in data.managedAccountIds else a.id in accountIds) }
@@ -26,7 +26,9 @@ object CashCalculator {
         val linked = accounts.fold(BigDecimal.ZERO) { s, a ->
             s + active.filter { g -> g.accountId == a.id }.fold(BigDecimal.ZERO) { x, g -> x + g.saved }.min(bal.getValue(a.id).max(BigDecimal.ZERO))
         }
-        val loose = if (accountIds != null) BigDecimal.ZERO else active.filter { g -> g.accountId == null || accounts.none { a -> a.id == g.accountId } && data.accountsById[g.accountId]?.type != AccountType.INVESTIMENTO }.fold(BigDecimal.ZERO) { s, g -> s + g.saved }
+        // gli obiettivi senza conto bloccano soldi se non c'è una selezione, o se la selezione comprende tutti i conti liquidi (come la Home)
+        val everyLiquid = accountIds == null || data.accounts.filter { a -> !a.archived && a.type != AccountType.INVESTIMENTO && a.id !in data.managedAccountIds }.all { a -> a.id in accountIds }
+        val loose = if (!everyLiquid) BigDecimal.ZERO else active.filter { g -> g.accountId == null || accounts.none { a -> a.id == g.accountId } && data.accountsById[g.accountId]?.type != AccountType.INVESTIMENTO }.fold(BigDecimal.ZERO) { s, g -> s + g.saved }
         val blocked = (linked + loose).min(total.max(BigDecimal.ZERO))
         return CashPosition(total, blocked)
     }

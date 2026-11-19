@@ -184,9 +184,10 @@ class DailyBudgetTest {
         val data = exampleData()
         val c = it.spese.domain.finance.CashCalculator.compute(data, null, emptyList(), emptyList(), twentyFifth)!!
         eq("900", c.balance); eq("0", c.blocked); eq("900", c.spendable)
-        // un obiettivo legato a un altro conto non blocca questo
-        val other = Goal(2, "Altro", BigDecimal(100), BigDecimal(300), accountId = 7)
-        eq("0", it.spese.domain.finance.CashCalculator.compute(data, setOf(1L), listOf(other), emptyList(), twentyFifth)!!.blocked)
+        // un obiettivo senza conto blocca i soldi anche con la selezione di tutti i conti liquidi (come senza selezione)
+        val loose = Goal(2, "Altro", BigDecimal(100), BigDecimal(300))
+        eq("300", it.spese.domain.finance.CashCalculator.compute(data, setOf(1L), listOf(loose), emptyList(), twentyFifth)!!.blocked)
+        eq("300", it.spese.domain.finance.CashCalculator.compute(data, null, listOf(loose), emptyList(), twentyFifth)!!.blocked)
         // il bloccato non supera mai il saldo
         eq("900", it.spese.domain.finance.CashCalculator.compute(data, setOf(1L), listOf(fondo.copy(saved = BigDecimal(5000))), emptyList(), twentyFifth)!!.blocked)
     }
