@@ -226,7 +226,7 @@ private fun BudgetCalcCard(b: it.spese.domain.finance.DailyBudget?, link: ShareL
         @Composable fun line(label: String, v: BigDecimal?, sign: String = "") { if (v != null) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text(label, style = MaterialTheme.typography.bodyMedium); Text(sign + it.spese.core.common.Money.eur0(v), style = MaterialTheme.typography.bodyMedium) } }
         if (b.cash != null) {
             // calcolo dai saldi: soldi sui conti non bloccati + entrate ancora attese, meno quanto già deciso
-            line("Soldi sui conti condivisi (saldo " + it.spese.core.common.Money.eur0(b.cash!!.balance) + ")", b.cash!!.spendable)
+            line("Soldi sui conti condivisi (saldo " + it.spese.core.common.Money.eur0(b.cash!!.balance) + " − " + it.spese.core.common.Money.eur0(b.cash!!.blocked) + " bloccati)", b.cash!!.spendable)
             line("Entrate ancora attese", b.incomeRemaining)
             line("Risparmio ancora da mettere da parte", b.savingsDue, "− ")
             line("Uscite note ancora da pagare", b.upcomingTotal, "− ")

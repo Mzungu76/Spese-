@@ -309,7 +309,7 @@ private fun DetailCard(s: ShareSnapshot) {
             val base = s.perDayOnTime ?: s.dailyRemaining
             val covered = if (left != null && base != null && base.signum() > 0) left.divide(base, 0, java.math.RoundingMode.HALF_UP).toInt() else null
             if (s.cashSpendable != null) {
-                line("Soldi spendibili", s.cashSpendable)
+                line(if (s.cashBalance != null && s.cashBlocked != null) "Soldi spendibili (saldo ${Money.eur0(s.cashBalance!!)} − ${Money.eur0(s.cashBlocked!!)} bloccati)" else "Soldi spendibili", s.cashSpendable)
                 line("Entrate ancora attese", s.incomeRemaining)
                 line("Risparmio da mettere da parte", s.savingsDue, "− ")
                 line("Da pagare", s.upcomingTotal, "− ")

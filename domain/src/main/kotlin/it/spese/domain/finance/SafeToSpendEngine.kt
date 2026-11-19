@@ -53,6 +53,8 @@ data class SafeToSpendReport(
     val cashSpendable: BigDecimal? = null, val incomeRemaining: BigDecimal = BigDecimal.ZERO, val savingsDue: BigDecimal = BigDecimal.ZERO,
     /** Paracadute: giorni di ritardo ipotizzati sulle entrate fisse (0 = nessuno), fino a che data non si conta su di esse e la cifra al giorno se arrivassero puntuali. */
     val delayDays: Int = 0, val delayUntil: LocalDate? = null, val perDayOnTime: BigDecimal? = null,
+    /** Saldo dei conti e soldi bloccati negli obiettivi (esclusi dal calcolo), per mostrarli. */
+    val cashBalance: BigDecimal? = null, val cashBlocked: BigDecimal? = null,
 ) {
     val upcomingTotal: BigDecimal get() = upcoming.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
     val variableSpent: BigDecimal get() = spentToDate - fixedPaid
@@ -106,7 +108,7 @@ object SafeToSpendEngine {
             else -> SafeStatus.OK
         }
         return SafeToSpendReport(b.today, b.periodStart, b.periodEnd, b.daysLeft, b.daysTotal, b.expectedIncome, b.incomeToDate, b.income == null || b.income.prudent < b.incomeToDate, b.savings,
-            b.spent, b.fixedPaid, b.upcoming, variableBudget, available, perDay, delta, b.stale, status, goals.isNotEmpty(), b.reserve, b.cash?.spendable, b.incomeRemaining, b.savingsDue, b.delayDays, b.delayUntil, onTime)
+            b.spent, b.fixedPaid, b.upcoming, variableBudget, available, perDay, delta, b.stale, status, goals.isNotEmpty(), b.reserve, b.cash?.spendable, b.incomeRemaining, b.savingsDue, b.delayDays, b.delayUntil, onTime, b.cash?.balance, b.cash?.blocked)
     }
 
     /** Uscite note da oggi a fine periodo: ricorrenze manuali, abbonamenti/rate rilevati, scadenze. Niente doppioni tra ricorrenze e rilevati. */

@@ -26,7 +26,7 @@ object ShareSnapshotBuilder {
         val cfg2 = if (budget?.limit != null) cfg.copy(budgetMonthly = budget.limit) else cfg
         return listOf(Period.CurrentWeek, Period.CurrentMonth, Period.Last3Months).mapNotNull { p ->
             build(data, accountIds, cfg2, nowMillis, realToday, p, thread)?.let { s ->
-                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve, incomeExpected = budget.expectedIncome, savings = budget.savings, fixedPaid = budget.fixedPaid, cashSpendable = budget.cash?.spendable, incomeRemaining = budget.incomeRemaining, savingsDue = budget.savingsDue, delayDays = budget.delayDays.takeIf { it > 0 }, delayUntil = budget.delayUntil, perDayOnTime = budget.perDayWithoutDelay.takeIf { budget.delayUntil != null })
+                if (budget == null) s else s.copy(dailyRemaining = budget.perDay, upcomingTotal = budget.upcomingTotal, reserve = budget.reserve, incomeExpected = budget.expectedIncome, savings = budget.savings, fixedPaid = budget.fixedPaid, cashSpendable = budget.cash?.spendable, cashBalance = budget.cash?.balance, cashBlocked = budget.cash?.blocked, incomeRemaining = budget.incomeRemaining, savingsDue = budget.savingsDue, delayDays = budget.delayDays.takeIf { it > 0 }, delayUntil = budget.delayUntil, perDayOnTime = budget.perDayWithoutDelay.takeIf { budget.delayUntil != null })
             }
         }
     }

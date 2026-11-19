@@ -51,7 +51,7 @@ private fun SafeToSpendDetails(r: SafeToSpendReport, onDismiss: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             if (r.cashSpendable != null) {
                 // calcolo dai saldi: soldi sui conti (meno i bloccati) + entrate ancora attese, meno ciò che è già deciso
-                Line("Soldi sui conti, non bloccati", r.cashSpendable!!, "saldo meno i soldi negli obiettivi")
+                Line("Soldi sui conti, non bloccati", r.cashSpendable!!, if (r.cashBalance != null && r.cashBlocked != null) "saldo ${Money.eur0(r.cashBalance!!)} meno ${Money.eur0(r.cashBlocked!!)} bloccati negli obiettivi (esclusi dal calcolo)" else "saldo meno i soldi negli obiettivi")
                 Line("Entrate ancora attese", r.incomeRemaining, "fino al ${Dates.fmt(r.periodEnd)}; già incassate ${Money.eur0(r.incomeToDate)}")
                 Line("Risparmio ancora da mettere da parte", r.savingsDue.negate(), if (r.savingsFromGoals) "quote degli obiettivi, meno i versamenti del periodo" else "obiettivo di risparmio mensile del Piano")
                 Line("Uscite già note in arrivo", r.upcomingTotal.negate(), if (r.upcoming.isEmpty()) "nessuna" else "${r.upcoming.size} voci, qui sotto")
