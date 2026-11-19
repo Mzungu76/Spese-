@@ -34,6 +34,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import it.spese.app.common.DataMenu
 import it.spese.app.common.RootViewModel
+import it.spese.feature.share.ShareScreen
 import it.spese.feature.accounts.AccountsScreen
 import it.spese.feature.alerts.AlertsScreen
 import it.spese.feature.analytics.AnalyticsScreen
@@ -239,7 +240,7 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
-            composable(Routes.SHARE) { it.spese.feature.share.ShareScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SHARE) { ShareScreen(onBack = { nav.popBackStack() }) }
         }
     }
     if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) }, { nav.navigate(Routes.RECURRING) })

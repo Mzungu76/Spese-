@@ -1,38 +1,69 @@
 package it.spese.data
 
-import com.sun.net.httpserver.HttpServer
 import it.spese.data.share.ShareApiImpl
 import it.spese.domain.sharing.ShareApiException
-import java.net.InetSocketAddress
+import java.io.ByteArrayOutputStream
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.Socket
+import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
 
-/** Il client parla con il servizio come il Worker si aspetta: percorsi, intestazioni, corpo e gestione degli errori. */
+/** Il client parla con il servizio come il Worker si aspetta: percorsi, intestazioni, corpo e gestione degli errori (server HTTP minimo su socket, senza librerie). */
 class ShareApiHttpTest {
-    private lateinit var server: HttpServer
-    private val seen = ArrayList<String>()
-    private val base get() = "http://127.0.0.1:${server.address.port}"
+    private lateinit var server: ServerSocket
+    private lateinit var worker: Thread
+    private val seen = java.util.Collections.synchronizedList(ArrayList<String>())
+    private val base get() = "http://127.0.0.1:${server.localPort}"
+
+    private fun readLine(s: Socket): String? {
+        val out = ByteArrayOutputStream()
+        while (true) {
+            val b = s.getInputStream().read()
+            if (b < 0) return if (out.size() == 0) null else out.toString(Charsets.ISO_8859_1.name())
+            if (b == '\n'.code) return out.toString(Charsets.ISO_8859_1.name()).trimEnd('\r')
+            out.write(b)
+        }
+    }
+
+    private fun answer(method: String, target: String, headers: Map<String, String>): Pair<Int, String> {
+        val path = target.substringBefore('?')
+        return when {
+            path == "/v1/shares" && headers["x-create-key"] != "ok" -> 401 to """{"error":"non autorizzato"}"""
+            path == "/v1/shares" -> 200 to """{"id":"i","ownerToken":"o","guestToken":"g"}"""
+            path.endsWith("/out") -> 200 to """{"updated":1700000000000}"""
+            path.endsWith("/in") -> 200 to """{"items":[{"seq":4,"blob":"b1"},{"seq":5,"blob":"b2"}],"last":5}"""
+            else -> 200 to """{"ok":true}"""
+        }
+    }
 
     @Before fun start() {
-        server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/") { ex ->
-            val body = ex.requestBody.readBytes().toString(Charsets.UTF_8)
-            seen.add("${ex.requestMethod} ${ex.requestURI} auth=${ex.requestHeaders.getFirst("Authorization")} key=${ex.requestHeaders.getFirst("X-Create-Key")} body=$body")
-            val (code, text) = when {
-                ex.requestURI.path == "/v1/shares" && ex.requestHeaders.getFirst("X-Create-Key") != "ok" -> 401 to """{"error":"non autorizzato"}"""
-                ex.requestURI.path == "/v1/shares" -> 200 to """{"id":"i","ownerToken":"o","guestToken":"g"}"""
-                ex.requestURI.path.endsWith("/out") -> 200 to """{"updated":1700000000000}"""
-                ex.requestURI.path.endsWith("/in") -> 200 to """{"items":[{"seq":4,"blob":"b1"},{"seq":5,"blob":"b2"}],"last":5}"""
-                else -> 200 to """{"ok":true}"""
+        server = ServerSocket(0, 5, InetAddress.getByName("127.0.0.1"))
+        worker = thread(isDaemon = true) {
+            while (!server.isClosed) {
+                val sock = try { server.accept() } catch (e: Exception) { break }
+                try {
+                    val first = readLine(sock) ?: continue
+                    val (method, target) = first.split(' ').let { p -> p[0] to p[1] }
+                    val headers = HashMap<String, String>()
+                    while (true) { val l = readLine(sock) ?: break; if (l.isEmpty()) break; headers[l.substringBefore(':').trim().lowercase()] = l.substringAfter(':').trim() }
+                    val len = headers["content-length"]?.toIntOrNull() ?: 0
+                    val body = String(ByteArray(len).also { buf -> var n = 0; while (n < len) { val r = sock.getInputStream().read(buf, n, len - n); if (r < 0) break; n += r } }, Charsets.UTF_8)
+                    seen.add("$method $target auth=${headers["authorization"]} key=${headers["x-create-key"]} body=$body")
+                    val (code, text) = answer(method, target, headers)
+                    val bytes = text.toByteArray()
+                    sock.getOutputStream().apply {
+                        write("HTTP/1.1 $code X\r\nContent-Type: application/json\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\n\r\n".toByteArray()); write(bytes); flush()
+                    }
+                } catch (e: Exception) { /* connessione chiusa dal client */ } finally { runCatching { sock.close() } }
             }
-            val bytes = text.toByteArray(); ex.responseHeaders.add("Content-Type", "application/json"); ex.sendResponseHeaders(code, bytes.size.toLong()); ex.responseBody.use { it.write(bytes) }
         }
-        server.start()
     }
-    @After fun stop() = server.stop(0)
+    @After fun stop() { runCatching { server.close() } }
 
     @Test fun `crea, pubblica, legge la posta e conferma`() = runBlocking {
         val api = ShareApiImpl()
@@ -40,20 +71,20 @@ class ShareApiHttpTest {
         assertEquals("i", c.id); assertEquals("o", c.ownerToken); assertEquals("g", c.guestToken)
         assertEquals(1700000000000L, api.publish(base, "i", "o", "BLOB"))
         val page = api.inbox(base, "i", "o", 3)
-        assertEquals(listOf(4L, 5L), page.items.map { it.seq }); assertEquals(5L, page.last)
+        assertEquals(listOf(4L, 5L), page.items.map { x -> x.seq }); assertEquals(5L, page.last)
         api.ack(base, "i", "o", 5); api.revoke(base, "i", "o")
-        assertTrue(seen[0].startsWith("POST /v1/shares ") && seen[0].contains("key=ok"))
-        assertTrue(seen[1].startsWith("PUT /v1/shares/i/out") && seen[1].contains("auth=Bearer o") && seen[1].contains("""body={"blob":"BLOB"}"""))
-        assertTrue(seen[2].contains("GET /v1/shares/i/in?after=3"))
-        assertTrue(seen[3].contains("POST /v1/shares/i/in/ack") && seen[3].contains("""{"upTo":5}"""))
-        assertTrue(seen[4].startsWith("DELETE /v1/shares/i"))
+        assertTrue(seen[0], seen[0].startsWith("POST /v1/shares ") && seen[0].contains("key=ok"))
+        assertTrue(seen[1], seen[1].startsWith("PUT /v1/shares/i/out") && seen[1].contains("auth=Bearer o") && seen[1].contains("""body={"blob":"BLOB"}"""))
+        assertTrue(seen[2], seen[2].contains("GET /v1/shares/i/in?after=3"))
+        assertTrue(seen[3], seen[3].contains("POST /v1/shares/i/in/ack") && seen[3].contains("""{"upTo":5}"""))
+        assertTrue(seen[4], seen[4].startsWith("DELETE /v1/shares/i"))
     }
 
     @Test fun `errori del servizio e servizio irraggiungibile diventano messaggi chiari`() = runBlocking {
         val api = ShareApiImpl()
         val e = runCatching { api.create(base, "no") }.exceptionOrNull() as ShareApiException
         assertEquals(401, e.status); assertEquals("non autorizzato", e.message)
-        server.stop(0)
+        server.close()
         val down = runCatching { api.publish(base, "i", "o", "x") }.exceptionOrNull() as ShareApiException
         assertTrue(down.message!!.contains("non raggiungibile"))
     }
