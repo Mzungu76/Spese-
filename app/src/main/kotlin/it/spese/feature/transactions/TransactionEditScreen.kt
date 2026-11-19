@@ -41,7 +41,7 @@ fun TransactionEditScreen(onBack: () -> Unit, vm: TransactionEditViewModel = hil
             }
             AmountField(f.amountText, { v -> vm.edit { it.copy(amountText = v.removePrefix("-")) } }, "Importo", Modifier.fillMaxWidth(), isError = f.error?.contains("importo") == true)
             OutlinedTextField(f.description, { v -> vm.edit { it.copy(description = v) } }, Modifier.fillMaxWidth(), label = { Text("Descrizione") }, isError = f.error?.contains("descrizione") == true)
-            DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts.filter { !it.archived || it.id == f.accountId }, { it.name }, { a -> vm.edit { it.copy(accountId = a.id) } })
+            DropdownField("Conto", data.accounts.firstOrNull { it.id == f.accountId }, data.accounts.filter { !it.archived || it.id == f.accountId }, { it.name }, { a -> vm.edit { it.copy(accountId = a.id) } }, nullLabel = if (data.accounts.isEmpty()) "Nessun conto: creane uno in Altro › Conti" else "Scegli il conto")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DateField(f.date, { d -> vm.edit { it.copy(date = d, valueDate = if (it.valueDate == it.date) d else it.valueDate) } }, "Data contabile", Modifier.weight(1f))
                 DateField(f.valueDate, { d -> vm.edit { it.copy(valueDate = d) } }, "Data valuta", Modifier.weight(1f))

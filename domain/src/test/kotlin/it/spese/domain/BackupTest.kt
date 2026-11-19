@@ -53,8 +53,8 @@ class BackupTest {
 
     @Test fun `backup senza wrapper e con campi mancanti`() {
         val env = LegacyBackupCodec.parse("""{"tx":[{"d":"2024-01-02","a":-5.5,"t":"x"}],"cats":[{"n":"Altro","k":"spesa","f":1,"c":"#888"}],"rules":[]}""")
-        assertEquals("Conto principale", env.state.tx[0].acc)
-        assertEquals("2024-01-02|2024-01-02|-5.50|x".let { "Conto principale|$it#1" }, env.state.tx[0].id)
+        assertEquals("", env.state.tx[0].acc)               // senza conto indicato: nessun conto di ripiego, il movimento resta senza conto
+        assertEquals("2024-01-02|2024-01-02|-5.50|x".let { "|$it#1" }, env.state.tx[0].id)
         assertEquals(BigDecimal("300"), env.state.goal.value)
     }
 

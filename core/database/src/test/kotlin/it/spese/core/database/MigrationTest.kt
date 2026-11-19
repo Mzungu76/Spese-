@@ -152,4 +152,34 @@ class MigrationTest {
         db.query("SELECT COUNT(*) FROM categories").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
         db.close()
     }
+
+    @Test fun `la migrazione 7-8 rende facoltativo il conto dei movimenti e conserva movimenti e divisioni`() {
+        helper.createDatabase("test-noaccount", 7).apply {
+            execSQL("INSERT INTO accounts (name, type, openingCents, archived) VALUES ('Intesa', 'CONTO', 0, 0)")
+            execSQL("INSERT INTO categories (name, kind, flexible, color, active, sortOrder, updatedAt, budgetUpdatedAt) VALUES ('Prelievi', 'spesa', 1, 4286611584, 1, 0, 0, 0)")
+            execSQL(
+                "INSERT INTO transactions (externalId, dedupKey, accountId, bookingDate, valueDate, description, amountCents, kind, categoryId, manualCategory, manualUpdatedAt, notes, origin, createdAt) " +
+                    "VALUES ('e1', 'k1', 1, 19800, 19800, 'Prelievo', -80000, 'spesa', 1, 0, 0, '', 'MANUAL', 0)",
+            )
+            execSQL("INSERT INTO transaction_splits (txId, categoryId, amountCents, position, auto, quotaId) VALUES (1, 1, -50000, 0, 0, NULL)")
+            execSQL("INSERT INTO transaction_splits (txId, categoryId, amountCents, position, auto, quotaId) VALUES (1, NULL, -30000, 1, 0, NULL)")
+            close()
+        }
+        val db = helper.runMigrationsAndValidate("test-noaccount", 8, true, AppDatabase.MIGRATION_7_8)
+        db.query("SELECT id, accountId, amountCents, description FROM transactions").use { c ->
+            assertTrue(c.moveToFirst()); assertEquals(1L, c.getLong(0)); assertEquals(1L, c.getLong(1)); assertEquals(-80000L, c.getLong(2)); assertEquals("Prelievo", c.getString(3))
+        }
+        db.query("SELECT COUNT(*), SUM(amountCents) FROM transaction_splits").use { c -> assertTrue(c.moveToFirst()); assertEquals(2, c.getInt(0)); assertEquals(-80000L, c.getLong(1)) }
+        // ora un movimento può non avere il conto
+        db.execSQL(
+            "INSERT INTO transactions (externalId, dedupKey, accountId, bookingDate, valueDate, description, amountCents, kind, manualCategory, manualUpdatedAt, notes, origin, createdAt) " +
+                "VALUES ('e2', 'k2', NULL, 19801, 19801, 'Senza conto', -500, 'spesa', 0, 0, '', 'NOTIFICATION', 0)",
+        )
+        db.query("SELECT COUNT(*) FROM transactions WHERE accountId IS NULL").use { c -> assertTrue(c.moveToFirst()); assertEquals(1, c.getInt(0)) }
+        // un conto con movimenti non si elimina (RESTRICT): i movimenti non si perdono mai in silenzio
+        db.execSQL("PRAGMA foreign_keys = ON")
+        val blocked = runCatching { db.execSQL("DELETE FROM accounts WHERE id = 1") }
+        assertTrue("l'eliminazione del conto con movimenti doveva essere rifiutata", blocked.isFailure)
+        db.close()
+    }
 }

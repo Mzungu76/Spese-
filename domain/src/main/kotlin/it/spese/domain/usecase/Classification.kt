@@ -36,7 +36,8 @@ class ReclassifyAllUseCase @Inject constructor(
 
 data class TransactionDraft(
     val id: Long = 0,
-    val accountId: Long,
+    /** Il conto è facoltativo solo per i movimenti automatici (notifiche, ricorrenze): senza conto vanno in Verifica. */
+    val accountId: Long?,
     val bookingDate: LocalDate,
     val valueDate: LocalDate = bookingDate,
     val description: String,
@@ -62,11 +63,11 @@ class SaveTransactionUseCase @Inject constructor(
         require(d.amount.signum() != 0) { "L'importo non può essere zero." }
         val classifier = Classifier(categories.getAll(), rules.getAll())
         val c = classifier.classify(d.description, d.amount, d.categoryId)
-        val acc = accounts.getAll().firstOrNull { it.id == d.accountId } ?: error("Conto inesistente")
+        val acc = d.accountId?.let { id -> accounts.getAll().firstOrNull { it.id == id } ?: error("Conto inesistente") }
         val amount = it.spese.core.common.Money.scale(d.amount)
-        val key = Duplicates.key(d.accountId.toString(), d.bookingDate, d.valueDate, amount, d.description.trim())
+        val key = Duplicates.key(d.accountId?.toString() ?: "", d.bookingDate, d.valueDate, amount, d.description.trim())
         if (d.id == 0L) {
-            val ext = Duplicates.key(acc.name, d.bookingDate, d.valueDate, amount, d.description.trim()) + "#m" + UUID.randomUUID().toString().take(8)
+            val ext = Duplicates.key(acc?.name ?: "", d.bookingDate, d.valueDate, amount, d.description.trim()) + "#m" + UUID.randomUUID().toString().take(8)
             tx.insertAll(listOf(NewTransaction(ext, key, d.accountId, d.bookingDate, d.valueDate, d.description.trim(), amount, c.kind,
                 c.categoryId, c.manual, c.ruleId, d.merchant?.takeIf { it.isNotBlank() }, d.notes, d.origin, d.documentId)))
             return 0
@@ -86,8 +87,8 @@ class DuplicateTransactionsUseCase @Inject constructor(private val tx: Transacti
         val accs = accounts.getAll().associateBy { it.id }
         for (id in ids) {
             val t = tx.get(id) ?: continue
-            val name = accs[t.accountId]?.name ?: ""
-            val key = Duplicates.key(t.accountId.toString(), t.bookingDate, t.valueDate, t.amount, t.description)
+            val name = t.accountId?.let { id -> accs[id]?.name } ?: ""
+            val key = Duplicates.key(t.accountId?.toString() ?: "", t.bookingDate, t.valueDate, t.amount, t.description)
             val ext = Duplicates.key(name, t.bookingDate, t.valueDate, t.amount, t.description) + "#m" + UUID.randomUUID().toString().take(8)
             n += tx.insertAll(listOf(NewTransaction(ext, key, t.accountId, t.bookingDate, t.valueDate, t.description, t.amount, t.kind, t.categoryId,
                 t.manualCategory, t.ruleId, t.merchantOverride, t.notes, TxOrigin.MANUAL)))
@@ -155,4 +156,94 @@ class SaveCategoryUseCase @Inject constructor(private val categories: CategoryRe
     }
 
     fun nextColor(count: Int): Long = DefaultData.PALETTE[count % DefaultData.PALETTE.size]
+}
+
+/** Conferma i giroconti proposti: entrambe le metà passano alla categoria dei trasferimenti (assegnazione manuale) e escono da entrate e spese. */
+class ConfirmTransfersUseCase @Inject constructor(private val assign: AssignCategoryUseCase, private val categories: CategoryRepository) {
+    suspend operator fun invoke(pairs: Collection<it.spese.domain.classification.TransferDetector.Pair>): Int {
+        if (pairs.isEmpty()) return 0
+        val cat = it.spese.domain.classification.TransferSuggestions.transferCategory(categories.getAll()) ?: throw IllegalStateException("Manca la categoria «Trasferimenti»: creala in Categorie.")
+        assign(pairs.flatMap { listOf(it.outgoing.id, it.incoming.id) }.distinct(), cat.id)
+        return pairs.size
+    }
+}
+
+/**
+ * Assegna un conto ai movimenti (a quelli che non lo hanno, o li sposta). La chiave di deduplica dipende dal conto e si ricalcola,
+ * tranne per i provvisori (notifiche e ricorrenze), la cui chiave non dipende dal conto: così l'estratto conto li sostituisce come prima.
+ */
+class AssignAccountUseCase @Inject constructor(private val tx: TransactionRepository, private val accounts: AccountRepository) {
+    suspend operator fun invoke(txIds: Collection<Long>, accountId: Long?): Int {
+        if (accountId != null) accounts.getAll().firstOrNull { it.id == accountId } ?: error("Conto inesistente")
+        var n = 0
+        for (id in txIds) {
+            val t = tx.get(id) ?: continue
+            if (t.accountId == accountId) continue
+            val provisional = t.origin == TxOrigin.NOTIFICATION || t.origin == TxOrigin.RECURRING
+            val key = if (provisional) tx.getDedupKey(id) ?: t.externalId else Duplicates.key(accountId?.toString() ?: "", t.bookingDate, t.valueDate, t.amount, t.description.trim())
+            tx.update(t.copy(accountId = accountId), key)
+            n++
+        }
+        return n
+    }
+}
+
+/** Dove finiscono (o da dove arrivano) i soldi di un giroconto. */
+sealed interface TransferDestination {
+    /** Un altro conto dell'app: se non c'è già, si crea la metà speculare, così il saldo di quel conto è giusto. */
+    data class ToAccount(val accountId: Long) : TransferDestination
+    /** Fuori dall'app (una tasca, un conto che non importi): resta un giroconto fuori da entrate e spese, con il nome della destinazione. */
+    data class Outside(val label: String) : TransferDestination
+    /** Una tasca dello stesso conto (es. un salvadanaio di Revolut): per la banca il conto è lo stesso, quindi il saldo non cambia. Si registra la metà opposta sullo stesso conto. */
+    data class SamePocket(val label: String) : TransferDestination
+}
+
+/**
+ * Segna i movimenti come giroconto e dice dove vanno i soldi. Verso un conto dell'app crea la metà speculare (importo opposto, stessa data),
+ * già confermata ma provvisoria: se poi si importa l'estratto di quel conto, la riga vera la sostituisce invece di duplicarla.
+ */
+class SetTransferDestinationUseCase @Inject constructor(
+    private val tx: TransactionRepository, private val accounts: AccountRepository, private val categories: CategoryRepository,
+    private val assign: AssignCategoryUseCase, private val confirm: ConfirmReviewUseCase,
+) {
+    suspend operator fun invoke(txIds: Collection<Long>, dest: TransferDestination): Int {
+        val cat = it.spese.domain.classification.TransferSuggestions.transferCategory(categories.getAll()) ?: throw IllegalStateException("Manca la categoria «Trasferimenti»")
+        val accs = accounts.getAll().associateBy { a -> a.id }
+        if (dest is TransferDestination.ToAccount && accs[dest.accountId] == null) throw IllegalStateException("Conto inesistente")
+        val done = ArrayList<Long>(); val mirrors = ArrayList<NewTransaction>()
+        for (id in txIds) {
+            val t = tx.get(id) ?: continue
+            val from = t.accountId ?: continue
+            when (dest) {
+                is TransferDestination.ToAccount -> {
+                    if (dest.accountId == from) continue
+                    val key = "mirror|${t.externalId}|${dest.accountId}"
+                    mirrors.add(NewTransaction(key, key, dest.accountId, t.bookingDate, t.valueDate,
+                        (if (t.amount.signum() < 0) "Giroconto da " else "Giroconto verso ") + (accs[from]?.name ?: "altro conto"), t.amount.negate(), TxKind.TRASFERIMENTO, cat.id, true, null,
+                        notes = "Metà speculare di «${t.description}»", origin = TxOrigin.NOTIFICATION))
+                }
+                is TransferDestination.SamePocket -> {
+                    // metà opposta sullo STESSO conto, non provvisoria: il saldo del conto resta uguale e l'importo esce solo da entrate e spese
+                    val key = "pocket|${t.externalId}"
+                    val name = dest.label.trim()
+                    mirrors.add(NewTransaction(key, key, from, t.bookingDate, t.valueDate,
+                        (if (t.amount.signum() < 0) "Giroconto verso tasca" else "Giroconto da tasca") + (if (name.isNotEmpty()) " $name" else ""), t.amount.negate(), TxKind.TRASFERIMENTO, cat.id, true, null,
+                        notes = "Compensa «${t.description}»: il denaro resta sullo stesso conto", origin = TxOrigin.MANUAL))
+                }
+                is TransferDestination.Outside -> {
+                    val keep = t.notes.lines().filter { l -> !l.startsWith("Destinazione:") && l.isNotBlank() }
+                    val notes = (keep + (if (dest.label.isNotBlank()) listOf("Destinazione: ${dest.label.trim()}") else emptyList())).joinToString("\n")
+                    if (notes != t.notes) tx.update(t.copy(notes = notes), tx.getDedupKey(id) ?: t.externalId)
+                }
+            }
+            done.add(id)
+        }
+        if (done.isEmpty()) return 0
+        assign(done, cat.id)
+        if (mirrors.isNotEmpty() && tx.insertAll(mirrors) > 0) {
+            val keys = mirrors.filter { m -> m.origin != TxOrigin.MANUAL }.map { m -> m.externalId }.toSet()
+            if (keys.isNotEmpty()) confirm(tx.getAll().filter { m -> m.externalId in keys }.map { m -> m.id })
+        }
+        return done.size
+    }
 }

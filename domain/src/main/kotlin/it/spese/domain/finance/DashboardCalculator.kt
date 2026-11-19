@@ -135,7 +135,7 @@ object DashboardCalculator {
         val accTx = data.transactions.filter { filter.accountId == null || it.accountId == filter.accountId }
         val today = AlertEngine.referenceToday(realToday, accTx)
         val alerts = AlertEngine.compute(accTx, data.categories, data.goal, data.dues, today, RecurringDetector.defaultExclusions(data.categories), cal)
-        val opening = data.accounts.filter { filter.accountId == null || it.id == filter.accountId }.fold(BigDecimal.ZERO) { a, c -> a + c.openingBalance }
+        val opening = data.accounts.filter { (filter.accountId == null || it.id == filter.accountId) && it.id !in data.managedAccountIds }.fold(BigDecimal.ZERO) { a, c -> a + c.openingBalance }
         // ritmo del mese di riferimento
         val ym = cal.monthOf(today)
         val spent = AlertEngine.monthlySpending(accTx, ym, cal).values.fold(BigDecimal.ZERO) { a, b -> a + b }

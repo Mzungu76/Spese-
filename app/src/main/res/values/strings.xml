@@ -3,4 +3,7 @@
     <string name="app_name">Gestione Spese</string>
     <string name="channel_alerts">Avvisi e scadenze</string>
     <string name="channel_alerts_desc">Superamento budget, scadenze imminenti e spese ricorrenti</string>
+    <string name="widget_label">Disponibile oggi</string>
+    <string name="widget_loading">…</string>
+    <string name="widget_description">Quanto puoi ancora spendere ogni giorno fino a fine mese</string>
 </resources>

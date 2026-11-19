@@ -17,7 +17,7 @@ interface AccountDao {
     @Update suspend fun update(a: AccountEntity)
     @Query("DELETE FROM accounts WHERE id = :id") suspend fun delete(id: Long)
     @Query("SELECT COUNT(*) FROM transactions WHERE accountId = :id") suspend fun txCount(id: Long): Int
-    @Query("UPDATE transactions SET accountId = :to WHERE accountId = :from") suspend fun moveTransactions(from: Long, to: Long)
+    @Query("UPDATE transactions SET accountId = :to WHERE accountId = :from") suspend fun moveTransactions(from: Long, to: Long?)
     @Query("DELETE FROM accounts") suspend fun deleteAll()
 }
 
@@ -60,6 +60,7 @@ interface TransactionDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertAll(items: List<TransactionEntity>): List<Long>
     @Update suspend fun update(t: TransactionEntity)
     @Query("DELETE FROM transactions WHERE id IN (:ids)") suspend fun deleteByIds(ids: List<Long>)
+    @Query("UPDATE transactions SET origin = :origin, dedupKey = externalId WHERE id IN (:ids)") suspend fun markProvisional(ids: List<Long>, origin: String)
     @Query("DELETE FROM transactions") suspend fun deleteAll()
     @Query("SELECT dedupKey FROM transactions WHERE accountId = :accountId") suspend fun dedupKeys(accountId: Long): List<String>
     @Query(

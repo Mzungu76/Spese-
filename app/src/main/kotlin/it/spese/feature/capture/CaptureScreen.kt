@@ -175,7 +175,8 @@ private fun SourceCard(s: CaptureSource, c: SourceConfig, lastSeen: Map<String, 
             Text(if (last == null) "Nessuna notifica ricevuta finora da questa fonte." else "Ultima notifica ricevuta: ${java.time.format.DateTimeFormatter.ofPattern("d/M HH:mm").format(Instant.ofEpochMilli(last).atZone(ZoneId.systemDefault()))}",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             val acc = data.accounts.filter { !it.archived }
-            DropdownField("Registra sul conto", acc.firstOrNull { it.id == c.accountId } ?: acc.firstOrNull(), acc, { it.name }, { a -> vm.updateSource(s) { it.copy(accountId = a.id) } })
+            DropdownField("Registra sul conto", acc.firstOrNull { it.id == c.accountId }, acc, { it.name }, { a -> vm.updateSource(s) { it.copy(accountId = a.id) } }, nullLabel = "Nessun conto: in Verifica", onNull = { vm.updateSource(s) { it.copy(accountId = null) } })
+            if (c.accountId == null) Text("Finché non scegli un conto, i movimenti di questa fonte restano in Verifica, fuori dalla contabilità.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             if (s.kind == SourceKind.SMS) {
                 var text by remember(c.smsSenders) { mutableStateOf(c.smsSenders.joinToString(", ")) }
                 OutlinedTextField(text, { text = it; vm.updateSource(s) { c0 -> c0.copy(smsSenders = it.split(',').map { x -> x.trim() }.filter { x -> x.isNotEmpty() }.toSet()) } },

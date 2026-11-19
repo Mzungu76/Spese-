@@ -31,7 +31,7 @@ class DatabaseTest {
 
     @Test fun `al primo avvio vengono inserite categorie e regole dell'originale`() = runBlocking<Unit> {
         assertEquals(21, env.cats.getAll().size); assertEquals(31, env.rules.getAll().size)
-        assertEquals(1, env.accounts.getAll().size)
+        assertEquals(0, env.accounts.getAll().size)           // nessun conto predefinito: i conti si creano esplicitamente
         assertNotNull(env.scenarios.observeAll().first().firstOrNull { it.isBase })
         env.seeder.ensureSeeded()      // idempotente
         assertEquals(21, env.cats.getAll().size)
@@ -139,13 +139,13 @@ class DatabaseTest {
         val t = ReadStatementUseCase().invoke(env.resource("revolut.csv"), "revolut.csv").first()
         val o = env.commit(t, t.detected!!.headerRow, t.detected!!.mapping, "Revolut")
         assertEquals(4, o.added)
-        assertEquals(setOf("Conto principale", "Revolut"), env.accounts.getAll().map { it.name }.toSet())
+        assertEquals(setOf("Revolut"), env.accounts.getAll().map { it.name }.toSet())       // nessun conto predefinito: esiste solo quello indicato
         val tr = env.tx.getAll().filter { it.kind == TxKind.TRASFERIMENTO }   // "REVOLUT" / "HYPE" -> Trasferimenti
         assertEquals(2, tr.size)
     }
 
     @Test fun `inserimento manuale, modifica, duplicazione ed eliminazione`() = runBlocking<Unit> {
-        val acc = env.accounts.getAll().first()
+        val acc = env.accounts.getOrCreate("Conto test")
         val save = SaveTransactionUseCase(env.tx, env.accounts, env.cats, env.rules)
         save(TransactionDraft(accountId = acc.id, bookingDate = LocalDate.of(2024, 5, 1), description = "Pagamento POS COOP", amount = BigDecimal("-23.45")))
         var t = env.tx.getAll().single()
@@ -165,7 +165,7 @@ class DatabaseTest {
     }
 
     @Test fun `regola creata da un movimento e priorita`() = runBlocking<Unit> {
-        val acc = env.accounts.getAll().first()
+        val acc = env.accounts.getOrCreate("Conto test")
         SaveTransactionUseCase(env.tx, env.accounts, env.cats, env.rules)(TransactionDraft(accountId = acc.id, bookingDate = LocalDate.of(2024, 5, 1), description = "NEGOZIO XYZ", amount = BigDecimal("-10")))
         val casa = env.cats.getAll().first { it.name == "Casa e giardino" }
         val t = env.tx.getAll().single()

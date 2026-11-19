@@ -11,6 +11,7 @@ import it.spese.core.model.*
 import it.spese.data.files.DocumentFiles
 import it.spese.data.mapper.toDomain
 import it.spese.domain.backup.*
+import it.spese.domain.health.IncomeNature
 import it.spese.domain.classification.Classifier
 import it.spese.domain.classification.DefaultData
 import it.spese.domain.classification.Duplicates
@@ -73,6 +74,13 @@ class BackupRepositoryImpl @Inject constructor(
     private val itemMemory = it.spese.data.settings.ItemMemoryRepositoryImpl(context)
     private val captureConfig = it.spese.data.settings.CaptureConfigRepositoryImpl(context)
     private val subReview = it.spese.data.settings.SubscriptionReviewRepositoryImpl(context)
+    private val transferReview = it.spese.data.settings.TransferReviewRepositoryImpl(context)
+    private val incomeNatureRepo = it.spese.data.settings.IncomeNatureRepositoryImpl(context)
+    private val goalsRepo = it.spese.data.settings.GoalRepositoryImpl(context)
+    private val remindersRepo = it.spese.data.settings.ReminderRepositoryImpl(context)
+    private val managedRepo = it.spese.data.settings.ManagedAccountsRepositoryImpl(context)
+    private val widgetRepo = it.spese.data.settings.WidgetLayoutRepositoryImpl(context)
+    private val valuationsRepo = it.spese.data.settings.ValuationRepositoryImpl(context)
 
     private suspend fun currentEnvelope(): BackupEnvelope {
         val (s, mt, docs) = loadSnapshot()
@@ -83,6 +91,13 @@ class BackupRepositoryImpl @Inject constructor(
         val cuts = db.scenarios().getCuts().groupBy { it.scenarioId }; val removed = db.scenarios().getRemoved().groupBy { it.scenarioId }
         val extras = NativeExtras(
             subIgnored = subReview.getIgnored().toList(),
+            transferIgnored = transferReview.getIgnored().toList(),
+            incomeNature = incomeNatureRepo.get().mapNotNull { (id, n) -> catName[id]?.let { nm -> NativeIncomeNature(nm, n == IncomeNature.FIXED) } },
+            valuations = valuationsRepo.getAll().mapNotNull { v -> s.accounts.firstOrNull { it.id == v.accountId }?.let { NativeValuation(it.name, v.date, v.value) } },
+            widgetLayouts = widgetRepo.get().let { m -> if (m.isEmpty()) "" else it.spese.domain.widgets.LayoutCodec.encode(m) },
+            managedAccounts = managedRepo.get().mapNotNull { id -> s.accounts.firstOrNull { a -> a.id == id }?.name },
+            reminders = remindersRepo.getAll().map { r -> NativeReminder(r.kind.name, r.title, r.note, r.accountId?.let { id -> s.accounts.firstOrNull { it.id == id }?.name }, r.repeat.name, r.dayOfWeek, r.dayOfMonth, r.date, r.hour, r.minute, r.enabled) },
+            goals = goalsRepo.getAll().map { NativeGoal(it.name, it.target, it.saved, it.deadline, it.monthly, it.priority, it.enabled) },
             ignoreRules = captureConfig.get().ignoreRules.map { NativeIgnoreRule(it.source, it.phrase, it.createdMs, it.enabled) },
             itemMemory = itemMemory.get().mapNotNull { (k, c) -> catIdName[c]?.let { NativeItemMemory(k, it) } },
             accounts = s.accounts.map { NativeAccount(it.name, it.type.name, it.openingBalance, it.archived) },
@@ -140,6 +155,62 @@ class BackupRepositoryImpl @Inject constructor(
         }
         env.extras?.let { x ->
             if (x.subIgnored.isNotEmpty() || mode == RestoreMode.Replace) subReview.setIgnored(if (mode == RestoreMode.Replace) x.subIgnored.toSet() else subReview.getIgnored() + x.subIgnored)
+        }
+        // natura delle entrate corretta dall'utente (DataStore, categorie per nome)
+        env.extras?.let { x ->
+            if (x.incomeNature.isNotEmpty() || mode == RestoreMode.Replace) {
+                val ids = db.categories().getAll().associate { it.name to it.id }
+                val incoming = x.incomeNature.mapNotNull { r -> ids[r.category]?.let { id -> id to if (r.fixed) IncomeNature.FIXED else IncomeNature.VARIABLE } }.toMap()
+                incomeNatureRepo.setAll(if (mode == RestoreMode.Replace) incoming else incomeNatureRepo.get() + incoming)
+            }
+        }
+        // giroconti scartati (DataStore, identificativi dei movimenti)
+        env.extras?.let { x ->
+            if (x.transferIgnored.isNotEmpty() || mode == RestoreMode.Replace) transferReview.setIgnored(if (mode == RestoreMode.Replace) x.transferIgnored.toSet() else transferReview.getIgnored() + x.transferIgnored)
+        }
+        // valori dei conti di investimento (DataStore, conti per nome): con Sostituisci si riparte dal backup, con Unisci si aggiornano le stesse date
+        env.extras?.let { x ->
+            if (x.valuations.isNotEmpty() || mode == RestoreMode.Replace) {
+                val ids = db.accounts().getAll().associate { it.name.lowercase() to it.id }
+                val incoming = x.valuations.mapNotNull { v -> ids[v.account.lowercase()]?.let { id -> it.spese.core.model.Valuation(id, v.date, v.value) } }
+                val base = if (mode == RestoreMode.Replace) emptyList() else valuationsRepo.getAll().filter { b -> incoming.none { it.accountId == b.accountId && it.date == b.date } }
+                valuationsRepo.setAll(base + incoming)
+            }
+        }
+        // obiettivi di risparmio (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelli con un nome nuovo
+        env.extras?.let { x ->
+            if (x.goals.isNotEmpty() || mode == RestoreMode.Replace) {
+                val incoming = x.goals.map { g -> it.spese.core.model.Goal(0, g.name, g.target, g.saved, g.deadline, g.monthly, g.priority, g.enabled) }
+                val base = if (mode == RestoreMode.Replace) emptyList() else goalsRepo.getAll()
+                goalsRepo.setAll(base + incoming.filter { n -> base.none { it.name.equals(n.name, ignoreCase = true) } })
+            }
+        }
+        // composizione dei widget (DataStore): con Sostituisci si riparte dal backup, con Unisci si riempiono solo le pagine non personalizzate
+        env.extras?.let { x ->
+            if (x.widgetLayouts.isNotBlank() || mode == RestoreMode.Replace) {
+                val incoming = it.spese.domain.widgets.LayoutCodec.decode(x.widgetLayouts)
+                widgetRepo.setAll(if (mode == RestoreMode.Replace) incoming else incoming + widgetRepo.get())
+            }
+        }
+        // conti gestiti da altri (DataStore, per nome)
+        env.extras?.let { x ->
+            if (x.managedAccounts.isNotEmpty() || mode == RestoreMode.Replace) {
+                val accIds = db.accounts().getAll().associate { it.name.lowercase() to it.id }
+                val incoming = x.managedAccounts.mapNotNull { n -> accIds[n.lowercase()] }.toSet()
+                managedRepo.setAll(if (mode == RestoreMode.Replace) incoming else managedRepo.get() + incoming)
+            }
+        }
+        // sveglie e promemoria (DataStore, conti per nome): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle che non ci sono già
+        env.extras?.let { x ->
+            if (x.reminders.isNotEmpty() || mode == RestoreMode.Replace) {
+                val accIds = db.accounts().getAll().associate { it.name to it.id }
+                val incoming = x.reminders.map { r ->
+                    it.spese.domain.reminders.Reminder(0, runCatching { it.spese.domain.reminders.ReminderKind.valueOf(r.kind) }.getOrDefault(it.spese.domain.reminders.ReminderKind.CUSTOM), r.title, r.note, r.account?.let { n -> accIds[n] },
+                        runCatching { it.spese.domain.reminders.ReminderRepeat.valueOf(r.repeat) }.getOrDefault(it.spese.domain.reminders.ReminderRepeat.MONTHLY), r.dayOfWeek.coerceIn(1, 7), r.dayOfMonth.coerceIn(1, 31), r.date, r.hour.coerceIn(0, 23), r.minute.coerceIn(0, 59), r.enabled)
+                }
+                val base = if (mode == RestoreMode.Replace) emptyList() else remindersRepo.getAll()
+                remindersRepo.setAll(base + incoming.filter { n -> base.none { b -> b.copy(id = 0) == n } })
+            }
         }
         // notifiche da ignorare (DataStore): con Sostituisci si riparte dal backup, con Unisci si aggiungono quelle mancanti
         env.extras?.let { x ->
@@ -210,7 +281,7 @@ class BackupRepositoryImpl @Inject constructor(
         val ad = db.accounts()
         val nativeAcc = extras?.accounts.orEmpty().associateBy { it.name }
         val accIds = HashMap<String, Long>()
-        for (name in (s.tx.map { it.acc } + nativeAcc.keys).distinct()) {
+        for (name in (s.tx.map { it.acc } + nativeAcc.keys).filter { it.isNotBlank() }.distinct()) {
             val old = ad.findByName(name)
             val na = nativeAcc[name]
             accIds[name] = old?.id ?: ad.insert(AccountEntity(name = name, type = na?.type ?: AccountType.CONTO.name, openingCents = na?.let { Money.toCents(it.opening) } ?: 0, archived = na?.archived ?: false))
@@ -228,8 +299,8 @@ class BackupRepositoryImpl @Inject constructor(
         val now = System.currentTimeMillis()
         val have = HashSet<String>().also { set -> td.getAll().forEach { set.add(it.externalId) } }
         val toInsert = s.tx.filter { have.add(it.id) }.map { t ->
-            val accId = accIds.getValue(t.acc)
-            TransactionEntity(externalId = t.id, dedupKey = Duplicates.key(accId.toString(), t.d, t.v, t.a, t.t), accountId = accId,
+            val accId = t.acc.takeIf { it.isNotBlank() }?.let { accIds.getValue(it) }        // senza conto: resta senza conto, in Verifica
+            TransactionEntity(externalId = t.id, dedupKey = Duplicates.key(accId?.toString() ?: "", t.d, t.v, t.a, t.t), accountId = accId,
                 bookingDate = t.d.toEpochDay(), valueDate = t.v.toEpochDay(), description = t.t, amountCents = Money.toCents(t.a),
                 kind = if (t.a.signum() >= 0) TxKind.ENTRATA.key else TxKind.SPESA.key, notes = t.notes, merchantOverride = t.merchant,
                 origin = t.origin ?: TxOrigin.BACKUP.name, documentId = t.doc?.let { docIds[it] }, createdAt = now)
@@ -304,6 +375,11 @@ class BackupRepositoryImpl @Inject constructor(
     }
 
     // ---------- annullamento, azzeramento, backup automatici ----------
+    override suspend fun saveUndoSnapshot() = withContext(Dispatchers.IO) {
+        undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
+        settings.update { it.copy(lastUndo = "snapshot") }
+    }
+
     override suspend fun hasUndo() = undoFile.exists()
 
     override suspend fun undoLast(): Boolean = withContext(Dispatchers.IO) {
@@ -318,7 +394,7 @@ class BackupRepositoryImpl @Inject constructor(
     override suspend fun resetAll() = withContext(Dispatchers.IO) {
         undoFile.writeText(LegacyBackupCodec.encode(currentEnvelope()))
         settings.update { it.copy(lastUndo = "snapshot") }
-        seeder.wipeAndSeed(); itemMemory.clear()
+        seeder.wipeAndSeed(); itemMemory.clear(); goalsRepo.setAll(emptyList()); valuationsRepo.setAll(emptyList()); incomeNatureRepo.setAll(emptyMap()); remindersRepo.setAll(emptyList()); managedRepo.setAll(emptySet()); widgetRepo.setAll(emptyMap())
     }
 
     override suspend fun autoBackup(keep: Int): String = withContext(Dispatchers.IO) {

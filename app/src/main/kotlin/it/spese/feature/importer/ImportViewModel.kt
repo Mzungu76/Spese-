@@ -80,7 +80,8 @@ class ImportViewModel @Inject constructor(
         val table = s.queue[i][sheet]
         val a = table.analysis
         val prof = profiles.match(table)
-        val acc = lastAccount.ifBlank { data.value.accounts.firstOrNull { !it.archived }?.name ?: "Conto principale" }
+        // l'ultimo conto usato, o l'unico conto esistente; altrimenti si sceglie (nessun conto «di ripiego»)
+        val acc = lastAccount.ifBlank { data.value.accounts.filter { !it.archived }.singleOrNull()?.name ?: "" }
         _state.value = s.copy(index = i, sheet = sheet, step = ImportStep.COLUMNS, analysis = a, profileName = prof?.name,
             headerRow = prof?.headerRow ?: a.headerRow, roles = prof?.roles ?: a.roles, options = prof?.options ?: a.options,
             accountName = acc, rememberName = prof?.name ?: suggestName(names = s.names[i]), remember = prof == null, preview = null, error = null, busy = false)
@@ -123,7 +124,7 @@ class ImportViewModel @Inject constructor(
             val s = _state.value; val t = s.table ?: return@launch
             if (!s.mapping.isUsable) { upd { it.copy(preview = null, error = null) }; return@launch }
             try {
-                val p = withContext(Dispatchers.Default) { previewUc(t, s.headerRow, s.mapping, s.accountName.ifBlank { "Conto principale" }, s.options) }
+                val p = withContext(Dispatchers.Default) { previewUc(t, s.headerRow, s.mapping, s.accountName, s.options) }
                 upd { it.copy(preview = p, error = if (p.rows.isEmpty()) "Con queste colonne non trovo nessun movimento valido." else null) }
             } catch (e: Exception) { upd { it.copy(preview = null, error = "Anteprima non disponibile: ${e.message}") } }
         }

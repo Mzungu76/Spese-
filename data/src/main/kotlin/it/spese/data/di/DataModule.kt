@@ -42,6 +42,13 @@ abstract class RepositoryModule {
     @Binds abstract fun scen(i: ScenarioRepositoryImpl): ScenarioRepository
     @Binds abstract fun quotas(i: CashQuotaRepositoryImpl): CashQuotaRepository
     @Binds abstract fun recurring(i: RecurringRepositoryImpl): RecurringRepository
+    @Binds abstract fun valuations(i: it.spese.data.settings.ValuationRepositoryImpl): it.spese.domain.repository.ValuationRepository
+    @Binds abstract fun transferReview(i: it.spese.data.settings.TransferReviewRepositoryImpl): it.spese.domain.classification.TransferReviewRepository
+    @Binds abstract fun incomeNature(i: it.spese.data.settings.IncomeNatureRepositoryImpl): it.spese.domain.health.IncomeNatureRepository
+    @Binds abstract fun managedAccounts(i: it.spese.data.settings.ManagedAccountsRepositoryImpl): it.spese.domain.repository.ManagedAccountsRepository
+    @Binds abstract fun widgetLayouts(i: it.spese.data.settings.WidgetLayoutRepositoryImpl): it.spese.domain.widgets.WidgetLayoutRepository
+    @Binds abstract fun reminders(i: it.spese.data.settings.ReminderRepositoryImpl): it.spese.domain.reminders.ReminderRepository
+    @Binds abstract fun goals(i: it.spese.data.settings.GoalRepositoryImpl): it.spese.domain.repository.GoalRepository
     @Binds abstract fun doc(i: DocumentRepositoryImpl): DocumentRepository
     @Binds abstract fun store(i: DocumentFiles): DocumentStore
     @Binds abstract fun settings(i: SettingsRepositoryImpl): SettingsRepository
@@ -58,8 +65,8 @@ abstract class RepositoryModule {
 @InstallIn(SingletonComponent::class)
 object AppDataModule {
     @Provides @Singleton
-    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository, q: CashQuotaRepository, settings: SettingsRepository) =
-        AppDataSource(tx, c, a, r, d, s, q, settings)
+    fun appDataSource(tx: TransactionRepository, c: CategoryRepository, a: AccountRepository, r: RuleRepository, d: DueRepository, s: ScenarioRepository, q: CashQuotaRepository, settings: SettingsRepository, managed: it.spese.domain.repository.ManagedAccountsRepository) =
+        AppDataSource(tx, c, a, r, d, s, q, settings, managed.observe())
 
     @Provides @Singleton
     fun appData(src: AppDataSource, @ApplicationScope scope: CoroutineScope): StateFlow<AppData> = src.observe().stateIn(scope, SharingStarted.Eagerly, AppData())

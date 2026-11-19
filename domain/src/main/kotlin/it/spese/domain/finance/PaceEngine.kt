@@ -43,6 +43,8 @@ data class PaceReport(
     val projectedWithAverage: BigDecimal, val projectedAtCurrentPace: BigDecimal,
     val averageIncome: BigDecimal, val incomeToDate: BigDecimal,
     val drivers: List<PaceDriver>, val verdict: PaceVerdict,
+    /** Categorie scelte in Home: se non è vuoto il ritmo riguarda solo la spesa di queste (con le loro sottocategorie) e le entrate non c'entrano. */
+    val filtered: List<Category> = emptyList(),
 ) {
     val deltaToDate: BigDecimal get() = spentToDate - averageToDate
     val deltaPercent: BigDecimal? get() = if (averageToDate.signum() <= 0) null else deltaToDate.multiply(BigDecimal(100)).divide(averageToDate, 0, RoundingMode.HALF_UP)
@@ -70,8 +72,11 @@ object PaceEngine {
         else -> PaceUnit.MONTH
     }
 
-    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now()): PaceReport? {
+    fun compute(data: AppData, filter: TxFilter, realToday: LocalDate = LocalDate.now(), categoryIds: Set<Long> = emptySet()): PaceReport? {
+        val ids0 = categoryIds.flatMapTo(HashSet()) { CategoryTree.withChildren(it, data.categories) }
         val tx = data.transactions.filter { (filter.accountId == null || it.accountId == filter.accountId) && it.kind != TxKind.TRASFERIMENTO }
+            .filter { categoryIds.isEmpty() || (it.kind == TxKind.SPESA && it.categoryId in ids0) }
+        val chosen = data.categories.filter { it.id in categoryIds }
         if (tx.isEmpty()) return null
         val cal = filter.calendar
         val unit = unitFor(filter.period)
@@ -125,7 +130,7 @@ object PaceEngine {
         val pastData = windows.map { w -> daily(w, w.days - 1).let { (c, inc) -> Triple(w, c, inc) } }
         if (pastData.isEmpty()) {
             return PaceReport(unit, current.start, current.end, today, current.days, dayIndex, cur, emptyList(), emptyList(), emptyList(), emptyList(), cur.last(), BigDecimal.ZERO, BigDecimal.ZERO,
-                cur.last(), projectLinear(cur.last(), dayIndex, current.days), BigDecimal.ZERO, curIncome, emptyList(), PaceVerdict.NOT_ENOUGH)
+                cur.last(), projectLinear(cur.last(), dayIndex, current.days), BigDecimal.ZERO, curIncome, emptyList(), PaceVerdict.NOT_ENOUGH, chosen)
         }
         // curve medie/minime/massime giorno per giorno (un periodo più corto resta al suo totale)
         fun valueAt(c: List<BigDecimal>, i: Int) = c.getOrElse(i) { c.last() }
@@ -153,7 +158,7 @@ object PaceEngine {
         }
         return PaceReport(unit, current.start, current.end, today, current.days, dayIndex, cur, avg, low, high,
             pastData.map { (w, c, inc) -> PaceWindow(label(unit, w.start, cal), w.start, c.last(), inc) }.reversed(),
-            spent, avgToDate, avgTotal, spent + (avgTotal - avgToDate), projectLinear(spent, dayIndex, current.days), avgIncome, curIncome, drivers, verdict)
+            spent, avgToDate, avgTotal, spent + (avgTotal - avgToDate), projectLinear(spent, dayIndex, current.days), avgIncome, curIncome, drivers, verdict, chosen)
     }
 
     private fun projectLinear(spent: BigDecimal, dayIndex: Int, days: Int): BigDecimal = spent.multiply(BigDecimal(days)).divide(BigDecimal(dayIndex + 1), 2, RoundingMode.HALF_UP)

@@ -29,7 +29,8 @@ class CaptureNotificationUseCase @Inject constructor(
 ) {
     suspend operator fun invoke(source: CaptureSource, accountId: Long?, raw: RawNotification, zone: ZoneId = ZoneId.systemDefault(), noAmountToo: Boolean = true): CaptureResult {
         val parsed = NotificationParser.parse(source, raw.title, raw.text) ?: return noAmount(source, accountId, raw, zone, noAmountToo)
-        val acc = accounts.getAll().let { all -> all.firstOrNull { it.id == accountId && !it.archived } ?: all.firstOrNull { !it.archived } } ?: accounts.getOrCreate("Conto principale")
+        // il conto è quello scelto per la fonte; se non c'è (o non esiste più) il movimento resta senza conto, in Verifica
+        val acc = accountId?.let { id -> accounts.getAll().firstOrNull { it.id == id && !it.archived } }
         val externalId = externalId(source, raw, parsed.amount)
         val existing = tx.getAll()
         if (existing.any { it.externalId == externalId }) return CaptureResult.Duplicate
@@ -46,7 +47,7 @@ class CaptureNotificationUseCase @Inject constructor(
 
         val c = Classifier(categories.getAll(), rules.getAll()).classify(parsed.description, parsed.amount, null)
         val date = Instant.ofEpochMilli(raw.postedAtMs).atZone(zone).toLocalDate()
-        tx.insertAll(listOf(NewTransaction(externalId, externalId, acc.id, date, date, parsed.description, parsed.amount, c.kind, c.categoryId, false, c.ruleId,
+        tx.insertAll(listOf(NewTransaction(externalId, externalId, acc?.id, date, date, parsed.description, parsed.amount, c.kind, c.categoryId, false, c.ruleId,
             null, "Da notifica · ${source.label}", TxOrigin.NOTIFICATION)))
         applyQuotas()
         val id = tx.getAll().firstOrNull { it.externalId == externalId }?.id ?: return CaptureResult.Duplicate

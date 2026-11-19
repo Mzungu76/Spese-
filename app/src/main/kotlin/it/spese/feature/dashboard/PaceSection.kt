@@ -31,7 +31,9 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val unitName = r.unit.label
     val verdictColor = when (r.verdict) { PaceVerdict.ABOVE -> fin.negative; PaceVerdict.BELOW -> fin.positive; PaceVerdict.IN_LINE -> fin.positive; PaceVerdict.NOT_ENOUGH -> MaterialTheme.colorScheme.onSurfaceVariant }
+    val filtered = r.filtered.isNotEmpty()
     SectionCard(modifier, title = "Ritmo di spesa · ${unitName.replaceFirstChar { it.uppercase() }} in corso") {
+        if (filtered) Text("Solo: " + r.filtered.joinToString(", ") { it.name }, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(r.verdict.label + (r.deltaPercent?.takeIf { r.verdict != PaceVerdict.NOT_ENOUGH }?.let { " (${if (it.signum() > 0) "+" else ""}$it%)" } ?: ""),
             style = MaterialTheme.typography.titleMedium, color = verdictColor)
         if (r.verdict == PaceVerdict.NOT_ENOUGH) {
@@ -61,8 +63,8 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
                 val past = r.pastWindows.takeLast(10)
                 BarLineChart(labels,
                     bars = listOf(ChartSeries("Speso", MaterialTheme.colorScheme.primary, past.map { it.total } + r.projectedWithAverage)),
-                    lines = listOf(ChartSeries("Spesa media", MaterialTheme.colorScheme.onSurfaceVariant, labels.map { r.averageTotal }),
-                        ChartSeries("Entrate medie", fin.positive, labels.map { r.averageIncome })), height = 220.dp, interactive = false)
+                    lines = listOf(ChartSeries("Spesa media", MaterialTheme.colorScheme.onSurfaceVariant, labels.map { r.averageTotal })) +
+                        (if (filtered) emptyList() else listOf(ChartSeries("Entrate medie", fin.positive, labels.map { r.averageIncome }))), height = 220.dp, interactive = false)
                 Text("Ogni barra è un $unitName passato; «Ora» è la stima di chiusura se il resto va come al solito. Quando la barra supera la linea verde, spendi più di quanto entra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
@@ -79,6 +81,7 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Metric("Chiusura stimata (resto come al solito)", Money.eur0(r.projectedWithAverage), "media storica ${Money.eur0(r.averageTotal)}")
         Metric("Chiusura al ritmo attuale", Money.eur0(r.projectedAtCurrentPace), if (r.projectedAtCurrentPace > r.averageTotal) "sopra la media" else "sotto la media")
+        if (filtered) return@SectionCard
         Metric("Entrate attese nel ${unitName}", Money.eur0(r.expectedIncome), "già incassato ${Money.eur0(r.incomeToDate)}")
         Metric("Margine atteso a fine ${unitName}", (if (r.expectedMargin.signum() < 0) "−" else "") + Money.eur0(r.expectedMargin.abs()), "margine medio ${Money.eur0(r.averageMargin)}",
             if (r.expectedMargin < r.averageMargin) fin.warning else fin.positive)

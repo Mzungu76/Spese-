@@ -37,5 +37,9 @@ class SetSplitsUseCase @Inject constructor(private val tx: TransactionRepository
 
 /** "Conferma" nella sezione Verifica: i movimenti escono dall'elenco. */
 class ConfirmReviewUseCase @Inject constructor(private val tx: TransactionRepository) {
-    suspend operator fun invoke(ids: Collection<Long>, reviewed: Boolean = true) = tx.setReviewed(ids, reviewed)
+    /** Conferma i movimenti; quelli senza conto restano in Verifica finché non si sceglie il conto. */
+    suspend operator fun invoke(ids: Collection<Long>, reviewed: Boolean = true) {
+        val ok = if (reviewed) ids.filter { tx.get(it)?.accountId != null } else ids.toList()
+        if (ok.isNotEmpty()) tx.setReviewed(ok, reviewed)
+    }
 }

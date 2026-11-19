@@ -65,7 +65,7 @@ private fun RecurringDialog(r: RecurringRule, categories: List<Category>, accoun
     var kind by remember { mutableStateOf(r.kind) }
     var name by remember { mutableStateOf(r.name) }
     var amount by remember { mutableStateOf(if (r.amount.signum() > 0) r.amount.toPlainString().replace('.', ',') else "") }
-    var acc by remember { mutableStateOf(r.accountId) }
+    var acc by remember { mutableStateOf(r.accountId ?: accounts.singleOrNull()?.id.takeIf { r.id == 0L }) }
     var cat by remember { mutableStateOf(r.categoryId) }
     var every by remember { mutableStateOf(r.everyMonths) }
     var day by remember { mutableStateOf(r.dayOfMonth.toString()) }
@@ -82,7 +82,7 @@ private fun RecurringDialog(r: RecurringRule, categories: List<Category>, accoun
                 }
                 OutlinedTextField(name, { name = it }, label = { Text("Nome (es. Stipendio)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 AmountField(amount, { amount = it }, "Importo (€)", Modifier.fillMaxWidth())
-                if (accounts.size > 1) DropdownField("Conto", accounts.firstOrNull { it.id == acc }, accounts, { it.name }, { a -> acc = a.id }, nullLabel = "Il primo conto", onNull = { acc = null })
+                if (accounts.isNotEmpty()) DropdownField("Conto", accounts.firstOrNull { it.id == acc }, accounts, { it.name }, { a -> acc = a.id }, nullLabel = "Nessun conto: i movimenti vanno in Verifica", onNull = { acc = null })
                 it.spese.app.common.CategoryField("Categoria", cats.firstOrNull { it.id == cat }, cats, { c -> cat = c.id }, nullLabel = "Scelta dalle regole", onNull = { cat = null })
                 Text("Ripetizione", style = MaterialTheme.typography.labelLarge)
                 ChipChoice(listOf(1 to "Ogni mese", 2 to "Ogni 2 mesi", 3 to "Ogni 3 mesi", 6 to "Ogni 6 mesi", 12 to "Ogni anno"), every, { every = it })

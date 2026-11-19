@@ -49,13 +49,19 @@ import java.math.BigDecimal
 fun DashboardScreen(
     menu: DataMenu, onOpenAlerts: () -> Unit, onOpenCategory: (Long?) -> Unit, onImport: () -> Unit, onScan: () -> Unit, onRestore: () -> Unit,
     onAdd: () -> Unit, onAnalytics: () -> Unit, onOpenClassify: () -> Unit, onOpenPlan: () -> Unit,
-    onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {},
+    onCustomize: () -> Unit = {}, onOpenNetWorth: () -> Unit = {}, onOpenCategories: () -> Unit = {}, onOpenTransfers: () -> Unit = {}, onSearch: () -> Unit = {}, onOpenTrends: () -> Unit = {}, onOpenCapture: () -> Unit = {}, onOpenSubscriptions: () -> Unit = {}, onOpenAdvice: () -> Unit = {}, onOpenTransfersReview: () -> Unit = {}, onOpenUnassigned: () -> Unit = {}, onOpenHealth: () -> Unit = {}, onOpenReview: () -> Unit = {}, onOpenReminders: () -> Unit = {}, onOpenGoals: () -> Unit = {}, onOpenBudgets: () -> Unit = {},
     contentPadding: PaddingValues = PaddingValues(), vm: DashboardViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
     val pendingNotifs by vm.pendingNotifications.collectAsStateWithLifecycle()
     val subs by vm.subscriptions.collectAsStateWithLifecycle()
     val pendingAmounts by vm.pendingAmounts.collectAsStateWithLifecycle()
+    val safe by vm.safeToSpend.collectAsStateWithLifecycle()
+    val advice by vm.advice.collectAsStateWithLifecycle()
+    val transferCount by vm.transferPairs.collectAsStateWithLifecycle()
+    val health by vm.health.collectAsStateWithLifecycle()
+    val balances by vm.balances.collectAsStateWithLifecycle()
+    val layout by vm.layout.collectAsStateWithLifecycle()
     val m = st.model
     var filters by remember { mutableStateOf(false) }
     val alertCount = m?.alerts?.count { it.level >= 1 } ?: 0
@@ -81,143 +87,22 @@ fun DashboardScreen(
         val points = remember(st.buckets) { st.buckets.map { GapPoint(it.label, it.income, it.expense, it.title) } }
         val period = st.filter.period
         val shownPeriod: Period = when (period) { Period.All, Period.YearToDate, Period.Last3Months, Period.CurrentMonth, Period.CurrentWeek -> period; else -> Period.All }
-        var catKind by rememberSaveable { mutableStateOf(TxKind.SPESA) }
+        val catOpt = layout.firstOrNull { w -> w.widgetId == "categories" }?.options?.get("kind")
+        val catKind = rememberSaveable(catOpt) { mutableStateOf(if (catOpt == "ENTRATA") TxKind.ENTRATA else TxKind.SPESA) }
         SearchFilterBar(onSearch, { filters = true }, st.filter.activeCount > 0)
+        val cb = HomeCallbacks(
+            onOpenAlerts = onOpenAlerts, onOpenCategory = onOpenCategory, onOpenNetWorth = onOpenNetWorth, onOpenCategories = onOpenCategories, onOpenTransfers = onOpenTransfers,
+            onOpenTrends = onOpenTrends, onOpenCapture = onOpenCapture, onOpenSubscriptions = onOpenSubscriptions, onOpenAdvice = onOpenAdvice, onOpenTransfersReview = onOpenTransfersReview,
+            onOpenUnassigned = onOpenUnassigned, onOpenHealth = onOpenHealth, onOpenReview = onOpenReview,
+            onAdd = onAdd, onImport = onImport, onScan = onScan, onOpenReminders = onOpenReminders, onOpenGoals = onOpenGoals, onOpenBudgets = onOpenBudgets,
+        )
+        val goalsProgress by vm.goalsProgress.collectAsStateWithLifecycle()
+        val nextReminders by vm.nextReminders.collectAsStateWithLifecycle()
+        val ctx = HomeCtx(st, m, vm, fin, health, safe, advice, balances, subs, transferCount, pendingAmounts, pendingNotifs, alertCount, points, shownPeriod, catKind, cb, goalsProgress, nextReminders)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = contentPadding.calculateBottomPadding() + 24.dp)) {
-            item(key = "hero") {
-                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 18.dp)) {
-                    Eyebrow(if (saved) "Hai messo da parte" else "Hai speso in più di quanto incassi")
-                    CountUpMoney(s.net.abs()) { v -> MoneyText(v, style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Bold, colored = false, decimals = true) }
-                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        s.savingsRatePercent?.let { r ->
-                            Text(if (r >= 0) "$r%" else "$r%", Modifier.background(if (r >= 0) fin.positive.copy(alpha = 0.16f) else fin.negative.copy(alpha = 0.16f), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
-                                style = MaterialTheme.typography.labelLarge, color = if (r >= 0) fin.positive else fin.negative, fontWeight = FontWeight.SemiBold)
-                            Text("di quello che incassi", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-            if (st.compare == null) {
-                item(key = "legend") {
-                    Row(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
-                        LegendItem("Entrate", Money.eur0(s.income), fin.positive)
-                        LegendItem("Spese", Money.eur0(s.expense), fin.negative)
-                    }
-                }
-                item(key = "chart") { GapAreaChart(points, Modifier.padding(horizontal = 24.dp, vertical = 12.dp), height = 300.dp) }
-            } else item(key = "compare") { ComparisonSection(st.compare!!, vm::toggleCategory, vm::clearSelection, Modifier.padding(top = 20.dp, bottom = 8.dp)) }
-            item(key = "period") {
-                PillSegmented(listOf<Pair<Period, String>>(Period.CurrentWeek to "Sett.", Period.CurrentMonth to "Mese", Period.Last3Months to "3 mesi", Period.YearToDate to "Anno", Period.All to "Tutto"), shownPeriod, vm::setPeriod, Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
-            }
-            if (!st.filter.calendar.isSolar && st.data.ledger.isNotEmpty()) item(key = "calendar-note") {
-                val r = PeriodResolver.resolve(shownPeriod, st.data.ledger.minOf { it.bookingDate }, st.data.ledger.maxOf { it.bookingDate }, st.filter.calendar)
-                Text("Mese contabile dal giorno ${st.filter.calendar.startDay}" + (r.from?.let { f -> r.to?.let { t -> " · periodo ${Dates.fmt(f)} – ${Dates.fmt(t)}" } } ?: ""),
-                    Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            st.pace?.let { pace -> item(key = "pace") { PaceSection(pace, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) } }
-            item(key = "alerts") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenAlerts).padding(horizontal = 18.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    val dot = when { m.alerts.any { it.level >= 2 } -> MaterialTheme.colorScheme.error; alertCount > 0 -> fin.warning; else -> fin.positive }
-                    Box(Modifier.size(11.dp).background(dot, androidx.compose.foundation.shape.CircleShape))
-                    Text(if (alertCount > 0) (if (alertCount == 1) "1 cosa da guardare" else "$alertCount cose da guardare") else "Tutto sotto controllo", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (pendingAmounts > 0) item(key = "pending-amounts") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenCapture).padding(horizontal = 18.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Default.EditNote, null, tint = fin.warning)
-                    Column(Modifier.weight(1f)) {
-                        Text(if (pendingAmounts == 1) "1 movimento da regolarizzare" else "$pendingAmounts movimenti da regolarizzare", style = MaterialTheme.typography.titleMedium)
-                        Text("La notifica non riporta la cifra: inseriscila quando vuoi o attendi l'estratto conto", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            if (pendingNotifs > 0) item(key = "notif-review") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenCapture).padding(horizontal = 18.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Icon(Icons.Default.NotificationsActive, null, tint = fin.warning)
-                    Column(Modifier.weight(1f)) {
-                        Text("$pendingNotifs notifiche da controllare", style = MaterialTheme.typography.titleMedium)
-                        Text("Indica quali ignorare e quali sono pagamenti", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-            subs?.takeIf { it.count > 0 }?.let { sub ->
-                item(key = "subs") {
-                    Row(Modifier.padding(horizontal = 24.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(onClick = onOpenSubscriptions).padding(horizontal = 18.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        Icon(Icons.Default.Autorenew, null, tint = if (sub.news > 0) fin.warning else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Column(Modifier.weight(1f)) {
-                            Text("Abbonamenti e rate: ${Money.eur0(sub.monthly)}/mese", style = MaterialTheme.typography.titleMedium)
-                            Text(if (sub.news > 0) "${sub.news} ${if (sub.news == 1) "novità" else "novità"}: aumenti di prezzo o addebiti mancanti" else "${sub.count} voci · ${Money.eur0(sub.annual)} all'anno", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-            val watch = SavingsOpportunities.surging(m.categories)
-            val opps = SavingsOpportunities.compute(m.categories, 20)
-            if (watch.isNotEmpty()) item(key = "watch") { WatchCard(watch, m.previousLabel, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            if (opps.isNotEmpty()) item(key = "opps") { OpportunitiesCard(opps, { onOpenCategory(it) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) }
-            item(key = "cats-head") {
-                Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Dove vanno i soldi", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-                        if (st.compareMode) TextButton(onClick = { vm.setCompareMode(false) }) { Text("Fine") }
-                        else TextButton(onClick = { vm.setCompareMode(true) }) { Icon(Icons.Default.CompareArrows, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Confronta") }
-                    }
-                    if (st.compareMode && st.selected.isEmpty()) Text("Tocca le categorie da confrontare tra loro e con le entrate del periodo.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    if (m.previousLabel != null) Text("Variazioni " + m.previousLabel, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    PillSegmented(listOf(TxKind.SPESA to "Spese", TxKind.ENTRATA to "Entrate"), catKind, { catKind = it }, Modifier.padding(top = 12.dp))
-                }
-            }
-            val rows = if (catKind == TxKind.SPESA) m.categories else m.incomeCategories
-            val maxTotal = rows.maxOfOrNull { it.total } ?: BigDecimal.ONE
-            if (rows.isEmpty()) item(key = "cats-empty") { Text(if (catKind == TxKind.SPESA) "Nessuna spesa nel periodo." else "Nessuna entrata nel periodo.", Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }
-            items(rows.take(6), key = { "cat-$catKind-${it.category?.id}" }) { r ->
-                val rid = r.category?.id
-                CategoryRankRow(r, catKind, maxTotal, { if (st.compareMode && rid != null) vm.toggleCategory(rid) else onOpenCategory(rid) },
-                    Modifier.testTag("rank-$rid"), selectable = st.compareMode, selected = rid != null && rid in st.selected, onLongClick = { if (rid != null) vm.toggleCategory(rid) },
-                    budget = if (catKind == TxKind.SPESA && period == Period.CurrentMonth) m.budgets.firstOrNull { it.category.id == r.category?.id } else null)
-            }
-            item(key = "cats-trends") { TextButton(onClick = onOpenTrends, Modifier.padding(horizontal = 12.dp)) { Icon(Icons.Default.Timeline, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Tendenze e proiezioni per categoria") } }
-            if (rows.size > 6) item(key = "cats-more") { TextButton(onClick = onOpenCategories, Modifier.padding(horizontal = 12.dp)) { Text("Vedi tutte le ${rows.size} categorie") } }
-            if (s.transfers.signum() != 0) item(key = "cats-transfers") {
-                Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(onClick = onOpenTransfers).padding(horizontal = 4.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Default.SwapHoriz, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Giroconti esclusi dai totali", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    MoneyText(s.transfers.abs(), decimals = false, muted = true)
-                }
-            }
+            layout.forEach { inst -> if (inst.enabled) homeWidget(inst, ctx) }
+            item(key = "customize") { TextButton(onClick = onCustomize, Modifier.padding(horizontal = 12.dp, vertical = 8.dp).testTag("customize_home")) { Icon(Icons.Default.Tune, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Personalizza la Home") } }
         }
     }
     if (filters) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filters = false }
-}
-
-@Composable
-private fun LegendItem(label: String, value: String, color: androidx.compose.ui.graphics.Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Box(Modifier.size(10.dp).background(color, androidx.compose.foundation.shape.CircleShape))
-        Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-    }
-}
-
-
-/** Il numero grande «sale» dal valore precedente a quello nuovo (stile app bancarie) invece di cambiare di colpo. */
-@Composable
-private fun CountUpMoney(value: BigDecimal, content: @Composable (BigDecimal) -> Unit) {
-    var from by remember { mutableStateOf(BigDecimal.ZERO) }
-    val t = remember { androidx.compose.animation.core.Animatable(0f) }
-    LaunchedEffect(value) {
-        val start = from
-        t.snapTo(0f)
-        t.animateTo(1f, androidx.compose.animation.core.tween(800, easing = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1f, 0.36f, 1f))) { from = start + (value - start).multiply(BigDecimal(value.signum().let { _ -> this.value.toDouble() })) }
-        from = value
-    }
-    content(if (t.value >= 1f) value else from.setScale(2, java.math.RoundingMode.HALF_UP))
 }

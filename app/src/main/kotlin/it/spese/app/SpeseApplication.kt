@@ -21,6 +21,7 @@ class SpeseApplication : Application(), Configuration.Provider {
     @Inject lateinit var seeder: DatabaseSeeder
     @Inject lateinit var settings: SettingsRepository
     @Inject lateinit var scheduler: WorkScheduler
+    @Inject lateinit var reminders: it.spese.domain.reminders.ReminderRepository
     @Inject lateinit var notifier: Notifier
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
 
@@ -38,6 +39,7 @@ class SpeseApplication : Application(), Configuration.Provider {
         scope.launch {
             seeder.ensureSeeded()
             scheduler.apply(settings.get())
+            runCatching { scheduler.syncReminders(reminders.getAll()) }
         }
     }
 }

@@ -29,7 +29,7 @@ class SplitDbTest {
 
     private suspend fun cat(name: String) = env.cats.getAll().first { it.name == name }
     private suspend fun withdrawal(date: String, amount: Int, id: String): Long {
-        val acc = env.accounts.getAll().first(); val c = cat("Contanti")
+        val acc = env.accounts.getOrCreate("Conto test"); val c = cat("Contanti")
         env.tx.insertAll(listOf(NewTransaction(id, id, acc.id, LocalDate.parse(date), LocalDate.parse(date), "Prelievo ATM", BigDecimal(amount), TxKind.SPESA, c.id, false, null)))
         return env.tx.getAll().first { it.externalId == id }.id
     }
@@ -69,7 +69,8 @@ class SplitDbTest {
         val rent = env.cats.insert(Category(0, "Affitto", TxKind.SPESA, false, 0, null, true, 99))
         env.quotas.save(CashQuota(0, "Affitto", rent, BigDecimal(500)))
         val t = LocalDate.parse("2026-10-05").atTime(10, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
-        val r = env.capture(CaptureSource.REVOLUT, null, RawNotification("com.revolut.revolut", "Revolut", "Prelievo di 800,00 € da ATM ROMA", t), ZoneOffset.UTC) as CaptureResult.Added
+        val acc = env.accounts.getOrCreate("Revolut")        // con un conto assegnato alla fonte il movimento è nella contabilità (senza conto starebbe in Verifica come «senza conto»)
+        val r = env.capture(CaptureSource.REVOLUT, acc.id, RawNotification("com.revolut.revolut", "Revolut", "Prelievo di 800,00 € da ATM ROMA", t), ZoneOffset.UTC) as CaptureResult.Added
         assertEquals(2, env.tx.getSplits().count { it.txId == r.txId })
         val d = AppDataSource(env.tx, env.cats, env.accounts, env.rules, env.dues, env.scenarios, env.quotas).observe().first()
         val review = it.spese.domain.finance.ReviewEngine.items(d.ledger, d.splits, d.categories, d.rules).first { it.tx.id == r.txId }

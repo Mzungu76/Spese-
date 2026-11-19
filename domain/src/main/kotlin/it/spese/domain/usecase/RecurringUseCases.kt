@@ -21,20 +21,20 @@ class GenerateRecurringUseCase @Inject constructor(
     suspend operator fun invoke(today: LocalDate = LocalDate.now()): Int {
         val all = recurring.getAll().filter { it.enabled }
         if (all.isEmpty()) return 0
-        val accs = accounts.getAll().filter { !it.archived }
+        val accs = accounts.getAll()
         val cats = categories.getAll()
         val classifier = Classifier(cats, rules.getAll())
         var created = 0
         for (r in all) {
             val dates = RecurringEngine.due(r, today)
             if (dates.isEmpty()) continue
-            val acc = accs.firstOrNull { it.id == r.accountId } ?: accs.firstOrNull() ?: accounts.getOrCreate("Conto principale")
+            val acc = r.accountId?.let { id -> accs.firstOrNull { it.id == id } }       // senza conto (o conto eliminato): il movimento va in Verifica
             val signed = if (r.kind == TxKind.SPESA) r.amount.negate() else r.amount
             val fixedCat = r.categoryId?.let { id -> cats.firstOrNull { it.id == id } }
             val items = dates.map { d ->
                 val c = if (fixedCat != null) it.spese.domain.classification.Classification(fixedCat.id, fixedCat.kind, true, null) else classifier.classify(r.name, signed, null)
                 val ext = "rec|${r.id}|$d"
-                NewTransaction(ext, ext, acc.id, d, d, r.name, signed, c.kind, c.categoryId, c.manual, c.ruleId, null, "Ricorrente · ${r.name}", TxOrigin.RECURRING)
+                NewTransaction(ext, ext, acc?.id, d, d, r.name, signed, c.kind, c.categoryId, c.manual, c.ruleId, null, "Ricorrente · ${r.name}", TxOrigin.RECURRING)
             }
             created += tx.insertAll(items)
             if (r.autoConfirm) {

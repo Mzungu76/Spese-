@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -42,10 +44,13 @@ import it.spese.domain.classification.merchant
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TransactionsScreen(
-    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, onOpenClassify: () -> Unit, bottomPadding: PaddingValues = PaddingValues(),
+    menu: DataMenu, onOpen: (Long) -> Unit, onAdd: () -> Unit, onOpenClassify: () -> Unit, onCustomize: () -> Unit = {}, home: it.spese.feature.dashboard.HomeCallbacks? = null, bottomPadding: PaddingValues = PaddingValues(),
     vm: TransactionsViewModel = hiltViewModel(), filterVm: FilterViewModel = hiltViewModel(),
 ) {
     val st by vm.state.collectAsStateWithLifecycle()
+    val layout by vm.layout.collectAsStateWithLifecycle()
+    val shared = layout.any { w -> w.enabled && !it.spese.domain.widgets.WidgetCatalog.isNative(it.spese.domain.widgets.WidgetPage.TRANSACTIONS, w.widgetId) }
+    val hctx = it.spese.feature.dashboard.rememberHomeCtx(home, shared)
     val ctx = LocalContext.current
     var pickCategory by remember { mutableStateOf<((Long) -> Unit)?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
@@ -59,9 +64,13 @@ fun TransactionsScreen(
     val live by filterVm.filter.collectAsStateWithLifecycle()
     val searchReq by vm.searchRequested.collectAsStateWithLifecycle()
     LaunchedEffect(searchReq) { if (searchReq) { searching = true; vm.consumeSearch() } }
+    val reviewReq by vm.reviewRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(reviewReq) { if (reviewReq) { vm.setReviewMode(true); vm.consumeReview() } }
+    var pickAccountFor by remember { mutableStateOf<List<Long>?>(null) }
     var moreMenu by remember { mutableStateOf(false) }
     var filterSheet by remember { mutableStateOf(false) }
     var splitTarget by remember { mutableStateOf<Transaction?>(null) }
+    var transferDest by remember { mutableStateOf<Set<Long>?>(null) }
     val unclassified = remember(st.data.transactions) { st.data.transactions.count { !it.manualCategory && it.ruleId == null && it.kind != TxKind.TRASFERIMENTO } }
 
     Column(Modifier.fillMaxSize()) {
@@ -72,6 +81,7 @@ fun TransactionsScreen(
                 if (st.selection.size == 1) IconButton(onClick = { st.data.ledger.firstOrNull { it.id == st.selection.first() }?.let { splitTarget = it }; vm.clearSelection() }) { Icon(Icons.Default.CallSplit, "Dividi su più categorie") }
                 IconButton(onClick = vm::selectAll) { Icon(Icons.Default.SelectAll, "Seleziona tutti") }
                 IconButton(onClick = { pickCategory = { vm.assignToSelection(it) } }) { Icon(Icons.AutoMirrored.Filled.Label, "Cambia categoria") }
+                IconButton(onClick = { transferDest = st.selection }, Modifier.testTag("transfer_destination")) { Icon(Icons.Default.SwapHoriz, "Giroconto: dove vanno i soldi") }
                 IconButton(onClick = vm::duplicateSelection) { Icon(Icons.Default.ContentCopy, "Duplica") }
                 IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, "Elimina") }
             },
@@ -87,11 +97,17 @@ fun TransactionsScreen(
                     DropdownMenuItem({ Text("Esporta CSV") }, { moreMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.csv", "text/csv", vm.csvBytes(), "Esporta CSV") }, enabled = st.items.isNotEmpty())
                     DropdownMenuItem({ Text("Esporta Excel") }, { moreMenu = false; Share.shareBytes(ctx, "movimenti-${stamp()}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", vm.xlsxBytes(), "Esporta Excel") }, enabled = st.items.isNotEmpty())
                     HorizontalDivider()
+                    DropdownMenuItem({ Text("Personalizza la pagina") }, { moreMenu = false; onCustomize() }, modifier = Modifier.testTag("customize_transactions"))
                     DropdownMenuItem({ Text("Analisi e grafici") }, { moreMenu = false; menu.onAnalytics() })
                     DropdownMenuItem({ Text("Backup e impostazioni") }, { moreMenu = false; menu.onSettings() })
                 }
             }
         })
+        layout.forEach { inst ->
+            if (!inst.enabled) return@forEach
+            when (inst.widgetId) {
+                "section" -> SectionHeader(inst.options["title"].orEmpty(), Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+                "tx_filters" -> {
         if (searching || live.query.isNotEmpty()) Column(Modifier.padding(horizontal = 24.dp, vertical = 6.dp)) {
             SearchField(live.query, vm::setQuery, "Cerca esercente, nota, categoria, importo…", autoFocus = searching && live.query.isEmpty())
             if (live.query.isNotBlank()) Text(if (live.period != Period.All) "Risultati su tutto lo storico, non solo sul periodo scelto" else "Risultati su tutto lo storico",
@@ -99,20 +115,32 @@ fun TransactionsScreen(
         }
         Spacer(Modifier.height(10.dp))
         FilterPills()
-        if (!selecting) PillSegmented(listOf(false to "Tutti", true to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica"), st.reviewMode, vm::setReviewMode, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
+        if (st.data.managedAccountIds.isNotEmpty() && st.filter.accountId == null && !st.reviewMode) Text("I movimenti dei conti gestiti da altri non compaiono qui: scegli quel conto nel filtro per vederli.",
+            Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                "tx_view" -> {
+        if (!selecting) PillSegmented(listOf(0 to "Tutti", 1 to if (st.review.isNotEmpty()) "Verifica · ${st.review.size}" else "Verifica", 2 to "Scontrini"), if (st.reviewMode) 1 else if (st.receiptsMode) 2 else 0, vm::setView, Modifier.padding(horizontal = 24.dp, vertical = 12.dp).testTag("review_toggle"))
+                }
+                "tx_summary" -> {
         if (!st.reviewMode) Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text("${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(if (st.receiptsMode) "${st.items.size} con scontrino" else "${st.items.size} movimenti", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             MoneyText(st.income, signed = true, decimals = false, style = MaterialTheme.typography.bodyLarge)
             MoneyText(st.expense, decimals = false, colored = false, style = MaterialTheme.typography.bodyLarge)
         }
+        if (!st.reviewMode && st.transfers.signum() != 0) Text("Giroconti (netto, fuori da entrate e spese): " + (if (st.transfers.signum() > 0) "+" else "−") + it.spese.core.common.Money.eur0(st.transfers.abs()),
+            Modifier.padding(horizontal = 24.dp, vertical = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                "tx_classify" -> {
         if (unclassified > 0 && !selecting && !st.reviewMode) Row(Modifier.padding(horizontal = 24.dp, vertical = 14.dp).fillMaxWidth().clip(androidx.compose.foundation.shape.RoundedCornerShape(18.dp)).background(MaterialTheme.colorScheme.primaryContainer).clickable(onClick = onOpenClassify).padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
             Box(Modifier.size(36.dp).background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) { Text("$unclassified", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge) }
             Text("Da classificare", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium); Icon(Icons.Default.ChevronRight, null)
         }
-        if (st.reviewMode) ReviewSection(st, vm, onOpen, { id -> pickCategory = { cid -> vm.reassign(id, cid) } }, { splitTarget = it }, bottomPadding)
+                }
+                "tx_list" -> Box(Modifier.weight(1f).fillMaxWidth()) {
+        if (st.reviewMode) ReviewSection(st, vm, onOpen, { id -> pickCategory = { cid -> vm.reassign(id, cid) } }, { splitTarget = it }, { ids -> pickAccountFor = ids }, bottomPadding)
         else if (st.items.isEmpty()) {
-            EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else "Nessun movimento con questi filtri.")
+            EmptyState(Icons.Default.ReceiptLong, if (st.data.transactions.isEmpty()) "Nessun movimento" else "Nessun risultato", if (st.data.transactions.isEmpty()) "Tocca il + per aggiungere un movimento o importare un estratto conto." else if (st.receiptsMode) "Nessun movimento ha uno scontrino allegato. Scansiona uno scontrino o allega una foto a un movimento." else "Nessun movimento con questi filtri.")
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp)) {
                 val byDay = st.sort == SortKey.DATE
@@ -120,7 +148,7 @@ fun TransactionsScreen(
                 st.items.forEach { x ->
                     if (byDay && x.bookingDate != lastDay) {
                         lastDay = x.bookingDate
-                        val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate && it.kind != TxKind.TRASFERIMENTO }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
+                        val dayTotal = st.items.asSequence().filter { it.bookingDate == x.bookingDate }.fold(java.math.BigDecimal.ZERO) { a, t -> a + t.amount }
                         stickyHeader(key = "d${x.bookingDate}") {
                             Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 8.dp)) {
                                 Text(x.bookingDate.dayLabel(st.today).uppercase(), style = MaterialTheme.typography.labelMedium, letterSpacing = 0.6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
@@ -153,6 +181,10 @@ fun TransactionsScreen(
                 }
             }
         }
+                }
+                else -> { if (hctx != null) it.spese.feature.dashboard.SharedWidgetBlock(inst, hctx) }
+            }
+        }
     }
     if (filterSheet) FilterSheet(st.filter, st.data, filterVm::update, filterVm::reset) { filterSheet = false }
     splitTarget?.let { t -> SplitDialog(t, st.data.categories.filter { it.active }, st.data.splits[t.id].orEmpty(), st.data.quotas, { parts -> vm.split(t.id, parts) }, { vm.split(t.id, emptyList()) }, { splitTarget = null }) }
@@ -163,17 +195,21 @@ fun TransactionsScreen(
     confirmBulk?.let { id ->
         ConfirmDialog("Assegnare la categoria?", "Assegnare \"${st.data.categoryName(id)}\" a tutti i ${st.items.size} movimenti filtrati? L'assegnazione manuale prevale sulle regole.", "Assegna", { vm.assignToAllFiltered(id) }, { confirmBulk = null; bulkAll = false })
     }
+    transferDest?.let { ids -> TransferDestinationDialog(st.data.accounts.filter { !it.archived }, ids.size, { transferDest = null }) { d -> vm.setTransferDestination(ids, d); transferDest = null } }
+    pickAccountFor?.let { ids -> AccountPickerDialog(st.data.accounts.filter { !it.archived }, ids.size, { pickAccountFor = null }) { a -> vm.assignAccount(ids, a.id); pickAccountFor = null } }
     if (confirmDelete) ConfirmDialog("Eliminare ${st.selection.size} movimenti?", "L'operazione non può essere annullata.", "Elimina", { vm.deleteSelection() }, { confirmDelete = false }, destructive = true)
 }
 
 /** Sezione Verifica: i movimenti la cui associazione non è certa, con il motivo e le azioni per chiuderli. */
 @Composable
-private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOpen: (Long) -> Unit, onPickCategory: (Long) -> Unit, onSplit: (Transaction) -> Unit, bottomPadding: PaddingValues) {
-    if (st.review.isEmpty()) { EmptyState(Icons.Default.CheckCircle, "Tutto a posto", "Nessun movimento da controllare: divisioni automatiche, movimenti da notifica, regole con soglia e importi insoliti compaiono qui."); return }
+private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOpen: (Long) -> Unit, onPickCategory: (Long) -> Unit, onSplit: (Transaction) -> Unit, onPickAccount: (List<Long>) -> Unit, bottomPadding: PaddingValues) {
+    if (st.review.isEmpty()) { EmptyState(Icons.Default.CheckCircle, "Tutto a posto", "Nessun movimento da controllare: movimenti senza conto, divisioni automatiche, movimenti da notifica, regole con soglia e importi insoliti compaiono qui."); return }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = bottomPadding.calculateBottomPadding() + 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("${st.review.size} da controllare", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val loose = st.review.filter { it.tx.accountId == null }
+                Text("${st.review.size} da controllare" + if (loose.isNotEmpty()) " · ${loose.size} senza conto" else "", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (loose.size > 1) TextButton(onClick = { onPickAccount(loose.map { it.tx.id }) }, Modifier.testTag("review_assign_all")) { Text("Scegli il conto") }
                 TextButton(onClick = vm::confirmAllReview) { Text("Conferma tutti") }
             }
         }
@@ -197,7 +233,8 @@ private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOp
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Button(onClick = { vm.confirm(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Conferma") }
+                        if (x.accountId == null) Button(onClick = { onPickAccount(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp), modifier = Modifier.testTag("review_assign")) { Text("Scegli il conto") }
+                        else Button(onClick = { vm.confirm(listOf(x.id)) }, contentPadding = PaddingValues(horizontal = 14.dp)) { Text("Conferma") }
                         TextButton(onClick = { onPickCategory(x.id) }) { Text("Categoria") }
                         TextButton(onClick = { onSplit(x) }) { Text("Dividi") }
                     }
@@ -205,4 +242,46 @@ private fun ReviewSection(st: TransactionsState, vm: TransactionsViewModel, onOp
             }
         }
     }
+}
+
+/** Scelta del conto per movimenti che non ne hanno: da quel momento entrano nei saldi, nelle entrate e nelle spese. */
+@Composable
+fun AccountPickerDialog(accounts: List<it.spese.core.model.Account>, count: Int, onDismiss: () -> Unit, onPick: (it.spese.core.model.Account) -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (count == 1) "Su quale conto?" else "Su quale conto ($count movimenti)?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (accounts.isEmpty()) Text("Non hai ancora conti: creane uno in Altro › Conti (o importando un estratto conto), poi torna qui.", style = MaterialTheme.typography.bodyMedium)
+                else {
+                    Text("I movimenti entrano nella contabilità del conto scelto.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    accounts.forEach { a -> TextButton(onClick = { onPick(a) }, Modifier.fillMaxWidth().testTag("pick_account")) { Text(a.name, Modifier.fillMaxWidth()) } }
+                }
+            }
+        },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
+}
+
+/** «Dove finiscono i soldi?»: un altro conto dell'app (si crea l'altra metà) oppure fuori dall'app (con un nome). In entrambi i casi esce da entrate e spese. */
+@Composable
+fun TransferDestinationDialog(accounts: List<it.spese.core.model.Account>, count: Int, onDismiss: () -> Unit, onPick: (it.spese.domain.usecase.TransferDestination) -> Unit) {
+    var label by remember { mutableStateOf("") }
+    AlertDialog(onDismissRequest = onDismiss, title = { Text(if (count == 1) "Giroconto: dove vanno i soldi?" else "Giroconto ($count movimenti): dove vanno i soldi?") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Spostare soldi tra tuoi conti non è né una spesa né un'entrata. Dì dove vanno (o da dove arrivano) per contabilizzarli lì.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (accounts.isNotEmpty()) {
+                    Text("Un conto dell'app", style = MaterialTheme.typography.labelLarge)
+                    Text("Se manca, creo l'altra metà su quel conto: così il suo saldo è giusto. Se poi importi il suo estratto, la riga vera la sostituisce.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    accounts.forEach { a -> TextButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.ToAccount(a.id)) }, Modifier.fillMaxWidth().testTag("dest_account")) { Text(a.name, Modifier.fillMaxWidth()) } }
+                }
+                HorizontalDivider()
+                Text("Tasca o altro conto che non è nell'app", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(label, { label = it }, label = { Text("Nome (es. Tasca Vacanze)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.SamePocket(label)) }, Modifier.fillMaxWidth().testTag("dest_pocket")) { Text("Tasca dello stesso conto: il saldo non cambia") }
+                Text("Per esempio un salvadanaio dello stesso conto: per la banca i soldi sono ancora lì.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FilledTonalButton(onClick = { onPick(it.spese.domain.usecase.TransferDestination.Outside(label)) }, Modifier.fillMaxWidth().testTag("dest_outside")) { Text("Altro conto fuori dall'app: il saldo scende") }
+                Text("I soldi escono davvero da questo conto (o ci entrano) e vanno su un conto che non hai in app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Se è una spesa vera (soldi dati a qualcuno), usa invece «Cambia categoria».", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {}, dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } })
 }

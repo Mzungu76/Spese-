@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.Flow
 data class NewTransaction(
     val externalId: String,
     val dedupKey: String,
-    val accountId: Long,
+    /** Nullo = senza conto: il movimento resta in Verifica, fuori dalla contabilità, finché non se ne sceglie uno. */
+    val accountId: Long?,
     val bookingDate: LocalDate,
     val valueDate: LocalDate,
     val description: String,
@@ -44,7 +45,11 @@ interface TransactionRepository {
     /** Inserisce i movimenti ignorando quelli con `externalId` già presente; restituisce il numero di righe inserite. */
     suspend fun insertAll(items: List<NewTransaction>): Int
     suspend fun update(tx: Transaction, dedupKey: String)
+    /** Chiave di deduplica salvata di un movimento. */
+    suspend fun getDedupKey(id: Long): String?
     suspend fun delete(ids: Collection<Long>)
+    /** Rimette i movimenti «in attesa dell'estratto conto» (origine scontrino, chiave di deduplica = identificativo): la prossima importazione li sostituisce con la riga giusta, ereditandone documento, voci e note. */
+    suspend fun markProvisional(ids: Collection<Long>)
     suspend fun applyClassifications(updates: List<ClassificationUpdate>)
     /** Chiavi di deduplica dei movimenti esistenti di un conto (una per movimento). */
     suspend fun dedupKeys(accountId: Long): List<String>
@@ -93,6 +98,7 @@ interface RuleRepository {
 interface AccountRepository {
     fun observeAll(): Flow<List<Account>>
     suspend fun getAll(): List<Account>
+    /** Il conto con quel nome, creato se manca. Il nome è obbligatorio: non esiste un conto «di ripiego». */
     suspend fun getOrCreate(name: String): Account
     suspend fun insert(a: Account): Long
     suspend fun update(a: Account)
@@ -165,6 +171,8 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     /** Giorno in cui inizia il mese contabile (1 = mese di calendario). */
     val monthStartDay: Int = 1,
+    /** Nella notifica giornaliera, la cifra «disponibile oggi» (solo con le notifiche locali attive). */
+    val notifyDailySpend: Boolean = true,
 )
 
 interface SettingsRepository {
@@ -178,6 +186,26 @@ interface CaptureConfigRepository {
     fun observe(): Flow<it.spese.domain.capture.CaptureConfig>
     suspend fun get(): it.spese.domain.capture.CaptureConfig
     suspend fun update(transform: (it.spese.domain.capture.CaptureConfig) -> it.spese.domain.capture.CaptureConfig)
+}
+
+/** Obiettivi di risparmio (preferenze dell'app, nel backup). */
+interface GoalRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.Goal>>
+    suspend fun getAll(): List<it.spese.core.model.Goal>
+    /** Inserisce (id = 0) o aggiorna; restituisce l'id. */
+    suspend fun save(g: it.spese.core.model.Goal): Long
+    suspend fun delete(id: Long)
+    /** Sostituisce tutti gli obiettivi (ripristino da backup). */
+    suspend fun setAll(goals: List<it.spese.core.model.Goal>)
+}
+
+/** Valori dei conti di investimento (preferenze dell'app, nel backup). Una sola riga per conto e data. */
+interface ValuationRepository {
+    fun observeAll(): Flow<List<it.spese.core.model.Valuation>>
+    suspend fun getAll(): List<it.spese.core.model.Valuation>
+    suspend fun save(v: it.spese.core.model.Valuation)
+    suspend fun delete(accountId: Long, date: java.time.LocalDate)
+    suspend fun setAll(values: List<it.spese.core.model.Valuation>)
 }
 
 /** Entrate e spese ricorrenti. */
@@ -211,6 +239,8 @@ interface BackupRepository {
     suspend fun restore(env: BackupEnvelope, mode: RestoreMode, extraFiles: Map<String, ByteArray> = emptyMap()): RestoreResult
     suspend fun hasUndo(): Boolean
     suspend fun undoLast(): Boolean
+    /** Salva subito uno snapshot per «Annulla»: da chiamare prima di un'operazione che cancella dati. */
+    suspend fun saveUndoSnapshot()
     suspend fun resetAll()
     /** Scrive un backup automatico nella cartella interna e ruota i vecchi file. */
     suspend fun autoBackup(keep: Int): String

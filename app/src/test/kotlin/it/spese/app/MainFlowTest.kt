@@ -40,10 +40,14 @@ class MainFlowTest {
     @Inject lateinit var restore: RestoreBackupUseCase
     @Inject lateinit var data: StateFlow<AppData>
     @Inject lateinit var txRepo: it.spese.domain.repository.TransactionRepository
+    @Inject lateinit var reminderRepo: it.spese.domain.reminders.ReminderRepository
+    @Inject lateinit var widgetRepo: it.spese.domain.widgets.WidgetLayoutRepository
     @Inject lateinit var filters: it.spese.app.common.FilterStore
     @Inject lateinit var recurring: it.spese.domain.repository.RecurringRepository
+    @Inject lateinit var accountRepo: it.spese.domain.repository.AccountRepository
 
-    @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded() } }
+    // nessun conto predefinito: se ne crea uno esplicitamente (è l'unico, quindi il modulo lo propone)
+    @Before fun setUp() { hilt.inject(); runBlocking { seeder.ensureSeeded(); accountRepo.getOrCreate("Conto test") } }
 
     private fun waitText(text: String, substring: Boolean = false, ms: Long = 8000) {
         try { compose.waitUntil(ms) { compose.onAllNodesWithText(text, substring = substring).fetchSemanticsNodes().isNotEmpty() } }
@@ -62,10 +66,11 @@ class MainFlowTest {
 
     @Test fun le_cinque_sezioni_principali_sono_raggiungibili() {
         compose.waitForIdle()
-        listOf("transactions", "categories", "plan", "dashboard").forEach { route ->
+        listOf("transactions", "goals", "networth", "more", "dashboard").forEach { route ->
             compose.onNodeWithTag("tab_$route").performClick(); compose.waitForIdle()
         }
-        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("tab_goals").performClick(); waitText("Nessun obiettivo")
+        openMore("categories")
         // la sezione Categorie mostra le categorie predefinite
         compose.waitUntil(5000) { compose.onAllNodesWithText("Supermercato e alimentari").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Supermercato e alimentari").assertExists()
@@ -104,7 +109,7 @@ class MainFlowTest {
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
         compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Ritmo di spesa", substring = true)); waitText("Ritmo di spesa", substring = true)
-        compose.onNodeWithTag("tab_categories").performClick(); compose.waitForIdle()
+        openMore("categories")
         waitText("Supermercato e alimentari")
         compose.onAllNodes(hasScrollAction()).onFirst().performScrollToNode(hasText("Sett."))
         compose.onNodeWithText("Sett.").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick); compose.waitForIdle()
@@ -136,10 +141,96 @@ class MainFlowTest {
         assertTrue(data.value.categories.any { it.budgetMonthly != null })
     }
 
+    @Test fun un_movimento_senza_conto_sta_in_verifica_fuori_dalla_contabilita_e_si_assegna_al_conto() {
+        val day = java.time.LocalDate.now()
+        runBlocking {
+            txRepo.insertAll(listOf(it.spese.domain.repository.NewTransaction("n1", "n1", null, day, day, "Pagamento in sospeso", java.math.BigDecimal("-12.50"),
+                it.spese.core.model.TxKind.SPESA, null, false, null, origin = it.spese.core.model.TxOrigin.NOTIFICATION)))
+        }
+        compose.waitUntil(8000) { data.value.unassigned.size == 1 }
+        assertEquals(0, data.value.transactions.size)                  // senza conto: fuori da saldi, entrate e spese
+        compose.onNodeWithTag("tab_transactions").performClick(); compose.waitForIdle()
+        compose.onNodeWithText("Verifica", substring = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Senza conto", substring = true)
+        compose.onNodeWithTag("review_assign").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        waitText("Su quale conto?")
+        compose.onNodeWithTag("pick_account").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.transactions.size == 1 }
+        assertEquals(0, data.value.unassigned.size)
+    }
+
+    @Test fun la_scheda_sveglie_si_apre_da_altro_e_mostra_quelle_salvate() {
+        openMore("reminders")
+        waitText("Nessuna sveglia")
+        compose.onNodeWithTag("reminder_add").assertExists()
+        runBlocking { reminderRepo.save(it.spese.domain.reminders.Reminder(0, it.spese.domain.reminders.ReminderKind.CUSTOM, "Pagare l'affitto", "", repeat = it.spese.domain.reminders.ReminderRepeat.DAILY)) }
+        waitText("Pagare l'affitto")
+        waitText("Ogni giorno alle 09:00")
+    }
+
+    @Test fun personalizza_la_home_applica_un_setup_pronto_e_lo_salva() {
+        try {
+            openMore("customize")
+            waitText("Setup pronti")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.HOME]?.size == 3 }
+            assertEquals(listOf("safe", "balances", "alerts"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.HOME).map { w -> w.widgetId })
+        } finally {
+            runBlocking { widgetRepo.setAll(emptyMap()) }      // le preferenze restano tra un test e l'altro: senza questo gli altri vedrebbero la Home «Minimale»
+        }
+    }
+
+    @Test fun personalizza_un_altra_pagina_con_un_setup_e_l_elenco_dei_movimenti_resta() {
+        try {
+            openMore("customize")
+            waitText("Setup pronti")
+            compose.onNodeWithText("Obiettivi").performClick()
+            waitText("I widget di Obiettivi")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.GOALS]?.size == 1 }
+            assertEquals(listOf("goals_list"), runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.GOALS).map { w -> w.widgetId })
+            // Movimenti: anche con il setup minimo l'elenco c'è
+            compose.onNodeWithText("Movimenti").performClick()
+            waitText("I widget di Movimenti")
+            compose.onNodeWithTag("preset_minimal").performClick()
+            compose.waitUntil(8000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); runBlocking { widgetRepo.get() }[it.spese.domain.widgets.WidgetPage.TRANSACTIONS]?.size == 2 }
+            assertTrue(runBlocking { widgetRepo.get() }.getValue(it.spese.domain.widgets.WidgetPage.TRANSACTIONS).any { w -> w.widgetId == "tx_list" })
+        } finally {
+            runBlocking { widgetRepo.setAll(emptyMap()) }
+        }
+    }
+
+    @Test fun i_widget_condivisi_si_vedono_negli_obiettivi_e_in_movimenti() {
+        try {
+            runBlocking {
+                widgetRepo.set(it.spese.domain.widgets.WidgetPage.GOALS, listOf(it.spese.domain.widgets.WidgetInstance("a", "shortcuts"), it.spese.domain.widgets.WidgetInstance("b", "goals_list")))
+                widgetRepo.set(it.spese.domain.widgets.WidgetPage.TRANSACTIONS, listOf(it.spese.domain.widgets.WidgetInstance("c", "shortcuts"), it.spese.domain.widgets.WidgetInstance("d", "tx_list")))
+            }
+            compose.onNodeWithTag("tab_goals").performClick(); compose.waitForIdle()
+            waitText("Scansiona")
+            compose.onNodeWithTag("tab_transactions").performClick(); compose.waitForIdle()
+            waitText("Scansiona")
+        } finally {
+            runBlocking { widgetRepo.setAll(emptyMap()) }
+        }
+    }
+
     private fun goTab(label: String) {
-        val route = mapOf("Movimenti" to "transactions", "Categorie" to "categories", "Piano" to "plan", "Panoramica" to "dashboard").getValue(label)
-        compose.onNodeWithTag("tab_$route").performClick()
-        compose.waitForIdle()
+        when (label) {
+            "Categorie" -> openMore("categories")
+            "Piano" -> openMore("plan")
+            else -> {
+                val route = mapOf("Movimenti" to "transactions", "Panoramica" to "dashboard").getValue(label)
+                compose.onNodeWithTag("tab_$route").performClick()
+                compose.waitForIdle()
+            }
+        }
+    }
+
+    /** Categorie e Piano si aprono dalla scheda «Altro». */
+    private fun openMore(key: String) {
+        compose.onNodeWithTag("tab_more").performClick(); compose.waitForIdle()
+        compose.onNodeWithTag("more_$key").performClick(); compose.waitForIdle()
     }
 
     private fun openMenu(item: String) {
@@ -249,7 +340,8 @@ class MainFlowTest {
     @Test fun entrata_ricorrente_in_elenco_e_movimento_generato_alla_ripresa() {
         // (la finestra di modifica con i campi di testo non si può aprire nei test Robolectric: va in ciclo di layout; la logica è provata in :data)
         val today = java.time.LocalDate.now()
-        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), null, null, 1, today.dayOfMonth, today)) }
+        val acc = runBlocking { accountRepo.getAll().first() }          // la ricorrenza ha il suo conto: il movimento entra nella contabilità
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Stipendio ACME", it.spese.core.model.TxKind.ENTRATA, java.math.BigDecimal(2000), acc.id, null, 1, today.dayOfMonth, today)) }
         compose.waitForIdle()
         compose.onNodeWithTag("fab_add").performClick()
         compose.onNodeWithTag("add_recurring").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick)
@@ -258,5 +350,14 @@ class MainFlowTest {
         // il movimento di oggi viene creato come provvisorio (all'avvio o alla ripresa dell'app)
         compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
         compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.ledger.any { t -> t.description == "Stipendio ACME" && t.origin == it.spese.core.model.TxOrigin.RECURRING } }
+    }
+
+    @Test fun una_ricorrenza_senza_conto_genera_un_movimento_senza_conto_in_verifica() {
+        val today = java.time.LocalDate.now()
+        runBlocking { recurring.save(it.spese.core.model.RecurringRule(0, "Affitto senza conto", it.spese.core.model.TxKind.SPESA, java.math.BigDecimal(500), null, null, 1, today.dayOfMonth, today)) }
+        compose.waitForIdle()
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED); compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.waitUntil(10000) { org.robolectric.shadows.ShadowLooper.idleMainLooper(); data.value.unassigned.any { t -> t.description == "Affitto senza conto" } }
+        assertTrue(data.value.ledger.none { it.description == "Affitto senza conto" })           // fuori dalla contabilità finché non ha un conto
     }
 }

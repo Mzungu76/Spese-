@@ -225,10 +225,31 @@ private fun BudgetCard(st: PlanState, vm: PlanViewModel) {
     val total = base.categories.fold(BigDecimal.ZERO) { a, c -> a + (data.categoriesById[c.categoryId]?.budgetMonthly ?: BigDecimal.ZERO) }
     SectionCard(title = "4 · Budget per categoria") {
         Text("Totale budget ${Money.eur0(total)}/mese" + if (total.signum() > 0) " · risparmio previsto ${Money.eur0(base.income - total)}" else "", fontWeight = FontWeight.Medium)
+        var pending by remember { mutableStateOf<List<it.spese.domain.finance.BudgetChange>?>(null) }
+        // le spese fisse non si cambiano in automatico: se il pulsante ne toccherebbe qualcuna, si chiede prima
+        fun ask(mode: String) {
+            val ch = vm.budgetChanges(mode)
+            if (ch.none { it.fixed }) vm.applyBudgetChanges(ch) else pending = ch
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistChip(onClick = { vm.setBudgets("avg") }, label = { Text("= media attuale") })
-            AssistChip(onClick = { vm.setBudgets("cut") }, label = { Text("= media dopo tagli") })
-            AssistChip(onClick = { vm.setBudgets("clear") }, label = { Text("Cancella") })
+            AssistChip(onClick = { ask("avg") }, label = { Text("= media attuale") })
+            AssistChip(onClick = { ask("cut") }, label = { Text("= media dopo tagli") })
+            AssistChip(onClick = { ask("clear") }, label = { Text("Cancella") })
+        }
+        pending?.let { ch ->
+            val fixed = ch.filter { it.fixed }
+            AlertDialog(onDismissRequest = { pending = null }, title = { Text("Cambio anche le spese fisse?") },
+                text = {
+                    Text("Questa operazione cambierebbe il budget di spese fisse: " + fixed.joinToString(", ") { f -> "${f.name} (${f.old?.let { Money.eur0(it) } ?: "nessuno"} → ${f.new?.let { Money.eur0(it) } ?: "nessuno"})" } +
+                        ". Le spese fisse non si riducono in automatico: le includo solo se me lo dici. Cambierei invece subito le altre ${ch.size - fixed.size} categorie.")
+                },
+                confirmButton = {
+                    Row {
+                        TextButton(onClick = { vm.applyBudgetChanges(ch.filter { !it.fixed }); pending = null }) { Text("Solo le altre") }
+                        TextButton(onClick = { vm.applyBudgetChanges(ch); pending = null }) { Text("Anche le fisse") }
+                    }
+                },
+                dismissButton = { TextButton(onClick = { pending = null }) { Text("Annulla") } })
         }
         base.categories.forEach { c ->
             val cat = data.categoriesById[c.categoryId] ?: return@forEach

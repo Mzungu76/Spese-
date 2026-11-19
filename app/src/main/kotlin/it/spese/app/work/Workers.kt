@@ -45,10 +45,12 @@ class Notifier @Inject constructor(@ApplicationContext private val context: Cont
 
     fun canPost(): Boolean = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun post(id: Int, title: String, text: String, bigText: String? = null) {
+    fun post(id: Int, title: String, text: String, bigText: String? = null, route: String? = null) {
         if (!canPost()) return
         ensureChannel()
-        val pi = PendingIntent.getActivity(context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+        val intent = Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        route?.let { intent.putExtra(MainActivity.EXTRA_ROUTE, it) }
+        val pi = PendingIntent.getActivity(context, route?.hashCode() ?: 0, intent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val n = NotificationCompat.Builder(context, CHANNEL_ALERTS).setSmallIcon(android.R.drawable.ic_dialog_info).setContentTitle(title).setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText ?: text)).setContentIntent(pi).setAutoCancel(true).build()
@@ -61,6 +63,7 @@ class Notifier @Inject constructor(@ApplicationContext private val context: Cont
 class AlertsWorker @AssistedInject constructor(
     @Assisted context: Context, @Assisted params: WorkerParameters,
     private val data: StateFlow<AppData>, private val settings: SettingsRepository, private val notifier: Notifier,
+    private val recurring: RecurringRepository, private val goals: GoalRepository, private val review: it.spese.domain.finance.SubscriptionReviewRepository,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val s = settings.get()
@@ -83,6 +86,29 @@ class AlertsWorker @AssistedInject constructor(
             val title = if (critical > 0) "$critical avvisi importanti" else "${alerts.size} avvisi da controllare"
             notifier.post(1001, title, alerts.first().message, alerts.take(6).joinToString("\n") { "• " + it.message })
         }
+        it.spese.app.widget.SafeToSpendWidget.refresh(applicationContext)
+        if (s.notifyDailySpend) {
+            val r = runCatching { it.spese.domain.finance.SafeToSpendEngine.forApp(d, recurring.getAll(), review.observeIgnored().first(), goals = goals.getAll()) }.getOrNull()
+            if (r != null && r.status != it.spese.domain.finance.SafeStatus.NOT_ENOUGH && !r.stale)
+                notifier.post(1002, "Oggi: " + it.spese.domain.finance.SafeToSpendText.perDay(r), it.spese.domain.finance.SafeToSpendText.comment(r))
+        }
+        return Result.success()
+    }
+}
+
+/** Una sveglia scattata: manda la notifica (per l'estratto conto con le date da importare) e pianifica la prossima. */
+@HiltWorker
+class ReminderWorker @AssistedInject constructor(
+    @Assisted context: Context, @Assisted params: WorkerParameters,
+    private val reminders: it.spese.domain.reminders.ReminderRepository, private val data: StateFlow<AppData>, private val notifier: Notifier, private val scheduler: WorkScheduler,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        val id = inputData.getLong("id", 0L)
+        val r = reminders.getAll().firstOrNull { it.id == id && it.enabled } ?: return Result.success()
+        val d = data.first { it.loaded }
+        val m = it.spese.domain.reminders.ReminderEngine.message(r, d.accounts, d.ledger, java.time.LocalDate.now())
+        notifier.post(3000 + (id % 5000).toInt(), m.title, m.text.lineSequence().firstOrNull().orEmpty().ifBlank { m.title }, m.text.ifBlank { null }, if (r.kind == it.spese.domain.reminders.ReminderKind.IMPORT) it.spese.app.navigation.Routes.IMPORT else null)
+        if (r.repeat == it.spese.domain.reminders.ReminderRepeat.ONCE) reminders.save(r.copy(enabled = false)) else scheduler.scheduleReminder(r)
         return Result.success()
     }
 }
@@ -110,6 +136,18 @@ class AutoBackupWorker @AssistedInject constructor(
 @Singleton
 class WorkScheduler @Inject constructor(@ApplicationContext private val context: Context) {
     private val wm get() = WorkManager.getInstance(context)
+
+    /** Pianifica (o annulla) il prossimo scatto di una sveglia; dopo ogni scatto il lavoro si ripianifica da solo e sopravvive al riavvio del telefono. */
+    fun scheduleReminder(r: it.spese.domain.reminders.Reminder) {
+        val now = LocalDateTime.now()
+        val next = if (r.enabled) it.spese.domain.reminders.ReminderEngine.next(r, now) else null
+        val name = "reminder_${r.id}"
+        if (next == null) { wm.cancelUniqueWork(name); return }
+        wm.enqueueUniqueWork(name, ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<ReminderWorker>().setInitialDelay(Duration.between(now, next)).setInputData(workDataOf("id" to r.id)).build())
+    }
+    fun cancelReminder(id: Long) { wm.cancelUniqueWork("reminder_$id") }
+    fun syncReminders(list: List<it.spese.domain.reminders.Reminder>) { list.forEach { scheduleReminder(it) } }
 
     fun apply(s: AppSettings) {
         if (s.notificationsEnabled) {

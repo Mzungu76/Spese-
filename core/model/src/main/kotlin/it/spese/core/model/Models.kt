@@ -116,7 +116,8 @@ data class Transaction(
     val id: Long,
     /** Identificativo stabile compatibile con la versione HTML (`conto|data|valuta|importo|descrizione#n`). */
     val externalId: String,
-    val accountId: Long,
+    /** Conto del movimento. `null` = senza conto: resta in Verifica e fuori da saldi, entrate e spese finché non se ne sceglie uno. */
+    val accountId: Long?,
     val bookingDate: LocalDate,
     val valueDate: LocalDate,
     val description: String,
@@ -232,3 +233,23 @@ data class DocumentRef(
     val createdAt: Long,
     val ocrText: String? = null,
 )
+
+/**
+ * Obiettivo di risparmio (fondo di emergenza, vacanza, investimento…). `saved` è quanto è già stato messo da parte;
+ * la quota mensile è quella scelta (`monthly`) oppure, se manca, quella che serve per arrivare alla scadenza.
+ */
+data class Goal(
+    val id: Long,
+    val name: String,
+    val target: BigDecimal,
+    val saved: BigDecimal = BigDecimal.ZERO,
+    val deadline: LocalDate? = null,
+    /** Quota mensile scelta; null = calcolata dalla scadenza. */
+    val monthly: BigDecimal? = null,
+    /** 0 = la più importante. */
+    val priority: Int = 0,
+    val enabled: Boolean = true,
+)
+
+/** Valore di un conto di investimento a una data (inserito dall'utente): da lì in poi si aggiungono i movimenti successivi. */
+data class Valuation(val accountId: Long, val date: LocalDate, val value: BigDecimal)

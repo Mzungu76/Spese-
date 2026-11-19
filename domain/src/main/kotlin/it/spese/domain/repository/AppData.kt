@@ -30,7 +30,14 @@ data class AppData(
     val quotas: List<CashQuota> = emptyList(),
     /** Mese contabile scelto dall'utente (calendario di default). */
     val calendar: it.spese.core.common.MonthCalendar = it.spese.core.common.MonthCalendar.SOLAR,
+    /** Movimenti senza conto: sono in Verifica e NON entrano in `transactions` né in `ledger`, quindi in nessun saldo, totale o analisi. */
+    val unassigned: List<Transaction> = emptyList(),
+    /** Conti «gestiti da altri» (denaro di famiglia): restano nel patrimonio e in `ledger`, ma i loro movimenti non entrano in `transactions`, quindi in budget, salute, ritmo e medie. */
+    val managedAccountIds: Set<Long> = emptySet(),
+    /** Come `transactions` ma di tutti i conti, anche quelli gestiti da altri (per elencare i movimenti di quel conto). */
+    private val allTransactions: List<Transaction>? = null,
 ) {
+    val everything: List<Transaction> get() = allTransactions ?: transactions
     val categoriesById: Map<Long, Category> by lazy { categories.associateBy { it.id } }
     val accountsById: Map<Long, Account> by lazy { accounts.associateBy { it.id } }
     val baseScenario: Scenario? get() = scenarios.firstOrNull { it.isBase }
@@ -38,7 +45,7 @@ data class AppData(
     val cuts: Map<Long, Int> get() = baseScenario?.cuts ?: emptyMap()
 
     fun categoryName(id: Long?): String = categoriesById[id]?.name ?: "Senza categoria"
-    fun accountName(id: Long): String = accountsById[id]?.name ?: "?"
+    fun accountName(id: Long?): String = if (id == null) "Senza conto" else accountsById[id]?.name ?: "?"
 }
 
 class AppDataSource(
@@ -50,20 +57,29 @@ class AppDataSource(
     private val scenarios: ScenarioRepository,
     private val quotas: CashQuotaRepository,
     private val settings: SettingsRepository? = null,
+    private val managed: Flow<Set<Long>>? = null,
 ) {
     fun observe(): Flow<AppData> = combine(
         tx.observeAll(), cats.observeAll(), accounts.observeAll(), rules.observeAll(), dues.observeAll(), scenarios.observeAll(),
         tx.observeSplits(), quotas.observeAll(),
         (settings?.observe() ?: kotlinx.coroutines.flow.flowOf(AppSettings())).map { it.monthStartDay }.distinctUntilChanged(),
+        managed ?: kotlinx.coroutines.flow.flowOf(emptySet<Long>()),
     ) { values ->
         @Suppress("UNCHECKED_CAST")
-        val raw = values[0] as List<Transaction>
+        val all = values[0] as List<Transaction>
+        // la contabilità conta solo i movimenti con un conto; gli altri aspettano in Verifica
+        val raw = all.filter { it.accountId != null }
+        val unassigned = all.filter { it.accountId == null }
         val categories = values[1] as List<Category>
         val splits = (values[6] as List<TransactionSplit>).groupBy { it.txId }
+        val managedIds = values[9] as Set<Long>
+        val byId = categories.associateBy { c -> c.id }
+        val everything = it.spese.domain.finance.SplitExpander.expand(raw, splits, byId)
         AppData(
-            it.spese.domain.finance.SplitExpander.expand(raw, splits, categories.associateBy { it.id }), categories, values[2] as List<Account>,
+            if (managedIds.isEmpty()) everything else everything.filter { t -> t.accountId !in managedIds }, categories, values[2] as List<Account>,
             values[3] as List<Rule>, values[4] as List<Due>, values[5] as List<Scenario>, true,
-            raw, splits, values[7] as List<CashQuota>, it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28)),
+            raw, splits, values[7] as List<CashQuota>, it.spese.core.common.MonthCalendar((values[8] as Int).coerceIn(1, 28)), unassigned,
+            managedIds, if (managedIds.isEmpty()) null else everything,
         )
     }
 }
