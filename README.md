@@ -1,7 +1,7 @@
 # Gestione Spese
 
 Applicazione Android **nativa** (Kotlin, Jetpack Compose, Material 3) per tenere sotto controllo entrate e spese, migrazione dell'app web "Gestione Spese" (`legacy/gestione-spese.html`).
-Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso di rete. I dati stanno in un database locale (Room).
+Funziona **interamente offline**: nessun account, nessun cloud. L'unico uso della rete è la funzione opzionale **Condivisione** (vedi sotto): finché non la attivi l'app non apre nessuna connessione. I dati stanno in un database locale (Room).
 
 ## Cosa fa
 
@@ -57,6 +57,7 @@ Funziona **interamente offline**: nessun account, nessun cloud, nessun permesso 
 - **Mese contabile** (Impostazioni) – opzionale: il mese può iniziare in un giorno a scelta (es. il 20, dal 20 al 19 del mese dopo) invece che dal calendario; periodi, confronti, budget, tendenze, grafici e report lo seguono.
 - **Mese delle entrate** – un'entrata che arriva a fine mese contabile (es. il 16 con il mese che finisce il 20) compare in Verifica: scegli se contarla per il mese della data o per il successivo, così limiti di spesa, budget e ritmo non vengono falsati. Si può cambiare anche dalla modifica del movimento; saldi, patrimonio ed elenchi restano alla data reale. La scelta passa alla riga dell'estratto conto che sostituisce un movimento provvisorio e resta nel backup. In Impostazioni › Mese contabile decidi quanti giorni prima della fine chiedere (o mai).
 - **Soldi bloccati negli obiettivi** – ogni obiettivo può indicare il conto dove sono depositati (es. il Fondo di sicurezza). I soldi già messi da parte restano nel saldo del conto e nel patrimonio totale, ma compaiono come voce a parte («Bloccati negli obiettivi», e «di cui … bloccati» sul conto) e sono tolti dal «Disponibile». Il bloccato non supera mai il saldo del conto.
+- **Condivisione** (Altro › Condivisione) – condividi un conto con un'altra persona: vede solo il budget di spesa quotidiano e il grafico del ritmo di quel conto, e la sua app (in arrivo) rileva le notifiche di spesa e te le manda come movimenti provvisori. Passa da un piccolo servizio Cloudflare (cartella `server/`) ma i dati sono **cifrati sul telefono** (AES-256-GCM): il servizio vede solo testo illeggibile. Crei la condivisione con l'indirizzo del servizio e la chiave di creazione, scegli il conto e le funzioni, e mandi il «codice di abbinamento» all'altra persona. Il riepilogo si aggiorna da solo (circa ogni 15 minuti) e puoi revocare tutto quando vuoi. Richiede il permesso di rete.
 - **Backup** – JSON compatibile con la versione web, ZIP con foto, backup automatici, sincronizzazione con un file condiviso, annulla ultima importazione.
 
 ## Per iniziare

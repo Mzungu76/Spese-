@@ -72,7 +72,7 @@ object Routes {
     const val DASHBOARD = "dashboard"; const val TRANSACTIONS = "transactions"; const val CATEGORIES = "categories"; const val PLAN = "plan"; const val ALERTS = "alerts"
     const val IMPORT = "import"; const val ANALYTICS = "analytics"; const val SCAN = "scan"; const val SETTINGS = "settings"; const val ACCOUNTS = "accounts"
     const val EDIT = "edit/{id}"
-    const val REMINDERS = "reminders"; const val CUSTOMIZE = "customize/{page}"; const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"; const val BUDGETS = "budgets"; const val HEALTH = "health"
+    const val REMINDERS = "reminders"; const val CUSTOMIZE = "customize/{page}"; const val CATEGORY = "category/{id}"; const val MANAGE = "manage/{tab}"; const val CAPTURE = "capture"; const val TRENDS = "trends"; const val REPORTS = "reports"; const val RECURRING = "recurring"; const val SUBSCRIPTIONS = "subscriptions"; const val GOALS = "goals"; const val NETWORTH = "networth"; const val REVIEW = "review"; const val ADVICE = "advice"; const val MORE = "more"; const val TRANSFERS_REVIEW = "transfers-review"; const val BUDGETS = "budgets"; const val HEALTH = "health"; const val SHARE = "share"
     fun customize(page: WidgetPage) = "customize/${page.name}"
     fun edit(id: Long) = "edit/$id"
     fun category(id: Long) = "category/$id"
@@ -233,12 +233,13 @@ fun AppRoot(vm: RootViewModel = hiltViewModel()) {
                 MoreScreen(menu, MoreActions(
                     onCategories = { goTab(Routes.CATEGORIES) }, onHealth = { nav.navigate(Routes.HEALTH) }, onBudgets = { nav.navigate(Routes.BUDGETS) }, onPlan = { goTab(Routes.PLAN) }, onTrends = { nav.navigate(Routes.TRENDS) }, onAdvice = { nav.navigate(Routes.ADVICE) }, onReview = { nav.navigate(Routes.REVIEW) },
                     onAlerts = { nav.navigate(Routes.ALERTS) }, onRecurring = { nav.navigate(Routes.RECURRING) }, onSubscriptions = { nav.navigate(Routes.SUBSCRIPTIONS) }, onReports = { nav.navigate(Routes.REPORTS) },
-                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onTransfers = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onSettings = { nav.navigate(Routes.SETTINGS) }, onReminders = { nav.navigate(Routes.REMINDERS) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.HOME)) }), pad)
+                    onAccounts = { nav.navigate(Routes.ACCOUNTS) }, onShare = { nav.navigate(Routes.SHARE) }, onTransfers = { nav.navigate(Routes.TRANSFERS_REVIEW) }, onImport = { nav.navigate(Routes.IMPORT) }, onScan = { nav.navigate(Routes.SCAN) }, onSettings = { nav.navigate(Routes.SETTINGS) }, onReminders = { nav.navigate(Routes.REMINDERS) }, onCustomize = { nav.navigate(Routes.customize(WidgetPage.HOME)) }), pad)
             }
             composable(Routes.SUBSCRIPTIONS) { SubscriptionsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.REPORTS) { ReportsScreen(onBack = { nav.popBackStack() }) }
             composable(Routes.TRENDS) { TrendsScreen(onBack = { nav.popBackStack() }, onOpenCategory = { nav.navigate(Routes.category(it)) }) }
             composable(Routes.ACCOUNTS) { AccountsScreen(onBack = { nav.popBackStack() }) }
+            composable(Routes.SHARE) { it.spese.feature.share.ShareScreen(onBack = { nav.popBackStack() }) }
         }
     }
     if (addOpen) AddSheet({ addOpen = false }, { nav.navigate(Routes.edit(0)) }, { nav.navigate(Routes.SCAN) }, { nav.navigate(Routes.IMPORT) }, { nav.navigate(Routes.SETTINGS) }, { nav.navigate(Routes.RECURRING) })

@@ -132,6 +132,14 @@ class AutoBackupWorker @AssistedInject constructor(
     }
 }
 
+/** Condivisione attiva: importa le spese rilevate dall'altro telefono e pubblica il riepilogo aggiornato. */
+@HiltWorker
+class ShareSyncWorker @AssistedInject constructor(
+    @Assisted context: Context, @Assisted params: WorkerParameters, private val service: it.spese.domain.sharing.ShareService,
+) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result = try { service.sync(); Result.success() } catch (e: Exception) { Result.retry() }
+}
+
 /** Pianifica/annulla i lavori periodici in base alle impostazioni (WorkManager: sopravvive al riavvio del dispositivo). */
 @Singleton
 class WorkScheduler @Inject constructor(@ApplicationContext private val context: Context) {
@@ -148,6 +156,12 @@ class WorkScheduler @Inject constructor(@ApplicationContext private val context:
     }
     fun cancelReminder(id: Long) { wm.cancelUniqueWork("reminder_$id") }
     fun syncReminders(list: List<it.spese.domain.reminders.Reminder>) { list.forEach { scheduleReminder(it) } }
+
+    /** Controllo periodico (circa ogni 15 minuti, il minimo di Android) finché c'è una condivisione attiva. */
+    fun setShareSync(on: Boolean) {
+        if (on) wm.enqueueUniquePeriodicWork("share_sync", ExistingPeriodicWorkPolicy.UPDATE, PeriodicWorkRequestBuilder<ShareSyncWorker>(15, TimeUnit.MINUTES).build())
+        else wm.cancelUniqueWork("share_sync")
+    }
 
     fun apply(s: AppSettings) {
         if (s.notificationsEnabled) {

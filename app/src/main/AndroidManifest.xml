@@ -6,8 +6,9 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
-    <!-- L'app funziona interamente offline: nessun permesso di rete, nemmeno quelli aggiunti da librerie terze. -->
-    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+    <!-- Rete solo per la Condivisione con un'altra persona (dati cifrati sul telefono). Senza condivisione attiva l'app non apre nessuna connessione;
+         ACCESS_NETWORK_STATE resta escluso, anche quello aggiunto da librerie terze. -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
 
     <application
