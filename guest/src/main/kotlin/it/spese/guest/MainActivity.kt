@@ -186,7 +186,7 @@ private fun ChartCard(s: ShareSnapshot) {
         val labels = (0 until s.days).map { i -> if (s.unit == "WEEK") listOf("Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom")[i % 7] else "${i + 1}" }.let { l -> if (s.unit == "QUARTER") l.mapIndexed { i, x -> if (i % 15 == 0) x else "" } else l }
         val series = listOf(
             ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, s.average),
-            ChartSeries("Ottimale", MaterialTheme.colorScheme.primary, s.optimal),
+            ChartSeries("Tetto", MaterialTheme.colorScheme.primary, s.optimal),
             ChartSeries("Speso", SpeseTheme.finance.negative, s.current),
         ).filter { x -> x.values.size >= 2 }
         if (series.isEmpty()) Text("Nessuna spesa.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
