@@ -16,8 +16,8 @@ cd server && node --test
 (serve Node 22 o più recente: i test usano un SQLite vero al posto di D1).
 
 ## Pubblicare su Cloudflare (una volta)
-1. **Database**: in Cloudflare › Storage e database › D1 crea un database chiamato `spese-condivisione`, poi copia il suo id in `wrangler.toml` al posto di `DA_COMPILARE`.
-2. **Tabelle**: nella console del database esegui il contenuto di `migrations/0001_init.sql` (oppure `npx wrangler d1 execute spese-condivisione --remote --file=migrations/0001_init.sql`).
+1. **Database**: già creato nel tuo account (`spese-condivisione`, id in `wrangler.toml`).
+2. **Tabelle**: già create (contenuto di `migrations/0001_init.sql`).
 3. **Chiave di creazione**: scegli una frase lunga e casuale e salvala come segreto `CREATE_KEY` del Worker (Impostazioni › Variabili e segreti, oppure `npx wrangler secret put CREATE_KEY`). Serve solo all'app madre per creare condivisioni; non va condivisa.
 4. **Pubblicazione**: da questa cartella `npx wrangler deploy`, oppure collega il repository a Cloudflare (Workers › Crea › Importa un repository) con cartella radice `server`.
 

@@ -6,4 +6,4 @@ compatibility_date = "2025-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "spese-condivisione"
-database_id = "DA_COMPILARE"
+database_id = "770b97f0-8bc3-4211-962f-9d44f63c4250"
