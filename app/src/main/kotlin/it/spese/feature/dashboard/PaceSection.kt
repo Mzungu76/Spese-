@@ -52,11 +52,12 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
                     ChartSeries("Massimo storico", MaterialTheme.colorScheme.outlineVariant, r.high),
                     ChartSeries("Minimo storico", MaterialTheme.colorScheme.outlineVariant, r.low),
                     ChartSeries("Media", MaterialTheme.colorScheme.onSurfaceVariant, r.average),
+                    ChartSeries("Spesa ottimale", MaterialTheme.colorScheme.primary, r.optimal),
                     ChartSeries("Questo $unitName", verdictColor.takeIf { it != Color.Unspecified } ?: MaterialTheme.colorScheme.primary, r.current),
                 ).filter { it.values.size >= 2 }          // una serie con un solo punto non si disegna (lunedì: oggi è il primo giorno)
                 if (series.isEmpty() || series.all { s -> s.values.all { it.signum() == 0 } }) Text("Ancora nessuna spesa da confrontare.", style = MaterialTheme.typography.bodyMedium)
                 else LineChart(labels, series, height = 220.dp, interactive = false)
-                Text("La linea colorata è la spesa cumulata di ora; la grigia è la media dei periodi passati; la fascia chiara va dal minimo al massimo storico.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("La linea colorata è la spesa cumulata di ora; la grigia è la media dei periodi passati; la fascia chiara va dal minimo al massimo storico." + if (r.optimal.size >= 2) " La linea blu è la spesa ottimale: il limite per restare in linea con ${r.optimalBasis.label}." else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             1 -> {
                 val labels = r.pastWindows.takeLast(10).map { it.label } + "Ora"
@@ -64,7 +65,8 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
                 BarLineChart(labels,
                     bars = listOf(ChartSeries("Speso", MaterialTheme.colorScheme.primary, past.map { it.total } + r.projectedWithAverage)),
                     lines = listOf(ChartSeries("Spesa media", MaterialTheme.colorScheme.onSurfaceVariant, labels.map { r.averageTotal })) +
-                        (if (filtered) emptyList() else listOf(ChartSeries("Entrate medie", fin.positive, labels.map { r.averageIncome }))), height = 220.dp, interactive = false)
+                        (if (filtered) emptyList() else listOf(ChartSeries("Entrate medie", fin.positive, labels.map { r.averageIncome }))) +
+                        (r.optimalTotal?.let { t -> listOf(ChartSeries("Limite ottimale", MaterialTheme.colorScheme.primary, labels.map { t })) } ?: emptyList()), height = 220.dp, interactive = false)
                 Text("Ogni barra è un $unitName passato; «Ora» è la stima di chiusura se il resto va come al solito. Quando la barra supera la linea verde, spendi più di quanto entra.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             else -> {
@@ -81,11 +83,25 @@ fun PaceSection(r: PaceReport, modifier: Modifier = Modifier) {
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
         Metric("Chiusura stimata (resto come al solito)", Money.eur0(r.projectedWithAverage), "media storica ${Money.eur0(r.averageTotal)}")
         Metric("Chiusura al ritmo attuale", Money.eur0(r.projectedAtCurrentPace), if (r.projectedAtCurrentPace > r.averageTotal) "sopra la media" else "sotto la media")
+        r.optimalTotal?.let { limit ->
+            HorizontalDivider(Modifier.padding(vertical = 4.dp))
+            Metric("Limite di spesa ottimale (${unitName})", Money.eur0(limit),
+                (if (r.optimalBasis.label.isNotEmpty()) r.optimalBasis.label.replaceFirstChar { it.uppercase() } else "") + (r.optimalDailyAverage?.let { " · ${Money.eur0(it)} al giorno" } ?: ""))
+            r.optimalToDate?.let { ideal ->
+                Metric("A questo punto sarebbe ottimale aver speso", Money.eur0(ideal), "finora hai speso ${Money.eur0(r.spentToDate)}",
+                    if (r.spentToDate > ideal) fin.warning else fin.positive)
+            }
+            r.optimalDailyRemaining?.let { a ->
+                Metric("Per restare in linea puoi spendere al giorno", (if (a.signum() < 0) "−" else "") + Money.eur0(a.abs()),
+                    if (a.signum() < 0) "il limite è già superato di ${Money.eur0(r.spentToDate - limit)}" else "da qui a fine ${unitName}, in tutto ${Money.eur0((limit - r.spentToDate).max(BigDecimal.ZERO))}",
+                    if (a.signum() < 0) fin.negative else MaterialTheme.colorScheme.onSurface)
+            }
+        }
         if (filtered) return@SectionCard
         Metric("Entrate attese nel ${unitName}", Money.eur0(r.expectedIncome), "già incassato ${Money.eur0(r.incomeToDate)}")
         Metric("Margine atteso a fine ${unitName}", (if (r.expectedMargin.signum() < 0) "−" else "") + Money.eur0(r.expectedMargin.abs()), "margine medio ${Money.eur0(r.averageMargin)}",
             if (r.expectedMargin < r.averageMargin) fin.warning else fin.positive)
-        r.dailyAllowance?.let { a ->
+        r.dailyAllowance?.takeIf { r.optimalTotal == null }?.let { a ->
             Metric("Puoi spendere al giorno da qui a fine ${unitName}", (if (a.signum() < 0) "−" else "") + Money.eur0(a.abs()),
                 "per mantenere il risparmio medio · di solito ${Money.eur0(r.averageDailyRemaining ?: BigDecimal.ZERO)} al giorno", if (a.signum() < 0) fin.negative else MaterialTheme.colorScheme.onSurface)
         }

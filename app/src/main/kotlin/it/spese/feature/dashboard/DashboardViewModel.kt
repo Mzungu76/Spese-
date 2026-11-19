@@ -78,14 +78,14 @@ class DashboardViewModel @Inject constructor(data: StateFlow<AppData>, private v
     private val selected = MutableStateFlow<Set<Long>>(emptySet())
     private val compareMode = MutableStateFlow(false)
 
-    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode) { d, f, sel, cm -> arrayOf(d, f, sel, cm) }
+    val state: StateFlow<DashboardState> = combine(data, filters.filter, selected, compareMode, goals.observeAll()) { d, f, sel, cm, g -> arrayOf(d, f, sel, cm, g) }
         .mapLatest { a ->
             @Suppress("UNCHECKED_CAST")
-            val d = a[0] as AppData; val f = a[1] as TxFilter; val sel = a[2] as Set<Long>; val cm = a[3] as Boolean
+            val d = a[0] as AppData; val f = a[1] as TxFilter; val sel = a[2] as Set<Long>; val cm = a[3] as Boolean; val gl = a[4] as List<it.spese.core.model.Goal>
             if (!d.loaded) DashboardState(d, null, f)
             else withContext(Dispatchers.Default) {
                 val m = DashboardCalculator.compute(d, f)
-                DashboardState(d, m, f, (if (f.period == Period.CurrentWeek) d.transactions.maxOfOrNull { it.bookingDate }?.let { last -> val mon = last.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); TrendBuckets.daily(m.filtered, mon, mon.plusDays(6)) } ?: emptyList() else TrendBuckets.compute(m.filtered, f.calendar)), cm, sel, CategoryComparisonEngine.compute(d, f, sel), runCatching { it.spese.domain.finance.PaceEngine.compute(d, f, categoryIds = sel) }.getOrNull())
+                DashboardState(d, m, f, (if (f.period == Period.CurrentWeek) d.transactions.maxOfOrNull { it.bookingDate }?.let { last -> val mon = last.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)); TrendBuckets.daily(m.filtered, mon, mon.plusDays(6)) } ?: emptyList() else TrendBuckets.compute(m.filtered, f.calendar)), cm, sel, CategoryComparisonEngine.compute(d, f, sel), runCatching { it.spese.domain.finance.PaceEngine.compute(d, f, categoryIds = sel, savingsMonthly = gl.takeIf { l -> l.isNotEmpty() }?.let { l -> it.spese.domain.goals.GoalEngine.monthlyTotal(l) }) }.getOrNull())
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardState())
