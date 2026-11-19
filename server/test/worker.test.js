@@ -91,6 +91,9 @@ test('la revoca toglie tutto e i vecchi codici non valgono più', async () => {
 test('percorsi e metodi sconosciuti', async () => {
   const e = env(); const s = await newShare(e);
   assert.equal((await call(e, 'GET', '/health')).status, 200);
+  const h = await (await call(e, 'GET', '/health')).json();
+  assert.equal(h.configured, true); assert.equal(h.database, true); assert.ok(!JSON.stringify(h).includes(KEY));   // mai il valore della chiave
+  assert.equal((await (await call({ DB: e.DB }, 'GET', '/health')).json()).configured, false);
   assert.equal((await call(e, 'GET', '/altro')).status, 404);
   assert.equal((await call(e, 'GET', '/v1/shares')).status, 405);
   assert.equal((await call(e, 'POST', `/v1/shares/${s.id}/out`, { token: s.ownerToken })).status, 405);

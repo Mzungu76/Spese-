@@ -58,7 +58,8 @@ export default {
     const parts = url.pathname.split('/').filter(Boolean);
     const method = request.method;
 
-    if (parts.length === 1 && parts[0] === 'health') return json({ ok: true });
+    // "configured" dice solo se la chiave di creazione è visibile al servizio (mai il suo valore): serve a capire se il segreto è stato distribuito
+    if (parts.length === 1 && parts[0] === 'health') return json({ ok: true, configured: Boolean(env.CREATE_KEY), database: Boolean(env.DB) });
     if (parts[0] !== 'v1' || parts[1] !== 'shares') return json({ error: 'non trovato' }, 404);
 
     // POST /v1/shares: crea una condivisione (serve la chiave di creazione impostata nel servizio)
