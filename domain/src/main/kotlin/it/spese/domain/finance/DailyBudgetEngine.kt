@@ -174,48 +174,55 @@ object DailyBudgetEngine {
         val cash = if (manualLimit == null) cashSource?.invoke(today) else null
 
         if (cash != null) {
+            // finché c'è un'entrata fissa ancora attesa nel periodo il paracadute guarda a quella; arrivate tutte, i soldi devono bastare fino alla prossima entrata fissa (del mese contabile successivo), non solo fino a fine periodo
+            val fixedPending = if (manualIncome != null) outlook.remaining.signum() > 0 else outlook.fixedDue.isNotEmpty()
+            val fd = est?.fixedDays?.values?.minOrNull()
+            val nextArrival = if (!fixedPending && manualIncome == null && fd != null && est!!.fixedSources.isNotEmpty()) cal.start(month.plusMonths(1)).plusDays(fd.toLong()) else null
+            val cd = if (nextArrival != null) maxOf(daysLeft, ChronoUnit.DAYS.between(today, nextArrival).toInt()) else daysLeft
+            val extended = nextArrival != null
+            val coverEnd = today.plusDays((cd - 1).coerceAtLeast(0).toLong())
+            val upc = if (cd > daysLeft) SafeToSpendEngine.upcoming(rules, found, data.dues, today, coverEnd, start) else upcoming
+            val upcTotal = upc.fold(BigDecimal.ZERO) { x, u -> x + u.amount }
             // quota non ancora messa da parte in questo periodo: la quota mensile meno i versamenti registrati da inizio periodo
             val savingsDue = (savingsOverride ?: if (goals.isNotEmpty()) quotas.fold(BigDecimal.ZERO) { a, (g, q) ->
                 a + (q - g.deposits.filter { d -> d.day >= start && d.day <= today }.fold(BigDecimal.ZERO) { x, d -> x + d.amount }).max(BigDecimal.ZERO)
             } else AlertEngine.goalMonthly(data.goal)).max(BigDecimal.ZERO)
-            val pool = cash.spendable + outlook.remaining - upcomingTotal - savingsDue
+            val pool = cash.spendable + outlook.remaining - upcTotal - savingsDue
             val reserve = pool.max(BigDecimal.ZERO).multiply(pct).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
             val available = pool - reserve
             // Reddito permanente: il tetto del periodo poggia sul reddito stabile (fisso + parte prudente delle variabili), non sui soldi accumulati né sulle entrate straordinarie già incassate.
             // La liquidità oltre quel tetto (eccedenza) non si consuma in un periodo: si distribuisce su [horizonDays] giorni. La liquidità resta comunque un freno: mai oltre ciò che c'è.
             var allowed = available
-            if (horizonDays > 0 && daysLeft > 0 && (est != null || manualIncome != null)) {
+            if (horizonDays > 0 && cd > 0 && (est != null || manualIncome != null)) {
                 val stable = manualIncome ?: est!!.let { e -> e.fixed + e.variablePrudent }
-                val flowReserve = (stable - savings - fixedPaid - upcomingTotal).max(BigDecimal.ZERO).multiply(pct).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
-                val flowLeft = (stable - savings - flowReserve - spent - upcomingTotal).max(BigDecimal.ZERO)
+                val flowReserve = (stable - savings - fixedPaid - upcTotal).max(BigDecimal.ZERO).multiply(pct).divide(BigDecimal(100), 2, RoundingMode.HALF_UP)
+                val flowLeft = (stable - savings - flowReserve - spent - upcTotal).max(BigDecimal.ZERO)
                 val excess = (available - flowLeft).max(BigDecimal.ZERO)
-                allowed = minOf(available, flowLeft + excess.multiply(BigDecimal(daysLeft)).divide(BigDecimal(horizonDays), 2, RoundingMode.HALF_UP))
+                allowed = minOf(available, flowLeft + excess.multiply(BigDecimal(cd)).divide(BigDecimal(horizonDays), 2, RoundingMode.HALF_UP))
             }
-            val limit = spent + upcomingTotal + allowed
+            val limit = spent + upcTotal + allowed
             val status = if (available.signum() < 0) BudgetStatus.OVER else BudgetStatus.OK
             // paracadute: se le entrate fisse ritardassero di [delayDays] giorni, gli stessi soldi devono coprire quei giorni in più
             // (il periodo da coprire si allunga: giorni rimasti + ritardo); inoltre, per ogni entrata fissa ancora attesa nel periodo,
             // fino al suo arrivo (data tipica o oggi se è già in ritardo, più il ritardo) si vive solo di ciò che c'è e delle entrate precedenti.
             val delay = delayDays.coerceIn(0, 30)
             var cap: BigDecimal? = null; var until: LocalDate? = null
-            // il paracadute vale solo finché c'è almeno un'entrata fissa ancora attesa: arrivata quella, non c'è più nulla che possa ritardare
-            val fixedPending = if (manualIncome != null) outlook.remaining.signum() > 0 else outlook.fixedDue.isNotEmpty()
-            if (delay > 0 && daysLeft > 0 && fixedPending) {
-                cap = allowed.max(BigDecimal.ZERO).divide(BigDecimal(daysLeft + delay), 2, RoundingMode.HALF_UP)
-                until = end.plusDays(delay.toLong())
+            if (delay > 0 && cd > 0 && (fixedPending || extended)) {
+                cap = allowed.max(BigDecimal.ZERO).divide(BigDecimal(cd + delay), 2, RoundingMode.HALF_UP)
+                until = coverEnd.plusDays(delay.toLong())
                 if (manualIncome == null) {
                     var assumed = BigDecimal.ZERO
                     outlook.fixedDue.sortedBy { it.date }.forEach { inc ->
                         val arrival = maxOf(inc.date, today).plusDays(delay.toLong())
                         val days = ChronoUnit.DAYS.between(today, arrival).toInt().coerceAtLeast(1)
-                        val before = upcoming.filter { u -> u.date <= arrival }.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
+                        val before = upc.filter { u -> u.date <= arrival }.fold(BigDecimal.ZERO) { a, u -> a + u.amount }
                         val early = (cash.spendable + assumed - before).max(BigDecimal.ZERO).multiply(BigDecimal(100).subtract(pct)).divide(BigDecimal(100), 10, RoundingMode.HALF_UP).divide(BigDecimal(days), 2, RoundingMode.HALF_UP)
                         if (early < cap!!) cap = early
                         assumed += inc.amount
                     }
                 }
             }
-            return DailyBudget(start, end, today, daysTotal, daysLeft, expected, incomeToDate, est, savings, reserve, spent, fixedPaid, upcoming, limit, status, stale, outlook.remaining, savingsDue, cash, if (until != null) delay else 0, until, cap)
+            return DailyBudget(start, end, today, daysTotal, cd, expected, incomeToDate, est, savings, reserve, spent, fixedPaid, upc, limit, status, stale, outlook.remaining, savingsDue, cash, if (until != null) delay else 0, until, cap)
         }
 
         val canEstimate = est != null || incomeToDate.signum() > 0 || manualIncome != null

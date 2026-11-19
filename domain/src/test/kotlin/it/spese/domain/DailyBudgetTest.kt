@@ -242,16 +242,22 @@ class DailyBudgetTest {
         assertNull(manual.delayUntil)
     }
 
-    @Test fun `quando lo stipendio e gia arrivato il paracadute sparisce`() {
+    @Test fun `quando lo stipendio e gia arrivato si guarda allo stipendio del mese contabile successivo`() {
         val none = exampleData()
         val data = none.copy(transactions = none.transactions + tx("2026-11-27", 1000, 2))               // lo stipendio del periodo è arrivato
-        // 20/12: nessuna entrata fissa può più ritardare: la cifra è quella normale
-        val b = DailyBudgetEngine.compute(data, realToday = d("2026-12-20"), patterns = emptyList(), cashSource = { _ -> it.spese.domain.finance.CashPosition(BigDecimal(1000), BigDecimal.ZERO) }, delayDays = 5)!!
-        assertEquals(1, b.daysLeft)
-        assertNull(b.delayUntil); assertEquals(0, b.delayDays); assertEquals(b.perDayWithoutDelay, b.perDay)
-        // il giorno prima dell'arrivo previsto, invece, il paracadute c'è
-        val before = DailyBudgetEngine.compute(none, realToday = d("2026-11-25"), patterns = emptyList(), cashSource = { _ -> it.spese.domain.finance.CashPosition(BigDecimal(1000), BigDecimal.ZERO) }, delayDays = 5)!!
-        assertEquals(5, before.delayDays)
+        val cash = { _: LocalDate -> it.spese.domain.finance.CashPosition(BigDecimal(1000), BigDecimal.ZERO) }
+        // 20/12 è l'ultimo giorno del periodo, ma il prossimo stipendio arriva il 27/12: i soldi devono bastare 7 giorni, non 1
+        val b = DailyBudgetEngine.compute(data, realToday = d("2026-12-20"), patterns = emptyList(), cashSource = cash, delayDays = 5)!!
+        assertEquals(7, b.daysLeft)
+        assertEquals(d("2026-12-31"), b.delayUntil); assertEquals(5, b.delayDays)                         // 26/12 + 5 giorni di ritardo
+        eq("128.57", b.perDayWithoutDelay)                                                              // 900 / 7
+        eq("75", b.perDay)                                                                              // 900 / (7 + 5)
+        // senza paracadute: stessi soldi sui 7 giorni fino al prossimo stipendio
+        val plain = DailyBudgetEngine.compute(data, realToday = d("2026-12-20"), patterns = emptyList(), cashSource = cash, delayDays = 0)!!
+        eq("128.57", plain.perDay)
+        // prima dell'arrivo dello stipendio il paracadute guarda a quello del periodo
+        val before = DailyBudgetEngine.compute(none, realToday = d("2026-11-25"), patterns = emptyList(), cashSource = cash, delayDays = 5)!!
+        assertEquals(5, before.delayDays); assertEquals(d("2026-12-25"), before.delayUntil)
     }
 
     @Test fun `i soldi accumulati non gonfiano il tetto ma si distribuiscono su sei mesi`() {
